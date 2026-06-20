@@ -1,0 +1,51 @@
+{
+  "name": "roblox-mcp",
+  "version": "2.0.0",
+  "description": "Universal MCP server for Roblox game control, reverse engineering, and exploitation — supports Claude Code, Claude Desktop, Cursor, Windsurf, and any MCP-compatible AI.",
+  "main": "src/index.js",
+  "bin": {
+    "roblox-mcp": "bin/roblox-mcp"
+  },
+  "scripts": {
+    "start": "node bin/roblox-mcp",
+    "start:stdio": "node bin/roblox-mcp start:stdio",
+    "setup": "node bin/roblox-mcp setup",
+    "dev": "node bin/roblox-mcp --verbose"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "public/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "roblox",
+    "mcp",
+    "model-context-protocol",
+    "reverse-engineering",
+    "game-hacking",
+    "claude-code",
+    "exploit"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0",
+    "uuid": "^10.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Difz25x/roblox-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Difz25x/roblox-mcp/issues"
+  },
+  "homepage": "https://github.com/Difz25x/roblox-mcp#readme",
+  "author": "Difz25x"
+}
