@@ -6411,655 +6411,6 @@ class ToolDefinitions {
                       ]
             },
             },
-
-            // ================================================================
-            // STATE BYPASS & CHARACTER EXPLOITATION
-            // ================================================================
-
-            {
-                name: "stun_immunity_toggler",
-                description: "Removes stun, freeze, and incapacitation states from the local character by nullifying the humanoid's state or clearing animation tracks that enforce immobility. Optionally applies a persistent hook that intercepts and blocks incoming stun attempts from game scripts. Supports toggling between immune and vulnerable states at runtime without re-execution.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "state": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "enabled",
-                                                    "disabled"
-                                          ],
-                                          "description": "Whether stun immunity is enabled (blocks all stun/freeze attempts) or disabled (normal behavior restored)."
-                                },
-                                "persistence_mode": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "one_shot",
-                                                    "looping"
-                                          ],
-                                          "default": "looping",
-                                          "description": "One-shot removes the current stun state once; looping continuously monitors and nullifies stun attempts as long as the script runs."
-                                },
-                                "apply_to_children": {
-                                          "type": "boolean",
-                                          "default": true,
-                                          "description": "Whether to also apply immunity effects to character attachment parts, tools, and accessories that may have independent state machines."
-                                }
-                      },
-                      "required": [
-                                "state"
-                      ]
-            },
-            },
-            {
-                name: "ragdoll_canceller",
-                description: "Instantly cancels an active ragdoll state on the character by re-enabling the Humanoid, resetting joint properties, and restoring animation control. Forces the character back to a standing pose and re-anchors the HumanoidRootPart to prevent physics-driven flailing. Also clears any BodyPosition, BodyVelocity, or AlignPosition constraints that the game may have applied during ragdoll.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "restore_health": {
-                                          "type": "boolean",
-                                          "default": false,
-                                          "description": "If true, restores character Health to MaxHealth after ragdoll cancellation to prevent instant re-ragdoll from residual damage."
-                                },
-                                "teleport_to_standing_position": {
-                                          "type": "boolean",
-                                          "default": true,
-                                          "description": "If true, teleports the character to the last known standing position above the ground to avoid falling through the map after ragdoll ends."
-                                },
-                                "clear_joint_constraints": {
-                                          "type": "boolean",
-                                          "default": true,
-                                          "description": "Removes all Motor6D, Weld, and Rigidity constraints that may have been modified by the ragdoll state."
-                                }
-                      },
-                      "required": []
-            },
-            },
-            {
-                name: "anti_ragdoll_installer",
-                description: "Installs a persistent anti-ragdoll script that intercepts and blocks any ragdoll-triggering logic before it takes effect. This proactively prevents the game from disabling the Humanoid, altering joint properties, or applying physics forces that initiate ragdoll. Works by hooking the Humanoid StateChanged event and blocking transitions to Ragdoll, PhysicsSimulation, and Dead states. Runs until the character respawns or the tool is manually disabled.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "blocked_states": {
-                                          "type": "array",
-                                          "items": {
-                                                    "type": "string",
-                                                    "enum": [
-                                                              "Ragdoll",
-                                                              "PhysicsSimulation",
-                                                              "Dead",
-                                                              "GettingUp",
-                                                              "FallingDown"
-                                                    ]
-                                          },
-                                          "description": "List of Humanoid state names to block from ever activating. Default blocks all ragdoll-related states.",
-                                          "default": [
-                                                    "Ragdoll",
-                                                    "PhysicsSimulation",
-                                                    "Dead"
-                                          ]
-                                },
-                                "hook_character_added": {
-                                          "type": "boolean",
-                                          "default": true,
-                                          "description": "If true, automatically reapplies anti-ragdoll protection when the character respawns or a new character is loaded."
-                                },
-                                "auto_reinstall_delay_ms": {
-                                          "type": "integer",
-                                          "minimum": 500,
-                                          "maximum": 30000,
-                                          "default": 5000,
-                                          "description": "Milliseconds between reinstallation attempts to ensure the hook persists despite game cleanup scripts."
-                                }
-                      },
-                      "required": []
-            },
-            },
-            {
-                name: "hitbox_expander",
-                description: "Scales up the character's collision geometry beyond normal size, increasing the area that registers hits from weapons, tools, and other players. Multiplies the size of all BodyPart MeshParts and BaseParts while preserving relative proportions. Affects both visual appearance and actual collision boundaries. The expanded hitbox makes the character easier to hit by others but also increases knockback and collision reach.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "scale_multiplier": {
-                                          "type": "number",
-                                          "minimum": 1.01,
-                                          "maximum": 15,
-                                          "default": 2,
-                                          "description": "Multiplier applied to character part Size values. 2.0 doubles all dimensions. Higher values have diminishing returns on detection."
-                                },
-                                "include_accessories": {
-                                          "type": "boolean",
-                                          "default": true,
-                                          "description": "Whether to also expand hitboxes on equipped accessories and tools attached to the character."
-                                },
-                                "preserve_headshot_multiplier": {
-                                          "type": "boolean",
-                                          "default": false,
-                                          "description": "If true, the head hitbox is scaled by half the multiplier to avoid disproportionately large headshot vulnerability."
-                                },
-                                "effects_duration_seconds": {
-                                          "type": "integer",
-                                          "minimum": 1,
-                                          "maximum": 3600,
-                                          "default": 300,
-                                          "description": "Duration in seconds before the hitbox automatically resets to normal. Set to -1 for indefinite."
-                                }
-                      },
-                      "required": [
-                                "scale_multiplier"
-                      ]
-            },
-            },
-            {
-                name: "hitbox_shrinker",
-                description: "Reduces the character's collision and damage-detection geometry to a fraction of its original size, making the character significantly harder to hit, target, or detect by weapon raycasts and area-of-effect abilities. Shrinks all BodyPart attachments while optionally keeping the visual appearance unchanged. Can reduce hitbox to near-zero width to effectively dodge all aim-based attacks.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "scale_multiplier": {
-                                          "type": "number",
-                                          "minimum": 0.01,
-                                          "maximum": 0.99,
-                                          "default": 0.3,
-                                          "description": "Multiplier applied to character part Size values. 0.3 reduces to 30% of normal size. Values near 0.01 make the character virtually untargetable."
-                                },
-                                "visual_only": {
-                                          "type": "boolean",
-                                          "default": false,
-                                          "description": "If true, only the visual MeshPart size is changed while collision geometry remains full-size. If false, both visual and collision hitboxes are shrunk."
-                                },
-                                "effects_duration_seconds": {
-                                          "type": "integer",
-                                          "minimum": 1,
-                                          "maximum": 3600,
-                                          "default": 300,
-                                          "description": "Duration in seconds before the hitbox automatically resets to normal. Set to -1 for indefinite."
-                                }
-                      },
-                      "required": [
-                                "scale_multiplier"
-                      ]
-            },
-            },
-            {
-                name: "cooldown_resetter",
-                description: "Resets or removes cooldown timers on all currently equipped tools, abilities, and skills. Searches through the character's Backpack, StarterGear, and Tool instances for any IntValue, NumberValue, or BoolValue objects named things like 'Cooldown', 'LastUsed', or 'ReloadTime' and resets them to their ready state. Can also target specific tools by name and optionally prevent cooldown values from being written back by hooking the ValueChanged event.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "scope": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "all_equipped",
-                                                    "all_inventory",
-                                                    "specific_tool"
-                                          ],
-                                          "default": "all_equipped",
-                                          "description": "Determines which tools are affected: all_equipped (currently held tools), all_inventory (backpack and equipped), or specific_tool (only the tool named in target_tool_name)."
-                                },
-                                "target_tool_name": {
-                                          "type": "string",
-                                          "description": "Required when scope is 'specific_tool'. The exact name of the Tool instance whose cooldown should be reset."
-                                },
-                                "prevent_reapplication": {
-                                          "type": "boolean",
-                                          "default": false,
-                                          "description": "If true, continuously intercepts and blocks cooldown value writes, keeping abilities off cooldown indefinitely until disabled."
-                                },
-                                "reset_cooldown_value": {
-                                          "type": "number",
-                                          "default": 0,
-                                          "description": "The numeric value to set cooldown-related objects to. 0 means ready/available. Some games use negative values for ready state."
-                                }
-                      },
-                      "required": []
-            },
-            },
-            {
-                name: "animation_canceller",
-                description: "Immediately halts all currently playing animations on the character, including forced cutscenes, emote loops, and ability animations. Stops every AnimationTrack in the Humanoid's Animator and clears queued animation playback. Also removes any Animation or KeyframeSequence instances the game may have parented to the character. Useful for breaking out of stun-lock animations or skipping forced emote sequences during gameplay.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "stop_priority": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "all",
-                                                    "core_only",
-                                                    "emotes_only"
-                                          ],
-                                          "default": "all",
-                                          "description": "Determines which animation layers to cancel: all stops everything; core_only keeps emotes running; emotes_only stops only non-core animations."
-                                },
-                                "resume_idle_immediately": {
-                                          "type": "boolean",
-                                          "default": true,
-                                          "description": "If true, forces the Humanoid to immediately play the idle animation after cancellation to prevent a frozen T-pose state."
-                                },
-                                "clear_animation_events": {
-                                          "type": "boolean",
-                                          "default": true,
-                                          "description": "Whether to also remove AnimationTrack events and connections that may re-trigger the animation."
-                                }
-                      },
-                      "required": []
-            },
-            },
-            {
-                name: "animation_overrider",
-                description: "Replaces a currently playing animation on the character with a custom animation loaded from an AnimationId or AssetId. Intercepts the Animator's LoadAnimation and Play calls to substitute the specified animation. Supports overriding specific animation slots (e.g., running, jumping, tool-equip) with entirely different animations, or injecting a completely new animation to play on the character. The override persists until manually cleared or the character resets.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "animation_id": {
-                                          "type": "string",
-                                          "pattern": "^rbxassetid://[0-9]+$|^[0-9]+$",
-                                          "description": "The Roblox Animation asset ID to play (e.g., 'rbxassetid://123456789' or just '123456789'). Must be a valid uploaded animation asset."
-                                },
-                                "override_slot": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "running",
-                                                    "jumping",
-                                                    "falling",
-                                                    "climbing",
-                                                    "swimming",
-                                                    "idle",
-                                                    "walking",
-                                                    "tool_equip",
-                                                    "tool_idle",
-                                                    "all"
-                                          ],
-                                          "default": "all",
-                                          "description": "The animation slot to override. 'all' replaces any currently playing animation regardless of slot."
-                                },
-                                "loop_animation": {
-                                          "type": "boolean",
-                                          "default": false,
-                                          "description": "If true, the overriding animation loops continuously. If false, it plays once and returns to the default animation."
-                                },
-                                "blend_time_seconds": {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 2,
-                                          "default": 0.1,
-                                          "description": "Crossfade/blend duration in seconds when transitioning from the current animation to the override. Lower values create instant transitions."
-                                },
-                                "animation_speed_multiplier": {
-                                          "type": "number",
-                                          "minimum": 0.1,
-                                          "maximum": 50,
-                                          "default": 1,
-                                          "description": "Speed multiplier for the overridden animation. Values above 1.0 speed up, below 1.0 slow down the animation."
-                                }
-                      },
-                      "required": [
-                                "animation_id"
-                      ]
-            },
-            },
-            {
-                name: "currency_editor",
-                description: "Modifies in-game currency and stat values by locating and updating IntValue, NumberValue, StringValue, and Folder instances commonly used for leaderstats, currency displays, and progression systems. Walks the player's leaderstat hierarchy and game-specific stat containers. Supports setting an exact value, adding/subtracting delta, or multiplying the current value. Includes detection for common obfuscated currency storage patterns like doubled values or offset tracking.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "target_currency_names": {
-                                          "type": "array",
-                                          "items": {
-                                                    "type": "string"
-                                          },
-                                          "description": "List of currency or stat value names to target (e.g., ['Cash', 'Gems', 'Level', 'Points', 'Coins', 'Experience']). If empty, targets all discovered numeric value objects.",
-                                          "default": []
-                                },
-                                "edit_mode": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "set",
-                                                    "add",
-                                                    "subtract",
-                                                    "multiply"
-                                          ],
-                                          "default": "set",
-                                          "description": "Operation to perform: set (exact value), add (increase by amount), subtract (decrease by amount), multiply (multiply current value by amount)."
-                                },
-                                "edit_amount": {
-                                          "type": "number",
-                                          "description": "Value to use with the selected edit_mode. For 'set' mode, this is the absolute value. For 'add'/'subtract', this is the delta. For 'multiply', this is the multiplier factor.",
-                                          "default": 999999
-                                },
-                                "search_containers": {
-                                          "type": "array",
-                                          "items": {
-                                                    "type": "string"
-                                          },
-                                          "default": [
-                                                    "leaderstats",
-                                                    "Stats",
-                                                    "Data",
-                                                    "Currency",
-                                                    "Values"
-                                          ],
-                                          "description": "Folder or Instance names to search inside for currency value objects. Expands search breadth for games with non-standard storage."
-                                },
-                                "bypass_encryption_detection": {
-                                          "type": "boolean",
-                                          "default": false,
-                                          "description": "If true, attempts to detect and write to both the displayed value and any hidden shadow value used for server-side validation."
-                                }
-                      },
-                      "required": [
-                                "edit_mode",
-                                "edit_amount"
-                      ]
-            },
-            },
-            {
-                name: "noclip_toggler",
-                description: "Enables or disables noclip mode, allowing the character to pass through all parts, terrain, and geometry without collision. Works by setting CanCollide to false on all character parts while simultaneously setting CanQuery to false so part-based raycast detection also fails. When disabled, restores original collision properties. Includes anti-fall protection by automatically keeping the character anchored or applying a floor detection velocity.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "state": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "enabled",
-                                                    "disabled"
-                                          ],
-                                          "description": "Whether noclip is enabled (character passes through all parts) or disabled (normal collision restored)."
-                                },
-                                "anti_fall_protection": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "anchor",
-                                                    "velocity",
-                                                    "disabled"
-                                          ],
-                                          "default": "velocity",
-                                          "description": "Anti-fall mechanism while noclip is active: anchor keeps the character in place; velocity applies an upward force; disabled allows free fall through the void."
-                                },
-                                "exempt_parts": {
-                                          "type": "array",
-                                          "items": {
-                                                    "type": "string"
-                                          },
-                                          "default": [
-                                                    "Baseplate",
-                                                    "SpawnLocation"
-                                          ],
-                                          "description": "Part names to exclude from noclip, allowing collision with these specific parts even when noclip is enabled."
-                                },
-                                "floating_height_offset": {
-                                          "type": "number",
-                                          "default": 3,
-                                          "description": "Distance in studs above the nearest surface to float when anti_fall_protection is 'anchor' or 'velocity'. Prevents the character from clipping into the floor."
-                                }
-                      },
-                      "required": [
-                                "state"
-                      ]
-            },
-            },
-            {
-                name: "speed_boost_controller",
-                description: "Overrides the character's Humanoid WalkSpeed property to any value, bypassing the normal engine limits and game-imposed speed caps. Supports setting both a custom WalkSpeed and an optional sprint multiplier for burst movement. Can be applied once (static override) or as a continuous loop that reapplies the speed value each frame to fight speed-correction scripts. Also optionally patches the Humanoid's GetWalkSpeed function to always return the overridden value.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "walk_speed": {
-                                          "type": "number",
-                                          "minimum": 1,
-                                          "maximum": 500,
-                                          "default": 50,
-                                          "description": "The custom WalkSpeed value to apply. Normal Roblox default is 16. Values up to 200 are functional; higher values may cause physics desync."
-                                },
-                                "sprint_multiplier": {
-                                          "type": "number",
-                                          "minimum": 1,
-                                          "maximum": 20,
-                                          "default": 1,
-                                          "description": "Multiplier applied when the character's sprint or shift-lock state is detected. 1.0 disables sprint boost."
-                                },
-                                "override_mode": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "static",
-                                                    "looping",
-                                                    "hooked"
-                                          ],
-                                          "default": "looping",
-                                          "description": "static sets the value once; looping reapplies each frame to resist game corrections; hooked patches the internal function for stealth."
-                                },
-                                "effects_duration_seconds": {
-                                          "type": "integer",
-                                          "minimum": 1,
-                                          "maximum": 86400,
-                                          "default": 3600,
-                                          "description": "Duration in seconds before speed automatically resets to the original value. Set to -1 for indefinite persistence."
-                                }
-                      },
-                      "required": [
-                                "walk_speed"
-                      ]
-            },
-            },
-            {
-                name: "flight_mode_manager",
-                description: "Activates a free-form flight mode on the character controlled by WASD input, completely bypassing gravity and normal movement constraints. Replaces the Humanoid's MoveDirection with a custom flight vector that responds to camera-relative input. Optionally toggles between hover mode (stationary floating) and controlled flight (directional movement). Supports adjustable flight speed independent of WalkSpeed.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "state": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "enabled",
-                                                    "disabled"
-                                          ],
-                                          "description": "Whether flight mode is enabled (character can fly) or disabled (normal gravity and movement restored)."
-                                },
-                                "flight_speed": {
-                                          "type": "number",
-                                          "minimum": 5,
-                                          "maximum": 500,
-                                          "default": 50,
-                                          "description": "Movement speed in studs per second while flying. Independent from the character's WalkSpeed value."
-                                },
-                                "flight_controls": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "camera_relative",
-                                                    "world_absolute",
-                                                    "mouse_target"
-                                          ],
-                                          "default": "camera_relative",
-                                          "description": "Control scheme: camera_relative (WASD relative to camera facing), world_absolute (WASD relative to world axes), mouse_target (fly toward mouse cursor target position)."
-                                },
-                                "vertical_controls": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "space_shift",
-                                                    "scroll_wheel",
-                                                    "auto_hover"
-                                          ],
-                                          "default": "space_shift",
-                                          "description": "Vertical movement: space_shift (spacebar ascends, shift descends), scroll_wheel (mouse wheel adjusts altitude), auto_hover (maintains current altitude automatically)."
-                                },
-                                "hover_height": {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1000,
-                                          "default": 10,
-                                          "description": "Default altitude in studs above ground when entering flight mode. Ignored when flight is toggled mid-air."
-                                },
-                                "disable_collision_during_flight": {
-                                          "type": "boolean",
-                                          "default": true,
-                                          "description": "If true, automatically enables noclip during flight to prevent getting stuck on geometry. Restores collision when flight is disabled."
-                                }
-                      },
-                      "required": [
-                                "state"
-                      ]
-            },
-            },
-            {
-                name: "health_state_manager",
-                description: "Manages character health, damage immunity, and god mode state. Can set health to any value up to MaxHealth, enable god mode that blocks all incoming damage by hooking the Humanoid's HealthChanged and taking damage events, or apply a damage multiplier that scales all incoming damage by a factor while logged. Supports one-shot healing, persistent god mode, or selective damage type blocking (fall damage, weapon damage, environmental damage).",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "mode": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "god_mode",
-                                                    "set_health",
-                                                    "damage_multiplier",
-                                                    "heal_to_full",
-                                                    "disabled"
-                                          ],
-                                          "description": "god_mode blocks all incoming damage; set_health sets health to a specific value; damage_multiplier scales incoming damage; heal_to_full instantly restores to MaxHealth; disabled removes all health modifications."
-                                },
-                                "health_value": {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1000000,
-                                          "description": "Required when mode is 'set_health'. The exact health value to set on the character's Humanoid."
-                                },
-                                "damage_multiplier": {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 100,
-                                          "default": 0,
-                                          "description": "Required when mode is 'damage_multiplier'. 0.0 means no damage taken; 1.0 is normal damage; values above 1.0 increase incoming damage."
-                                },
-                                "blocked_damage_types": {
-                                          "type": "array",
-                                          "items": {
-                                                    "type": "string",
-                                                    "enum": [
-                                                              "all",
-                                                              "weapon",
-                                                              "fall",
-                                                              "fire",
-                                                              "explosion",
-                                                              "touch"
-                                                    ]
-                                          },
-                                          "default": [
-                                                    "all"
-                                          ],
-                                          "description": "Types of damage to block when in god_mode. 'all' blocks every damage source. Specific types allow selective immunity."
-                                },
-                                "effects_duration_seconds": {
-                                          "type": "integer",
-                                          "minimum": 1,
-                                          "maximum": 86400,
-                                          "default": -1,
-                                          "description": "Duration in seconds before health modifications automatically revert. -1 means indefinite."
-                                }
-                      },
-                      "required": [
-                                "mode"
-                      ]
-            },
-            },
-            {
-                name: "instant_translocator",
-                description: "Teleports the character to a target position or another player's location instantly via CFrame manipulation on the HumanoidRootPart. Supports teleporting to absolute world coordinates, a named player's current position, a dynamically calculated position (e.g., mouse target, look vector), or a relative offset from the current position. Optionally preserves momentum and velocity on arrival or resets the character to a neutral standing state.",
-                inputSchema: {
-                      "type": "object",
-                      "properties": {
-                                "target_type": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "coordinates",
-                                                    "player",
-                                                    "mouse_target",
-                                                    "camera_look",
-                                                    "relative_offset"
-                                          ],
-                                          "description": "coordinates: teleport to specific X,Y,Z values. player: teleport to a target player's character position. mouse_target: teleport to the position under the mouse cursor. camera_look: teleport to the point the camera is facing. relative_offset: move relative to current position."
-                                },
-                                "coordinates": {
-                                          "type": "object",
-                                          "properties": {
-                                                    "x": {
-                                                              "type": "number",
-                                                              "description": "World X coordinate."
-                                                    },
-                                                    "y": {
-                                                              "type": "number",
-                                                              "description": "World Y coordinate (vertical)."
-                                                    },
-                                                    "z": {
-                                                              "type": "number",
-                                                              "description": "World Z coordinate."
-                                                    }
-                                          },
-                                          "description": "Required when target_type is 'coordinates'. The absolute world position to teleport to."
-                                },
-                                "target_player_name": {
-                                          "type": "string",
-                                          "description": "Required when target_type is 'player'. The exact display name of the target player to teleport to."
-                                },
-                                "relative_offset": {
-                                          "type": "object",
-                                          "properties": {
-                                                    "forward": {
-                                                              "type": "number",
-                                                              "default": 0,
-                                                              "description": "Studs to move forward from current position."
-                                                    },
-                                                    "right": {
-                                                              "type": "number",
-                                                              "default": 0,
-                                                              "description": "Studs to move right from current position."
-                                                    },
-                                                    "up": {
-                                                              "type": "number",
-                                                              "default": 0,
-                                                              "description": "Studs to move upward from current position."
-                                                    }
-                                          },
-                                          "description": "Required when target_type is 'relative_offset'. Directional offset from the current position."
-                                },
-                                "maintain_velocity": {
-                                          "type": "boolean",
-                                          "default": false,
-                                          "description": "If true, preserves the character's current velocity and momentum through the teleport. If false, velocity is zeroed out on arrival."
-                                },
-                                "teleport_effects": {
-                                          "type": "string",
-                                          "enum": [
-                                                    "silent",
-                                                    "no_sound",
-                                                    "with_effects"
-                                          ],
-                                          "default": "silent",
-                                          "description": "silent teleports with no visual or audio cues; no_sound teleports without audio but default visual effects remain; with_effects shows teleport beam/particle effects."
-                                },
-                                "cframe_orientation": {
-                                          "type": "object",
-                                          "properties": {
-                                                    "look_at": {
-                                                              "type": "string",
-                                                              "description": "Optional part name or player name for the character to face after teleporting."
-                                                    },
-                                                    "rotation_degrees": {
-                                                              "type": "number",
-                                                              "description": "Optional Y-axis rotation in degrees to set the character's facing direction."
-                                                    }
-                                          },
-                                          "description": "Controls the character's facing orientation after teleportation."
-                                }
-                      },
-                      "required": [
-                                "target_type"
-                      ]
-            },
-            },
             {
                 name: "teleport_to_target",
                 description: "Instant CFrame teleportation. Supports teleporting to absolute coordinates, a named player position, a specific workspace instance by name, or the current mouse/target position. Uses CFrame manipulation so it bypasses most basic anti-teleport.",
@@ -7143,6 +6494,445 @@ class ToolDefinitions {
                       },
                       "required": []
             },
+            },
+
+            // ================================================================
+            // UNC HIDDEN PROPERTY TOOLS (uses sethiddenproperty / firesignal)
+            // ================================================================
+
+            {
+                name: "gui_button_clicker",
+                description: "Fires click signals on a GUI button using UNC firesignal. Sends Activated, MouseButton1Down, MouseButton2Down, MouseButton1Click, and MouseButton2Click signals. Requires firesignal UNC support.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Full path to the GuiButton instance." }
+                    },
+                    "required": ["path"]
+                }
+            },
+            {
+                name: "script_decompiler",
+                description: "Decompiles a Script, ModuleScript, or LocalScript using the decompile chain (LuaExpert to Medal to Konstant). Falls back through multiple decompile services.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "target_path": { "type": "string", "description": "Full path to the script instance." }
+                    },
+                    "required": ["target_path"]
+                }
+            },
+            {
+                name: "fire_click_detector",
+                description: "Fires a ClickDetector on the target instance using UNC fireclickdetector. Useful for interacting with clickable objects without physically clicking them.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "target_path": { "type": "string", "description": "Path to instance containing a ClickDetector child." }
+                    },
+                    "required": ["target_path"]
+                }
+            },
+            {
+                name: "fire_proximity_prompt",
+                description: "Fires a ProximityPrompt on the target instance using UNC fireproximityprompt. Triggers it instantly, bypassing HoldDuration and range checks.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "target_path": { "type": "string", "description": "Path to instance containing a ProximityPrompt child." }
+                    },
+                    "required": ["target_path"]
+                }
+            },
+            {
+                name: "hidden_property_reader",
+                description: "Reads a hidden non-scriptable property from an instance using UNC gethiddenproperty. Accesses properties normally hidden from Lua scripts.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "instance_path": { "type": "string", "description": "Full path to the target instance." },
+                        "property": { "type": "string", "description": "Name of the hidden property to read." }
+                    },
+                    "required": ["instance_path", "property"]
+                }
+            },
+            {
+                name: "hidden_property_writer",
+                description: "Writes a value to a hidden non-scriptable property on an instance using UNC sethiddenproperty.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "instance_path": { "type": "string", "description": "Full path to the target instance." },
+                        "property": { "type": "string", "description": "Name of the hidden property to write." },
+                        "value": { "description": "Value to set on the hidden property." }
+                    },
+                    "required": ["instance_path", "property", "value"]
+                }
+            },
+            {
+                name: "property_scriptable_toggler",
+                description: "Makes a non-scriptable property readable and writable from Lua using UNC setscriptable.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "instance_path": { "type": "string", "description": "Full path to the target instance." },
+                        "property": { "type": "string", "description": "Name of the property to make scriptable." }
+                    },
+                    "required": ["instance_path", "property"]
+                }
+            },
+
+            // ================================================================
+            // CLOSURE & FUNCTION HOOKING (uses UNC: hookfunction, checkcaller, clonefunction)
+            // ================================================================
+
+            {
+                name: "function_hook_installer",
+                description: "Hooks/intercepts any Lua function using UNC hookfunction. Replaces the target function with a custom implementation while preserving the original. The original function can be called from within the hook. Supports instance methods (found by path and method name) and global functions.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "target": { "type": "string", "description": "Full path to a ModuleScript containing the function, or a Lua expression resolving to a function." },
+                        "hook_code": { "type": "string", "description": "Luau source code for the hook function. Use 'orig(...)' to call the original function." },
+                        "method_name": { "type": "string", "description": "If target is an instance, the method name to hook (e.g. 'FireServer', 'InvokeServer')." }
+                    },
+                    "required": ["target", "hook_code"]
+                }
+            },
+            {
+                name: "closure_type_checker",
+                description: "Checks the type of a Lua closure using UNC iscclosure, islclosure, and isexecutorclosure. Returns whether a function is a C closure (engine), Lua closure (script), or executor closure (injected). Also reports checkcaller status to determine if the current code is executing in the executor's context.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "function_path": { "type": "string", "description": "Path or Lua expression evaluating to the function to inspect." },
+                        "name": { "type": "string", "description": "Optional name for the function for display purposes." }
+                    },
+                    "required": ["function_path"]
+                }
+            },
+
+            // ================================================================
+            // ENVIRONMENT EXPLORATION (uses UNC: getgc, getreg, getrenv)
+            // ================================================================
+
+            {
+                name: "gc_scanner",
+                description: "Scans the Lua garbage collector table using UNC getgc. Returns all objects in the GC filtered by type (function, table, thread, userdata). Can search for specific function names or table patterns. Use this to find hidden functions, detect cheats, or discover undocumented APIs.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "filter_type": { "type": "string", "enum": ["all", "function", "table", "thread"], "default": "all", "description": "Type of GC objects to return." },
+                        "name_pattern": { "type": "string", "description": "Substring to match against function names or table keys." },
+                        "max_results": { "type": "number", "default": 50, "description": "Maximum objects to return." }
+                    }
+                }
+            },
+            {
+                name: "registry_reader",
+                description: "Dumps the Lua registry table using UNC getreg. Returns all values stored in the Lua registry keyed by their index. Useful for finding hidden references, protected values, or understanding the Lua VM state.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "key_filter": { "type": "string", "description": "Optional key pattern to filter registry entries." },
+                        "max_entries": { "type": "number", "default": 100, "description": "Maximum entries to return." }
+                    }
+                }
+            },
+            {
+                name: "roblox_environment_viewer",
+                description: "Reads values from the global Roblox environment (getrenv) and the executor environment (getgenv). Compares the two to find injected functions, overridden globals, or security wrappers. Returns a diff of custom globals added by the executor.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "namespace": { "type": "string", "enum": ["renv", "genv", "both"], "default": "both", "description": "Which environment(s) to inspect." },
+                        "filter_pattern": { "type": "string", "description": "Optional filter for global names." }
+                    }
+                }
+            },
+            {
+                name: "script_environment_dumper",
+                description: "Dumps a script's local environment using UNC getsenv. For a given Script or ModuleScript, returns all local variables, functions, and values defined in its scope. Useful for reverse engineering what data a script holds at runtime.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "script_path": { "type": "string", "description": "Full path to the Script or ModuleScript instance." },
+                        "max_values": { "type": "number", "default": 50, "description": "Maximum environment values to return." }
+                    },
+                    "required": ["script_path"]
+                }
+            },
+
+            // ================================================================
+            // FILESYSTEM OPERATIONS (uses UNC: readfile, writefile, delfile, listfiles)
+            // ================================================================
+
+            {
+                name: "file_reader",
+                description: "Reads a file from the executor's filesystem using UNC readfile. The base path is the executor's working directory. Returns the file contents as a string. Supports text files and base64-encoded binary data.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative file path within the executor's filesystem." }
+                    },
+                    "required": ["path"]
+                }
+            },
+            {
+                name: "file_writer",
+                description: "Writes content to a file in the executor's filesystem using UNC writefile. Creates the file if it does not exist, overwrites if it does. The base path is the executor's working directory.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative file path to write to." },
+                        "content": { "type": "string", "description": "Text content to write to the file." }
+                    },
+                    "required": ["path", "content"]
+                }
+            },
+            {
+                name: "file_deleter",
+                description: "Deletes a file from the executor's filesystem using UNC delfile. Also supports recursive folder deletion via delfolder. Confirms the file existed before deletion.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Relative file or folder path." },
+                        "recursive": { "type": "boolean", "default": false, "description": "If true and path is a folder, deletes recursively." }
+                    },
+                    "required": ["path"]
+                }
+            },
+            {
+                name: "file_lister",
+                description: "Lists files and folders in a directory using UNC listfiles. Returns all entries in the specified directory with their names, sizes, and whether they are files or folders.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "default": "", "description": "Directory path to list. Empty lists the executor's root." },
+                        "include_details": { "type": "boolean", "default": true, "description": "Include file size and last modified time." }
+                    }
+                }
+            },
+            {
+                name: "folder_creator",
+                description: "Creates a folder in the executor's filesystem using UNC makefolder. Creates parent directories if they do not exist. Returns success status.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Folder path to create." }
+                    },
+                    "required": ["path"]
+                }
+            },
+            {
+                name: "custom_asset_loader",
+                description: "Loads a file as a Roblox custom asset using UNC getcustomasset. Returns a rbxasset:// URL that can be used anywhere Roblox accepts asset IDs. Useful for loading custom images, sounds, or meshes from the executor's filesystem.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "file_path": { "type": "string", "description": "Path to the file in the executor's filesystem." },
+                        "asset_type": { "type": "string", "enum": ["auto", "image", "sound", "mesh"], "default": "auto", "description": "Type of asset being loaded." }
+                    },
+                    "required": ["file_path"]
+                }
+            },
+
+            // ================================================================
+            // SCRIPT INTROSPECTION (uses UNC: getrunningscripts, getcallingscript, getscripthash)
+            // ================================================================
+
+            {
+                name: "running_scripts_lister",
+                description: "Lists all currently running Lua scripts in the game using UNC getrunningscripts. Returns each script's name, class, path, thread ID, and execution status. Different from get_loaded_modules which returns ModuleScripts — this returns actively executing scripts.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "filter_by_class": { "type": "string", "description": "Filter by class name: Script, LocalScript, ModuleScript." },
+                        "include_source": { "type": "boolean", "default": false, "description": "Attempt to read the script source." },
+                        "max_scripts": { "type": "number", "default": 100, "description": "Maximum scripts to return." }
+                    }
+                }
+            },
+            {
+                name: "calling_script_finder",
+                description: "Returns the script that called the current execution context using UNC getcallingscript. Useful for understanding the call stack, detecting which script triggered an action, or tracing execution flow.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "stack_level": { "type": "number", "default": 0, "description": "Stack frame level to check. 0 = immediate caller, 1 = caller's caller, etc." }
+                    }
+                }
+            },
+            {
+                name: "script_closure_getter",
+                description: "Gets the main closure/function of a script using UNC getscriptclosure. Returns a reference to the script's main function that can be inspected with other debug tools. Also returns debug info about the closure.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "script_path": { "type": "string", "description": "Full path to the script instance." },
+                        "include_debug_info": { "type": "boolean", "default": true, "description": "Include upvalue count and constants from the closure." }
+                    },
+                    "required": ["script_path"]
+                }
+            },
+            {
+                name: "script_hash_calculator",
+                description: "Computes the hash of a script's bytecode or source using UNC getscripthash. Useful for identifying scripts across sessions, detecting script modifications, or verifying script integrity.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "script_path": { "type": "string", "description": "Full path to the script instance." }
+                    },
+                    "required": ["script_path"]
+                }
+            },
+
+            // ================================================================
+            // METATABLE & MEMORY MANIPULATION (UNC: setrawmetatable, setreadonly, namecall)
+            // ================================================================
+
+            {
+                name: "raw_metatable_setter",
+                description: "Sets a raw metatable on a table or instance using UNC setrawmetatable, bypassing the __metatable field. Can wrap objects with custom __index, __newindex, __call, and other metamethods for interception and monitoring.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "target_path": { "type": "string", "description": "Path to the target instance or table." },
+                        "metatable_code": { "type": "string", "description": "Luau code returning a metatable table (e.g. '{ __index = function(self, k) return rawget(self, k) end }')." }
+                    },
+                    "required": ["target_path", "metatable_code"]
+                }
+            },
+            {
+                name: "readonly_toggler",
+                description: "Toggles the readonly state of a table using UNC setreadonly/isreadonly. Can make read-only tables writable or lock tables from further modification. Returns the previous readonly state.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "target_path": { "type": "string", "description": "Path or Lua expression resolving to the table." },
+                        "state": { "type": "boolean", "description": "true = make readonly, false = make writable." }
+                    },
+                    "required": ["target_path", "state"]
+                }
+            },
+            {
+                name: "namecall_spy",
+                description: "Monitors namecall method invocations (obj:MethodName(...)) using getnamecallmethod UNC. Hooks the namecall metamethod to log every method call on the target object. Returns a log of all intercepted calls with arguments.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "target_path": { "type": "string", "description": "Path to the instance or table to monitor." },
+                        "method_filter": { "type": "string", "description": "Only log calls to this specific method name." },
+                        "max_calls": { "type": "number", "default": 50, "description": "Maximum calls to log before stopping." }
+                    },
+                    "required": ["target_path"]
+                }
+            },
+
+            // ================================================================
+            // INSTANCE & SIGNAL UTILITIES (UNC: compareinstances, replicatesignal)
+            // ================================================================
+
+            {
+                name: "instance_comparer",
+                description: "Compares two Roblox instances for equality using UNC compareinstances. Handles cases where instances may have been cloned or have different references to the same object. Returns whether they refer to the same underlying instance.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "path_a": { "type": "string", "description": "First instance path." },
+                        "path_b": { "type": "string", "description": "Second instance path." },
+                        "compare_mode": { "type": "string", "enum": ["reference", "name", "path"], "default": "reference", "description": "Comparison mode." }
+                    },
+                    "required": ["path_a", "path_b"]
+                }
+            },
+            {
+                name: "signal_replicator",
+                description: "Replicates a signal/event across the Roblox network using UNC replicatesignal. Can trigger remote events as if they came from the server. Use with caution — this can simulate server responses on the client.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "remote_path": { "type": "string", "description": "Full path to the RemoteEvent or BindableEvent." },
+                        "args": { "type": "array", "description": "Arguments to replicate with the signal." },
+                        "fire_all": { "type": "boolean", "default": true, "description": "If true, fires all connections; if false, fires only the first." }
+                    },
+                    "required": ["remote_path"]
+                }
+            },
+
+            // ================================================================
+            // SERVER-SIDE TOOLS (runs on Node, not executor)
+            // ================================================================
+
+            {
+                name: "get_roblox_processes",
+                description: "List all running RobloxPlayerBeta processes on this machine. Returns PID, process name, window title, and memory usage for each detected process. Use the PID with other tools to target a specific Roblox instance. Also returns the number of active executor sessions currently connected to this server.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "include_all_users": {
+                            "type": "boolean",
+                            "description": "Include Roblox processes from other user sessions.",
+                            "default": false
+                        }
+                    },
+                    "required": []
+                }
+            },
+            {
+                name: "launch_roblox",
+                description: "Launch the Roblox client application. If a custom path to RobloxPlayerLauncher.exe is provided, uses that; otherwise auto-discovers the installation from Windows Registry or common install paths. Returns the PID of the launched process and the path used. Errors with 'Roblox not found' if not installed.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Custom path to RobloxPlayerLauncher.exe. Leave empty for auto-find."
+                        }
+                    },
+                    "required": []
+                }
+            },
+            {
+                name: "open_game",
+                description: "Open a Roblox game via roblox-player protocol. Requires a PlaceId. Supports joining via job ID, private server link code, or standard join URL. Constructs full launch URL with auth, tracker, locale params.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "place_id": {
+                            "type": "number",
+                            "description": "Place ID of the game to open."
+                        },
+                        "job_id": { "type": "string", "description": "Optional server job ID to join a specific server." },
+                        "private_server_link_code": { "type": "string", "description": "Optional private server link code." },
+                        "launch_mode": { "type": "string", "enum": ["play", "edit"], "default": "play" },
+                        "auth_ticket": { "type": "string", "description": "Optional auth ticket for gameinfo." },
+                        "browser_tracker_id": { "type": "string", "description": "Optional browser tracker ID. Auto-generated if empty." },
+                        "launch_time": { "type": "string", "description": "Optional launch timestamp. Auto-generated if empty." },
+                        "experience_id": { "type": "string", "description": "Optional experience/instance ID." }
+                    },
+                    "required": ["place_id"]
+                }
+            },
+            {
+                name: "capture_roblox_screenshot",
+                description: "Capture a screenshot of a Roblox process window on Windows. Uses PowerShell with Win32 PrintWindow by PID. If no PID provided, captures the first RobloxPlayerBeta process. Returns base64-encoded PNG data URL.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "pid": { "type": "number", "description": "PID of the Roblox process to capture. Omit for first found." }
+                    },
+                    "required": []
+                }
+            },
+            {
+                name: "get_roblox_versions",
+                description: "List installed Roblox versions on this machine. Scans Versions directory in Program Files and LocalAppData. Returns version string, whether launcher and player exes exist.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
             },
         ];
     }

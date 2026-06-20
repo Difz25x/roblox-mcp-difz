@@ -12,14 +12,21 @@
  *   POST /req           Executor fetches next task
  *   POST /res           Executor returns result
  *
+ * WebSocket:
+ *   ws://host:port/ws   Default executor transport (register/task/result)
+ *
  * Static:
  *   GET /mcp.luau       Luau client script
  */
 const express = require('express');
 const path = require('path');
+const http = require('http');
 const { QueueManager } = require('./queue-manager');
 const { McpHandler } = require('./mcp-handler');
 const { ToolDefinitions } = require('./tool-definitions');
+const { SessionManager } = require('./session-manager');
+const { WsServer } = require('./ws-server');
+const processManager = require('./process-manager');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 
@@ -48,7 +55,8 @@ function createApp(opts) {
 
     const queue = new QueueManager();
     const tools = new ToolDefinitions();
-    const mcp = new McpHandler(queue, tools);
+    const sessions = new SessionManager();
+    const mcp = new McpHandler(queue, tools, sessions, processManager);
 
     const log = IS_VERBOSE
         ? (...args) => console.log('[MCP]', ...args)
@@ -67,18 +75,26 @@ function createApp(opts) {
         next();
     });
 
+    // Create HTTP server + mount WebSocket (MUST be before routes that reference wss)
+    const server = http.createServer(app);
+    const wss = new WsServer(queue, sessions);
+    wss.mount(server);
+
     const mcpHandler = handleMcpMessage(mcp, log);
 
-    // Standard MCP HTTP endpoint (spec compliant — primary)
+    // MCP endpoints
     app.post('/', mcpHandler);
-    // Alias for backwards compatibility
     app.post('/mcp', mcpHandler);
 
-    // Bridge: executor long-poll
+    // Bridge: executor long-poll (fallback, WebSocket preferred)
     app.post('/req', async (req, res) => {
         const timeout = Math.min(req.body && req.body.timeout || 25000, 60000);
+        const workerId = req.body && req.body.worker_id;
+        if (workerId) {
+            sessions.register(workerId, { pid: req.body.pid, name: 'RobloxPlayerBeta' });
+        }
         try {
-            const task = await queue.waitForTask(timeout);
+            const task = await queue.waitForTask(timeout, workerId);
             if (task) {
                 res.json({ type: task.type, id: task.id, args: task.args, timestamp: task.timestamp });
             } else {
@@ -106,10 +122,13 @@ function createApp(opts) {
             port: parseInt(process.env.MCP_PORT, 10) || 28429,
             ...queue.getStats(),
             toolsRegistered: tools.count,
+            wsConnections: wss ? wss.connectedCount : 0,
+            activeSessions: sessions.activeCount,
+            robloxProcesses: processManager.listRobloxProcesses().length,
         });
     });
 
-    return { app, queue, tools, mcp };
+    return { app, server, queue, tools, mcp, sessions, processManager, wss };
 }
 
 module.exports = { createApp };

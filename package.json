@@ -1,10 +1,10 @@
 {
-  "name": "roblox-mcp",
-  "version": "2.0.0",
+  "name": "roblox-mcp-difz",
+  "version": "1.0.0",
   "description": "Universal MCP server for Roblox game control, reverse engineering, and exploitation — supports Claude Code, Claude Desktop, Cursor, Windsurf, and any MCP-compatible AI.",
   "main": "src/index.js",
   "bin": {
-    "roblox-mcp": "bin/roblox-mcp"
+    "roblox-mcp-difz": "bin/roblox-mcp"
   },
   "scripts": {
     "start": "node bin/roblox-mcp",
@@ -34,18 +34,19 @@
   "license": "MIT",
   "dependencies": {
     "express": "^4.21.0",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "ws": "^8.16.0"
   },
   "engines": {
     "node": ">=16.0.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Difz25x/roblox-mcp.git"
+    "url": "git+https://github.com/Difz25x/roblox-mcp-difz.git"
   },
   "bugs": {
-    "url": "https://github.com/Difz25x/roblox-mcp/issues"
+    "url": "https://github.com/Difz25x/roblox-mcp-difz/issues"
   },
-  "homepage": "https://github.com/Difz25x/roblox-mcp#readme",
+  "homepage": "https://github.com/Difz25x/roblox-mcp-difz#readme",
   "author": "Difz25x"
 }

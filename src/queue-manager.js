@@ -19,13 +19,13 @@ const EventEmitter = require('events');
 class QueueManager extends EventEmitter {
     constructor() {
         super();
-        /** @type {Array<{id: string, type: string, args: object, timestamp: number}>} */
+        /** @type {Array<{id: string, type: string, args: object, timestamp: number, targetWorkerId?: string}>} */
         this.taskQueue = [];
 
         /** @type {Map<string, {resolve: Function, reject: Function, timer: NodeJS.Timeout}>} */
         this.pendingResults = new Map();
 
-        /** @type {Array<{resolve: Function, timer: NodeJS.Timeout}>} */
+        /** @type {Array<{resolve: Function, timer: NodeJS.Timeout, workerId?: string}>} */
         this.waitingPollers = [];
 
         this.totalProcessed = 0;
@@ -39,13 +39,19 @@ class QueueManager extends EventEmitter {
      *
      * @param {string}  type      - The tool name
      * @param {object}  args      - Arguments for the tool
-     * @param {number}  [timeoutMs=60000] - Max time to wait for executor result
+     * @param {object}  [opts]    - Options
+     * @param {number}  [opts.timeoutMs=60000] - Max time to wait
+     * @param {string}  [opts.workerId]   - Target specific executor (optional)
      * @returns {Promise<any>}
      */
-    submitTask(type, args = {}, timeoutMs = 60000) {
+    submitTask(type, args = {}, opts) {
+        if (typeof opts === 'number') opts = { timeoutMs: opts }; // backward compat
+        opts = opts || {};
+        const timeoutMs = opts.timeoutMs || 60000;
         return new Promise((resolve, reject) => {
             const id = uuidv4();
             const task = { id, type, args, timestamp: Date.now() };
+            if (opts.workerId) task.targetWorkerId = opts.workerId;
             this.totalSubmitted++;
 
             // Safety timeout — if the executor never responds, reject the promise
@@ -61,14 +67,20 @@ class QueueManager extends EventEmitter {
 
             this.pendingResults.set(id, { resolve, reject, timer });
 
-            // If a poller is already waiting, hand the task to it immediately
+            // If a poller with matching workerId is waiting, hand the task to it
             if (this.waitingPollers.length > 0) {
-                const poller = this.waitingPollers.shift();
-                clearTimeout(poller.timer);
-                poller.resolve(task);
-            } else {
-                this.taskQueue.push(task);
+                const pollerIdx = task.targetWorkerId
+                    ? this.waitingPollers.findIndex(p => p.workerId === task.targetWorkerId)
+                    : this.waitingPollers.findIndex(p => !p.workerId);
+                if (pollerIdx >= 0) {
+                    const poller = this.waitingPollers.splice(pollerIdx, 1)[0];
+                    clearTimeout(poller.timer);
+                    poller.resolve(task);
+                    return;
+                }
             }
+            // No matching poller — queue the task
+            this.taskQueue.push(task);
         });
     }
 
@@ -77,14 +89,21 @@ class QueueManager extends EventEmitter {
      * If a task is immediately available, returns it.
      * Otherwise, holds the connection until a task arrives or timeout.
      *
-     * @param {number} timeout - Max wait time in milliseconds
-     * @returns {Promise<{id: string, type: string, args: object, timestamp: number}|null>}
+     * @param {number}  timeout - Max wait time in milliseconds
+     * @param {string}  [workerId] - Only return tasks for this worker (or unassigned)
+     * @returns {Promise<{id: string, type: string, args: object, timestamp: number, targetWorkerId?: string}|null>}
      */
-    waitForTask(timeout = 25000) {
+    waitForTask(timeout = 25000, workerId) {
         return new Promise((resolve) => {
+            // Try to find a matching task immediately
             if (this.taskQueue.length > 0) {
-                const task = this.taskQueue.shift();
-                return resolve(task);
+                const idx = workerId
+                    ? this.taskQueue.findIndex(t => !t.targetWorkerId || t.targetWorkerId === workerId)
+                    : 0;
+                if (idx >= 0) {
+                    const task = this.taskQueue.splice(idx, 1)[0];
+                    return resolve(task);
+                }
             }
 
             const timer = setTimeout(() => {
@@ -93,7 +112,7 @@ class QueueManager extends EventEmitter {
                 resolve(null); // timeout — no task available
             }, timeout);
 
-            this.waitingPollers.push({ resolve, timer });
+            this.waitingPollers.push({ resolve, timer, workerId });
         });
     }
 

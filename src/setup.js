@@ -20,7 +20,7 @@ const PLATFORMS = {
         instructions: () => 'Claude Code auto-detects .claude/settings.json inside the project folder. Just cd into the project.',
         generate: () => ({
             mcpServers: {
-                'roblox-mcp': {
+                'roblox-mcp-difz': {
                     command: NODE_BIN,
                     args: [SERVER_SCRIPT, 'start:stdio'],
                     env: {},
@@ -42,7 +42,7 @@ const PLATFORMS = {
         instructions: () => 'Restart Claude Desktop after saving. Go to Settings → Developer to verify.',
         generate: () => ({
             mcpServers: {
-                'roblox-mcp': {
+                'roblox-mcp-difz': {
                     command: NODE_BIN,
                     args: [SERVER_SCRIPT, 'start:stdio'],
                     env: {},
@@ -58,7 +58,7 @@ const PLATFORMS = {
         instructions: () => 'Cursor reads .cursor/mcp.json from the project root. Auto-detects on restart.',
         generate: () => ({
             mcpServers: {
-                'roblox-mcp': {
+                'roblox-mcp-difz': {
                     command: NODE_BIN,
                     args: [SERVER_SCRIPT, 'start:stdio'],
                     env: {},
@@ -74,7 +74,7 @@ const PLATFORMS = {
         instructions: () => 'Windsurf reads .windsurf/mcp_config.json from the project root.',
         generate: () => ({
             mcpServers: {
-                'roblox-mcp': {
+                'roblox-mcp-difz': {
                     command: NODE_BIN,
                     args: [SERVER_SCRIPT, 'start:stdio'],
                     env: {},
@@ -96,7 +96,7 @@ const PLATFORMS = {
         instructions: () => 'VS Code extensions like Cline or Continue read this config.',
         generate: () => ({
             mcpServers: {
-                'roblox-mcp': {
+                'roblox-mcp-difz': {
                     command: NODE_BIN,
                     args: [SERVER_SCRIPT, 'start:stdio'],
                     env: {},
@@ -112,7 +112,7 @@ const PLATFORMS = {
         instructions: () => 'Use this JSON wherever your MCP client expects a server definition.',
         generate: () => ({
             mcpServers: {
-                'roblox-mcp': {
+                'roblox-mcp-difz': {
                     command: NODE_BIN,
                     args: [SERVER_SCRIPT, 'start:stdio'],
                     env: {},
@@ -223,8 +223,8 @@ async function runSetupWizard(targetAI) {
     console.log(`  Done! ${successCount}/${selectedKeys.length} config(s) created.`);
     console.log('');
     console.log('  Next steps:');
-    console.log('  1. Start the server:  roblox-mcp start');
-    console.log('  2. For stdio mode:    roblox-mcp start:stdio');
+    console.log('  1. Start the server:  roblox-mcp-difz start');
+    console.log('  2. For stdio mode:    roblox-mcp-difz start:stdio');
     console.log('  3. Inject mcp.luau into your Roblox executor');
     console.log('  4. Start chatting with AI!');
     console.log('');
