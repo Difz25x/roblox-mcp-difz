@@ -2,4 +2,4 @@
 
 // roblox-mcp CLI entry point
 // Referenced by "bin" in package.json
-require('../src/cli');
+require('../dist/cli.js');
