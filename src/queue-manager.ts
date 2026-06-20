@@ -1,5 +1,5 @@
 /**
- * queue-manager.js
+ * queue-manager.ts
  *
  * UUID-based async task queue with long-polling support.
  *
@@ -9,25 +9,52 @@
  *   - waitingPollers[]: Array of long-poll HTTP connections waiting for tasks
  *
  * Flow:
- *   AI (via MCP)  →  submitTask(type, args)  →  Promise<result>
- *   Executor       →  waitForTask(timeout)     →  task | null
- *   Executor       →  resolveTask(id, data)    →  resolves AI's promise
+ *   AI (via MCP)  ->  submitTask(type, args)  ->  Promise<result>
+ *   Executor       ->  waitForTask(timeout)     ->  task | null
+ *   Executor       ->  resolveTask(id, data)    ->  resolves AI's promise
  */
 const { v4: uuidv4 } = require('uuid');
 const EventEmitter = require('events');
 
+interface Task {
+    id: string;
+    type: string;
+    args: Record<string, any>;
+    timestamp: number;
+    targetWorkerId?: string;
+}
+
+interface PendingResult {
+    resolve: (value: any) => void;
+    reject: (reason: any) => void;
+    timer: NodeJS.Timeout;
+    submittedAt: number;
+}
+
+interface WaitingPoller {
+    resolve: (value: any) => void;
+    timer: NodeJS.Timeout;
+    workerId?: string;
+}
+
+interface SubmitTaskOpts {
+    timeoutMs?: number;
+    workerId?: string;
+}
+
 class QueueManager extends EventEmitter {
+    taskQueue: Task[];
+    pendingResults: Map<string, PendingResult>;
+    waitingPollers: WaitingPoller[];
+    totalProcessed: number;
+    totalSubmitted: number;
+    private _cleanupInterval?: NodeJS.Timeout;
+
     constructor() {
         super();
-        /** @type {Array<{id: string, type: string, args: object, timestamp: number, targetWorkerId?: string}>} */
         this.taskQueue = [];
-
-        /** @type {Map<string, {resolve: Function, reject: Function, timer: NodeJS.Timeout}>} */
         this.pendingResults = new Map();
-
-        /** @type {Array<{resolve: Function, timer: NodeJS.Timeout, workerId?: string}>} */
         this.waitingPollers = [];
-
         this.totalProcessed = 0;
         this.totalSubmitted = 0;
         this._startCleanupInterval();
@@ -37,20 +64,19 @@ class QueueManager extends EventEmitter {
      * Submit a task to the queue and return a promise that resolves with the
      * executor's result (or rejects on timeout / error).
      *
-     * @param {string}  type      - The tool name
-     * @param {object}  args      - Arguments for the tool
-     * @param {object}  [opts]    - Options
-     * @param {number}  [opts.timeoutMs=60000] - Max time to wait
-     * @param {string}  [opts.workerId]   - Target specific executor (optional)
-     * @returns {Promise<any>}
+     * @param type      - The tool name
+     * @param args      - Arguments for the tool
+     * @param [opts]    - Options
+     * @param [opts.timeoutMs=60000] - Max time to wait
+     * @param [opts.workerId]   - Target specific executor (optional)
      */
-    submitTask(type, args = {}, opts) {
+    submitTask(type: string, args: Record<string, any> = {}, opts?: SubmitTaskOpts | number): Promise<any> {
         if (typeof opts === 'number') opts = { timeoutMs: opts }; // backward compat
         opts = opts || {};
         const timeoutMs = opts.timeoutMs || 60000;
-        return new Promise((resolve, reject) => {
+        return new Promise<any>((resolve, reject) => {
             const id = uuidv4();
-            const task = { id, type, args, timestamp: Date.now() };
+            const task: Task = { id, type, args, timestamp: Date.now() };
             if (opts.workerId) task.targetWorkerId = opts.workerId;
             this.totalSubmitted++;
 
@@ -65,7 +91,7 @@ class QueueManager extends EventEmitter {
                 ));
             }, timeoutMs);
 
-            this.pendingResults.set(id, { resolve, reject, timer });
+            this.pendingResults.set(id, { resolve, reject, timer, submittedAt: Date.now() });
 
             // If a poller with matching workerId is waiting, hand the task to it
             if (this.waitingPollers.length > 0) {
@@ -89,12 +115,11 @@ class QueueManager extends EventEmitter {
      * If a task is immediately available, returns it.
      * Otherwise, holds the connection until a task arrives or timeout.
      *
-     * @param {number}  timeout - Max wait time in milliseconds
-     * @param {string}  [workerId] - Only return tasks for this worker (or unassigned)
-     * @returns {Promise<{id: string, type: string, args: object, timestamp: number, targetWorkerId?: string}|null>}
+     * @param timeout - Max wait time in milliseconds
+     * @param [workerId] - Only return tasks for this worker (or unassigned)
      */
-    waitForTask(timeout = 25000, workerId) {
-        return new Promise((resolve) => {
+    waitForTask(timeout: number = 25000, workerId?: string): Promise<Task | null> {
+        return new Promise<Task | null>((resolve) => {
             // Try to find a matching task immediately
             if (this.taskQueue.length > 0) {
                 const idx = workerId
@@ -119,12 +144,12 @@ class QueueManager extends EventEmitter {
     /**
      * Resolve a pending task with the result from executor.
      *
-     * @param {string}  id     - The UUID of the task
-     * @param {any}     data   - Result data from executor
-     * @param {string}  [error] - Optional error message
-     * @returns {boolean} Whether a matching pending task was found
+     * @param id     - The UUID of the task
+     * @param data   - Result data from executor
+     * @param [error] - Optional error message
+     * @returns Whether a matching pending task was found
      */
-    resolveTask(id, data, error) {
+    resolveTask(id: string, data: any, error?: string): boolean {
         const pending = this.pendingResults.get(id);
         if (!pending) return false;
 
@@ -145,8 +170,8 @@ class QueueManager extends EventEmitter {
      * If a task has been in the queue for > 120 seconds with no poller taking it,
      * remove it so it doesn't accumulate.
      */
-    _startCleanupInterval() {
-        setInterval(() => {
+    private _startCleanupInterval(): void {
+        this._cleanupInterval = setInterval(() => {
             const now = Date.now();
             const staleCutoff = now - 120_000;
 
@@ -158,17 +183,30 @@ class QueueManager extends EventEmitter {
                 console.log(`[Queue] Cleaned up ${cleaned} stale task(s)`);
             }
 
-            // Clean up unresolved pending results (orphans)
+            // Clean up orphaned pending results that have exceeded max age
+            const maxPendingAge = 180_000; // 3 minutes
             for (const [id, pending] of this.pendingResults.entries()) {
-                if (pending.timer._destroyed) {
+                if (Date.now() - pending.submittedAt > maxPendingAge) {
+                    clearTimeout(pending.timer);
                     this.pendingResults.delete(id);
                 }
             }
         }, 60_000);
     }
 
+    /** Clean up — clear the cleanup interval */
+    destroy(): void {
+        if (this._cleanupInterval) {
+            clearInterval(this._cleanupInterval);
+            this._cleanupInterval = undefined;
+        }
+        this.taskQueue = [];
+        this.pendingResults.clear();
+        this.waitingPollers = [];
+    }
+
     /** Get current queue stats for monitoring */
-    getStats() {
+    getStats(): { pendingQueue: number; pendingResults: number; waitingPollers: number; totalSubmitted: number; totalProcessed: number } {
         return {
             pendingQueue: this.taskQueue.length,
             pendingResults: this.pendingResults.size,

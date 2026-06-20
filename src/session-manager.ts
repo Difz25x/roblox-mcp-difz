@@ -1,5 +1,5 @@
 /**
- * session-manager.js
+ * session-manager.ts
  *
  * Manages multiple Roblox executor sessions (worker IDs).
  * Each executor registers on first /req poll with a unique workerId.
@@ -7,14 +7,43 @@
  */
 const { v4: uuidv4 } = require('uuid');
 
+interface SessionInfo {
+    workerId: string;
+    pid?: number;
+    name?: string;
+    firstSeen: number;
+    lastSeen: number;
+    status: string;
+}
+
+interface RegisterInfo {
+    pid?: number;
+    name?: string;
+}
+
+interface RegisterResult {
+    workerId: string;
+    isNew: boolean;
+}
+
 class SessionManager {
+    sessions: Map<string, SessionInfo>;
+    private _cleanupTimer?: NodeJS.Timeout;
+
     constructor() {
-        /** @type {Map<string, {workerId: string, pid?: number, name?: string, firstSeen: number, lastSeen: number, status: string}>} */
         this.sessions = new Map();
         this._startCleanup();
     }
 
-    register(workerId, info) {
+    destroy(): void {
+        if (this._cleanupTimer) {
+            clearInterval(this._cleanupTimer);
+            this._cleanupTimer = undefined;
+        }
+        this.sessions.clear();
+    }
+
+    register(workerId: string, info?: RegisterInfo): RegisterResult {
         const existing = this.sessions.get(workerId);
         const isNew = !existing;
         this.sessions.set(workerId, {
@@ -28,7 +57,7 @@ class SessionManager {
         return { workerId, isNew };
     }
 
-    unregister(workerId) {
+    unregister(workerId: string): void {
         const session = this.sessions.get(workerId);
         if (session) {
             session.status = 'disconnected';
@@ -36,23 +65,23 @@ class SessionManager {
         }
     }
 
-    get(workerId) {
+    get(workerId: string): SessionInfo | undefined {
         return this.sessions.get(workerId);
     }
 
-    listActive() {
-        const results = [];
+    listActive(): SessionInfo[] {
+        const results: SessionInfo[] = [];
         for (const session of this.sessions.values()) {
             if (session.status === 'active') results.push({ ...session });
         }
         return results;
     }
 
-    listAll() {
+    listAll(): SessionInfo[] {
         return Array.from(this.sessions.values()).map(s => ({ ...s }));
     }
 
-    get activeCount() {
+    get activeCount(): number {
         let count = 0;
         for (const s of this.sessions.values()) {
             if (s.status === 'active') count++;
@@ -60,8 +89,8 @@ class SessionManager {
         return count;
     }
 
-    _startCleanup() {
-        setInterval(() => {
+    _startCleanup(): void {
+        this._cleanupTimer = setInterval(() => {
             const cutoff = Date.now() - 300_000;
             for (const [id, session] of this.sessions.entries()) {
                 if (session.lastSeen < cutoff) session.status = 'disconnected';

@@ -1,15 +1,83 @@
 /**
- * mcp-handler.js
+ * mcp-handler.ts
  *
  * MCP (Model Context Protocol) JSON-RPC 2.0 message handler.
  *
  * Server-side tools (get_roblox_processes, launch_roblox, open_game, etc.)
  * are executed directly on Node — not sent to the executor queue.
  */
-const { ToolDefinitions } = require('./tool-definitions');
+
+// ToolDefinitions — used only as a type for the constructor parameter
+interface ToolDefInstance {
+    getTools(): unknown[];
+    getTool(name: string): unknown | undefined;
+}
+
+// ---- Type definitions for constructor parameters ----
+
+interface QueueManager {
+    submitTask(type: string, args: Record<string, unknown>, opts?: { workerId?: string; timeoutMs?: number }): Promise<unknown>;
+    getStats(): {
+        pendingQueue: number;
+        pendingResults: number;
+        waitingPollers: number;
+        totalSubmitted: number;
+        totalProcessed: number;
+    };
+}
+
+interface SessionManager {
+    readonly activeCount: number;
+}
+
+interface ProcessManager {
+    listRobloxProcesses(): Array<{
+        pid: number;
+        name: string;
+        windowTitle: string;
+        memoryMB: number;
+    }>;
+    launchRoblox(customPath: string | null): { success: boolean; pid?: number; path?: string; error?: string };
+    openGame(
+        placeId: string | number,
+        opts: {
+            jobId?: string;
+            privateServerLinkCode?: string;
+            browserTrackerId?: string;
+            launchTime?: string;
+            launchMode?: string;
+            authTicket?: string;
+            experienceId?: string;
+        }
+    ): { success: boolean; launchUrl?: string; error?: string };
+    captureRobloxWindow(pid: string | number | null): {
+        success: boolean;
+        pid?: number;
+        image?: string;
+        sizeBytes?: number;
+        error?: string;
+    };
+}
+
+// ---- Internal types ----
+
+interface McpMessage {
+    method?: string;
+    params?: Record<string, unknown>;
+}
+
+interface McpError {
+    code: number;
+    message: string;
+}
+
+interface McpResult {
+    result?: unknown;
+    error?: McpError;
+}
 
 /** Tools that run on the Node server directly, not via executor */
-const SERVER_SIDE_TOOLS = new Set([
+const SERVER_SIDE_TOOLS = new Set<string>([
     'get_roblox_processes',
     'launch_roblox',
     'open_game',
@@ -18,13 +86,20 @@ const SERVER_SIDE_TOOLS = new Set([
 ]);
 
 class McpHandler {
+    private queue: QueueManager;
+    private tools: ToolDefInstance;
+    private sessions: SessionManager;
+    private proc: ProcessManager;
+    private serverInfo: { name: string; version: string; description: string };
+    private initialized: boolean;
+
     /**
-     * @param {import('./queue-manager').QueueManager} queue
-     * @param {ToolDefinitions} tools
-     * @param {import('./session-manager').SessionManager} sessions
-     * @param {object} processManager
+     * @param queue - The task queue manager
+     * @param tools - Tool definitions registry
+     * @param sessions - Session manager
+     * @param processManager - Process manager module
      */
-    constructor(queue, tools, sessions, processManager) {
+    constructor(queue: QueueManager, tools: ToolDefInstance, sessions: SessionManager, processManager: ProcessManager) {
         this.queue = queue;
         this.tools = tools;
         this.sessions = sessions;
@@ -39,7 +114,7 @@ class McpHandler {
         this.initialized = false;
     }
 
-    async handleMessage(message) {
+    async handleMessage(message: McpMessage): Promise<McpResult> {
         const { method, params } = message;
 
         if (!method) {
@@ -72,7 +147,7 @@ class McpHandler {
         }
     }
 
-    _handleInitialize(params) {
+    _handleInitialize(_params?: Record<string, unknown>): McpResult {
         this.initialized = true;
         return {
             result: {
@@ -87,17 +162,17 @@ class McpHandler {
         };
     }
 
-    _handleShutdown() {
+    _handleShutdown(): McpResult {
         this.initialized = false;
         return { result: { success: true, message: 'Server shutting down' } };
     }
 
-    _handleToolsList() {
+    _handleToolsList(): McpResult {
         return { result: { tools: this.tools.getTools() } };
     }
 
-    async _handleToolsCall(params) {
-        const { name, arguments: args } = params || {};
+    async _handleToolsCall(params?: Record<string, unknown>): Promise<McpResult> {
+        const { name, arguments: args } = (params || {}) as { name?: string; arguments?: Record<string, unknown> };
 
         if (!name) {
             return { error: { code: -32602, message: 'Tool name is required' } };
@@ -135,38 +210,39 @@ class McpHandler {
                     meta: { executionTimeMs: elapsed, tool: name },
                 },
             };
-        } catch (err) {
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
             return {
                 result: {
-                    content: [{ type: 'text', text: JSON.stringify({ success: false, error: err.message }) }],
+                    content: [{ type: 'text', text: JSON.stringify({ success: false, error: errorMessage }) }],
                     isError: true,
-                    meta: { tool: name, error: err.message },
+                    meta: { tool: name, error: errorMessage },
                 },
             };
         }
     }
 
-    _runServerTool(name, args) {
+    _runServerTool(name: string, args: Record<string, unknown>): Record<string, unknown> {
         switch (name) {
             case 'get_roblox_processes':
                 return { success: true, processes: this.proc.listRobloxProcesses(), count: this.sessions.activeCount };
 
             case 'launch_roblox':
-                return this.proc.launchRoblox(args.path || null);
+                return this.proc.launchRoblox((args.path as string) || null);
 
             case 'open_game':
-                return this.proc.openGame(args.place_id, {
-                    jobId: args.job_id,
-                    privateServerLinkCode: args.private_server_link_code,
-                    browserTrackerId: args.browser_tracker_id,
-                    launchTime: args.launch_time,
-                    launchMode: args.launch_mode,
-                    authTicket: args.auth_ticket,
-                    experienceId: args.experience_id,
+                return this.proc.openGame(args.place_id as string | number, {
+                    jobId: args.job_id as string | undefined,
+                    privateServerLinkCode: args.private_server_link_code as string | undefined,
+                    browserTrackerId: args.browser_tracker_id as string | undefined,
+                    launchTime: args.launch_time as string | undefined,
+                    launchMode: args.launch_mode as string | undefined,
+                    authTicket: args.auth_ticket as string | undefined,
+                    experienceId: args.experience_id as string | undefined,
                 });
 
             case 'capture_roblox_screenshot':
-                return this.proc.captureRobloxWindow(args.pid || null);
+                return this.proc.captureRobloxWindow((args.pid as string | number) || null);
 
             case 'get_roblox_versions':
                 return this._getRobloxVersions();
@@ -176,19 +252,19 @@ class McpHandler {
         }
     }
 
-    _getRobloxVersions() {
-        const fs = require('fs');
-        const path = require('path');
-        const versions = [];
-        const candidates = [
-            process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
+    _getRobloxVersions(): { success: boolean; versions: Array<Record<string, unknown>> } {
+        const fs = require('fs') as typeof import('fs');
+        const path = require('path') as typeof import('path');
+        const versions: Array<Record<string, unknown>> = [];
+        const candidates: string[] = [
+            process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA as string, 'Roblox', 'Versions') : '',
             'C:\\Program Files (x86)\\Roblox\\Versions',
             'C:\\Program Files\\Roblox\\Versions',
         ];
         for (const dir of candidates) {
             if (!dir || !fs.existsSync(dir)) continue;
             try {
-                const entries = fs.readdirSync(dir).filter(v => v.startsWith('version-')).sort().reverse();
+                const entries = fs.readdirSync(dir).filter((v: string) => v.startsWith('version-')).sort().reverse();
                 for (const ver of entries) {
                     const launcher = path.join(dir, ver, 'RobloxPlayerLauncher.exe');
                     const player = path.join(dir, ver, 'RobloxPlayerBeta.exe');
@@ -199,12 +275,14 @@ class McpHandler {
                         hasPlayerBeta: fs.existsSync(player),
                     });
                 }
-            } catch {}
+            } catch {
+                // ignore inaccessible directories
+            }
         }
         return { success: true, versions };
     }
 
-    _handleResourcesList() {
+    _handleResourcesList(): McpResult {
         return {
             result: {
                 resources: [
@@ -218,11 +296,11 @@ class McpHandler {
         };
     }
 
-    async _handleResourcesRead(params) {
-        const { uri } = params || {};
+    async _handleResourcesRead(params?: Record<string, unknown>): Promise<McpResult> {
+        const { uri } = (params || {}) as { uri?: string };
         if (!uri) return { error: { code: -32602, message: 'Resource URI is required' } };
 
-        const resourceMap = {
+        const resourceMap: Record<string, string> = {
             'mcp://roblox/game/metadata': 'get_game_metadata',
             'mcp://roblox/game/players': 'dump_workspace_players',
             'mcp://roblox/game/remotes': 'dump_remote_events',
@@ -244,12 +322,13 @@ class McpHandler {
                     }],
                 },
             };
-        } catch (err) {
-            return { error: { code: -32603, message: `Failed to read resource: ${err.message}` } };
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            return { error: { code: -32603, message: `Failed to read resource: ${errorMessage}` } };
         }
     }
 
-    _handlePromptsList() {
+    _handlePromptsList(): McpResult {
         return {
             result: {
                 prompts: [
@@ -260,7 +339,7 @@ class McpHandler {
         };
     }
 
-    _handleSetup() {
+    _handleSetup(): McpResult {
         return {
             result: {
                 config: {

@@ -1,5 +1,5 @@
 /**
- * tool-definitions.js
+ * tool-definitions.ts
  *
  * Central registry of all tools exposed via MCP.
  * Each tool has:
@@ -10,13 +10,21 @@
  * Every tool here MUST have a matching handler in the Luau client script
  * (public/mcp.luau) under the tools router table.
  */
+
+interface ToolDefinition {
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+}
+
 class ToolDefinitions {
+    private tools: ToolDefinition[];
+
     constructor() {
-        /** @type {Array<{name: string, description: string, inputSchema: object}>} */
         this.tools = this._defineTools();
     }
 
-    _defineTools() {
+    private _defineTools(): ToolDefinition[] {
         return [
 
             // ================================================================
@@ -6937,21 +6945,15 @@ class ToolDefinitions {
         ];
     }
 
-    /** @returns {Array<{name: string, description: string, inputSchema: object}>} */
-    getTools() {
+    getTools(): ToolDefinition[] {
         return this.tools;
     }
 
-    /**
-     * @param {string} name
-     * @returns {{name: string, description: string, inputSchema: object}|undefined}
-     */
-    getTool(name) {
+    getTool(name: string): ToolDefinition | undefined {
         return this.tools.find(t => t.name === name);
     }
 
-    /** @returns {number} */
-    get count() {
+    get count(): number {
         return this.tools.length;
     }
 }

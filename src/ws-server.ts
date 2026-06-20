@@ -1,30 +1,52 @@
 /**
- * ws-server.js — WebSocket transport for executor communication.
+ * ws-server.ts — WebSocket transport for executor communication.
  *
  * Default transport (preferred over HTTP polling).
  *
  * Protocol:
- *   Client → Server: { type: "register", worker_id: "uuid", pid?: number }
- *   Server → Client: { type: "task", id: "uuid", tool: "name", args: {} }
- *   Client → Server: { type: "result", id: "uuid", data: any, error?: string }
- *   Server → Client: { type: "pong" }
- *   Client → Server: { type: "ping" }
+ *   Client -> Server: { type: "register", worker_id: "uuid", pid?: number }
+ *   Server -> Client: { type: "task", id: "uuid", tool: "name", args: {} }
+ *   Client -> Server: { type: "result", id: "uuid", data: any, error?: string }
+ *   Server -> Client: { type: "pong" }
+ *   Client -> Server: { type: "ping" }
  */
+import type { Server as HttpServer } from 'http';
+
 const WebSocket = require('ws');
 
 const WS_HEARTBEAT_INTERVAL = 30000;
 
+type WS = InstanceType<typeof WebSocket>;
+type WSData = string | Buffer | ArrayBuffer | Uint8Array;
+type WSServer = InstanceType<(typeof WebSocket)['Server']>;
+
+interface TaskPayload {
+    id: string;
+    type: string;
+    args: Record<string, any>;
+    timestamp: number;
+}
+
+interface QueueManagerLike {
+    resolveTask(id: string, data: any, error?: string): boolean;
+}
+
+interface SessionManagerLike {
+    register(workerId: string, info?: { pid?: number; name?: string }): { workerId: string; isNew: boolean };
+    unregister(workerId: string): void;
+}
+
 class WsServer {
-    /**
-     * @param {import('./queue-manager').QueueManager} queue
-     * @param {import('./session-manager').SessionManager} sessions
-     */
-    constructor(queue, sessions) {
+    queue: QueueManagerLike;
+    sessions: SessionManagerLike;
+    connections: Map<string, WS>;
+    reverseMap: Map<WS, string>;
+    wss: WSServer | null;
+
+    constructor(queue: QueueManagerLike, sessions: SessionManagerLike) {
         this.queue = queue;
         this.sessions = sessions;
-        /** @type {Map<string, WebSocket>} */
         this.connections = new Map();
-        /** @type {Map<WebSocket, string>} */
         this.reverseMap = new Map();
         this.wss = null;
         this._startHeartbeat();
@@ -32,16 +54,15 @@ class WsServer {
 
     /**
      * Mount on an HTTP server.
-     * @param {import('http').Server} server
      */
-    mount(server) {
+    mount(server: HttpServer): WSServer {
         this.wss = new WebSocket.Server({ server, path: '/ws' });
 
-        this.wss.on('connection', (ws) => {
-            let workerId = null;
+        this.wss.on('connection', (ws: WS) => {
+            let workerId: string | null = null;
 
-            ws.on('message', (raw) => {
-                let msg;
+            ws.on('message', (raw: WSData) => {
+                let msg: any;
                 try { msg = JSON.parse(raw.toString()); } catch { return; }
 
                 switch (msg.type) {
@@ -52,7 +73,7 @@ class WsServer {
                         if (oldWs && oldWs !== ws) { try { oldWs.close(); } catch {} }
                         this.connections.set(workerId, ws);
                         this.reverseMap.set(ws, workerId);
-                        this.sessions.register(workerId, { pid: msg.pid || msg.pid, name: 'RobloxPlayerBeta' });
+                        this.sessions.register(workerId, { pid: msg.pid, name: 'RobloxPlayerBeta' });
                         ws.send(JSON.stringify({ type: 'registered', worker_id: workerId }));
                         break;
                     case 'result':
@@ -75,7 +96,7 @@ class WsServer {
         return this.wss;
     }
 
-    sendTask(task, workerId) {
+    sendTask(task: TaskPayload, workerId?: string): boolean {
         if (workerId) {
             const ws = this.connections.get(workerId);
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -93,9 +114,9 @@ class WsServer {
         return false;
     }
 
-    get connectedCount() { return this.connections.size; }
+    get connectedCount(): number { return this.connections.size; }
 
-    _startHeartbeat() {
+    _startHeartbeat(): void {
         setInterval(() => {
             for (const [wid, ws] of this.connections.entries()) {
                 if (ws.readyState !== WebSocket.OPEN) { this.connections.delete(wid); this.reverseMap.delete(ws); }
