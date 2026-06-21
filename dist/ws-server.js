@@ -11,6 +11,9 @@ class WsServer {
         this.wss = null;
         this._startHeartbeat();
     }
+    /**
+     * Mount on an HTTP server.
+     */
     mount(server) {
         this.wss = new WebSocket.Server({ server, path: '/ws' });
         this.wss.on('connection', (ws) => {

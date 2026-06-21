@@ -43,7 +43,7 @@ function createApp(opts) {
         : () => { };
     const app = express();
     app.use(express.json({ limit: '10mb' }));
-    // Only serve static files if public/ directory exists (may not in global installs)
+    // Only serve static files if public/ directory exists
     const publicDir = path.join(PKG_DIR, 'public');
     if (fs.existsSync(publicDir)) {
         app.use(express.static(publicDir));
@@ -59,7 +59,7 @@ function createApp(opts) {
         }
         next();
     });
-    // Create HTTP server + mount WebSocket
+    // Create HTTP server + mount WebSocket (MUST be before routes that reference wss)
     const server = http.createServer(app);
     const wss = new WsServerCls(queue, sessions);
     wss.mount(server);
@@ -67,7 +67,7 @@ function createApp(opts) {
     // MCP endpoints
     app.post('/', mcpHandler);
     app.post('/mcp', mcpHandler);
-    // Bridge: executor long-poll
+    // Bridge: executor long-poll (fallback, WebSocket preferred)
     app.post('/req', async (req, res) => {
         const timeout = Math.min((req.body && req.body.timeout) || 25000, 60000);
         const workerId = req.body && req.body.worker_id;
@@ -97,14 +97,14 @@ function createApp(opts) {
         const ok = queue.resolveTask(id, data, error);
         res.json(ok ? { success: true } : { success: false, reason: 'Unknown or expired task ID' });
     });
-    // Server info endpoint — used by mcp.luau to auto-detect endpoints
+    // Server info endpoint — auto-detect transports
     app.get('/type', (req, res) => {
         const port = parseInt(process.env.MCP_PORT, 10) || 28429;
         const host = req.hostname || 'localhost';
         res.json({
             server: 'roblox-mcp-difz',
             version: '1.1.5',
-            description: 'Universal MCP server for Roblox game control and reverse engineering',
+            description: 'Universal MCP server for Roblox game control',
             transports: {
                 http: { url: `http://${host}:${port}/mcp`, methods: ['POST'] },
                 websocket: { url: `ws://${host}:${port}/ws` },
@@ -131,10 +131,4 @@ function createApp(opts) {
     });
     return { app, server, queue, tools, mcp, sessions, processManager, wss };
 }
-function createMcpServerDeps() {
-    const queue = new QueueManagerCls();
-    const tools = new ToolDefinitionsCls();
-    const sessions = new SessionManagerCls();
-    return { queue, tools, sessions, proc: processManager };
-}
-module.exports = { createApp, createMcpServerDeps };
+module.exports = { createApp };
