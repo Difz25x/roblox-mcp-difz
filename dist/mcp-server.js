@@ -13,8 +13,7 @@ function loadSdk() {
     const StdioServerTransport = require(path.join(SDK_DIR, 'server', 'stdio.js')).StdioServerTransport;
     const types = require(path.join(SDK_DIR, 'types.js'));
     return {
-        Server,
-        StdioServerTransport,
+        Server, StdioServerTransport,
         ListToolsRequestSchema: types.ListToolsRequestSchema,
         CallToolRequestSchema: types.CallToolRequestSchema,
         ListResourcesRequestSchema: types.ListResourcesRequestSchema,
@@ -31,8 +30,9 @@ function initMcpServer(queue, tools, sessions, proc) {
         if (!tools.getTool(name))
             throw new Error(`Unknown tool: ${name}`);
         try {
-            if (SERVER_SIDE_TOOLS.has(name))
+            if (SERVER_SIDE_TOOLS.has(name)) {
                 return { content: [{ type: 'text', text: JSON.stringify(runServerTool(name, args || {}, proc, sessions), null, 2) }] };
+            }
             const workerId = args?.pid ? String(args.pid) : undefined;
             const result = await queue.submitTask(name, args || {}, { workerId });
             return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }] };
@@ -88,13 +88,23 @@ function getRobloxVersions() {
     const fs = require('fs');
     const p = require('path');
     const v = [];
-    const dirs = [process.env.LOCALAPPDATA ? p.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '', 'C:\\Program Files (x86)\\Roblox\\Versions', 'C:\\Program Files\\Roblox\\Versions'];
+    const dirs = [
+        process.env.LOCALAPPDATA ? p.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
+        'C:\\Program Files (x86)\\Roblox\\Versions',
+        'C:\\Program Files\\Roblox\\Versions',
+    ];
     for (const d of dirs) {
         if (!d || !fs.existsSync(d))
             continue;
         try {
-            for (const ver of fs.readdirSync(d).filter((x) => x.startsWith('version-')).sort().reverse())
-                v.push({ version: ver.replace('version-', ''), path: d + '/' + ver, hasPlayerLauncher: fs.existsSync(p.join(d, ver, 'RobloxPlayerLauncher.exe')), hasPlayerBeta: fs.existsSync(p.join(d, ver, 'RobloxPlayerBeta.exe')) });
+            for (const ver of fs.readdirSync(d).filter((x) => x.startsWith('version-')).sort().reverse()) {
+                v.push({
+                    version: ver.replace('version-', ''),
+                    path: d + '/' + ver,
+                    hasPlayerLauncher: fs.existsSync(p.join(d, ver, 'RobloxPlayerLauncher.exe')),
+                    hasPlayerBeta: fs.existsSync(p.join(d, ver, 'RobloxPlayerBeta.exe')),
+                });
+            }
         }
         catch (e) {
             console.error('[MCP] getRobloxVersions error:', e?.message || e);
