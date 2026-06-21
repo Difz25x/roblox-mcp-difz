@@ -20,7 +20,7 @@ const ROBLOX_PROCESS: string = 'RobloxPlayerBeta';
 const BROWSER_TRACKER_ID = (): string => `tracker_${Date.now()}`;
 
 // ================================================================
-// Process listing
+// Process listing — cached to avoid spam
 // ================================================================
 
 interface RobloxProcessInfo {
@@ -30,46 +30,56 @@ interface RobloxProcessInfo {
     memoryMB: number;
 }
 
+let _procCache: { data: RobloxProcessInfo[]; time: number } | null = null;
+const PROC_CACHE_TTL = 3000; // 3 seconds
+
 function listRobloxProcesses(): RobloxProcessInfo[] {
+    const now = Date.now();
+    if (_procCache && now - _procCache.time < PROC_CACHE_TTL) {
+        return _procCache.data;
+    }
+
     const results: RobloxProcessInfo[] = [];
     try {
         let output: string;
         if (IS_WIN) {
-            output = execSync('tasklist /FO CSV /NH /V', { encoding: 'utf-8' as BufferEncoding, timeout: 5000 }) as string;
+            // WMIC is significantly faster than tasklist /V
+            output = execSync(
+                `wmic process where "name='${ROBLOX_PROCESS}.exe'" get ProcessId,CommandLine,WorkingSetSize /format:csv 2>nul`,
+                { encoding: 'utf-8' as BufferEncoding, timeout: 3000, windowsHide: true }
+            ) as string;
         } else {
-            output = execSync("ps aux | grep -i roblox || true", { encoding: 'utf-8' as BufferEncoding, timeout: 5000 }) as string;
+            output = execSync("ps aux | grep -i roblox || true", { encoding: 'utf-8' as BufferEncoding, timeout: 3000 }) as string;
         }
-        const lines: string[] = output.split('\n');
+        const lines: string[] = output.split('\n').filter(l => l.trim());
         for (const line of lines) {
-            const trimmed: string = line.trim();
-            if (!trimmed) continue;
-            let pid: number, name: string, windowTitle: string, memStr: string;
             if (IS_WIN) {
-                const parts: RegExpMatchArray | null = trimmed.match(/"([^"]*)"/g);
-                if (!parts || parts.length < 5) continue;
-                name = (parts[0] || '').replace(/"/g, '');
-                pid = parseInt((parts[1] || '').replace(/"/g, ''), 10);
-                memStr = (parts[4] || '').replace(/[^0-9,]/g, '').replace(',', '');
-                windowTitle = parts.length > 8 ? parts[8].replace(/"/g, '') : '';
+                // CSV format: Node,CommandLine,ProcessId,WorkingSetSize
+                const parts: string[] = line.split(',');
+                if (parts.length < 4) continue;
+                const name = ROBLOX_PROCESS;
+                const pid = parseInt(parts[2], 10);
+                const memStr = parts[3] || '0';
+                const cmdLine = (parts[1] || '').toLowerCase();
+                if (!pid || isNaN(pid)) continue;
+                results.push({ pid, name, windowTitle: '', memoryMB: Math.round(parseInt(memStr, 10) / 1048576) || 0 });
             } else {
-                const parts: string[] = trimmed.split(/\s+/);
+                const parts: string[] = line.split(/\s+/);
                 if (parts.length < 11) continue;
-                name = parts[10] || '';
-                pid = parseInt(parts[1], 10);
-                memStr = parts[5] || '0';
-                windowTitle = parts.slice(10).join(' ');
+                const name = parts[10] || '';
+                const pid = parseInt(parts[1], 10);
+                const memStr = parts[5] || '0';
+                const nameLower: string = name.toLowerCase();
+                if (!nameLower.includes('roblox')) continue;
+                results.push({ pid, name, windowTitle: parts.slice(10).join(' '), memoryMB: parseInt(memStr, 10) || 0 });
             }
-            const nameLower: string = name.toLowerCase();
-            if (!nameLower.includes('roblox') && !windowTitle.toLowerCase().includes('roblox')) continue;
-            if (nameLower.includes('launcher')) continue;
-            results.push({
-                pid,
-                name: name || 'RobloxPlayerBeta',
-                windowTitle,
-                memoryMB: parseInt(memStr, 10) || 0,
-            });
         }
-    } catch (e: any) { console.error('[PM] listRobloxProcesses error:', e?.message || e); }
+    } catch (e: any) {
+        // Silent fail for cache misses — don't spam console
+        if (_procCache) return _procCache.data;
+    }
+
+    _procCache = { data: results, time: Date.now() };
     return results;
 }
 

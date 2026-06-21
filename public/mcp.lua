@@ -308,6 +308,14 @@ local function handleSandboxExec(args)
     return{success=true,result=serialize(r)}
 end
 
+-- Resolve ContentType enum once (some executors don't have Enum.ContentType)
+local CONTENT_TYPE_JSON = nil
+pcall(function()
+    if Enum and Enum.HttpContentType then CONTENT_TYPE_JSON = Enum.HttpContentType.ApplicationJson
+    elseif Enum and Enum.ContentType then CONTENT_TYPE_JSON = Enum.ContentType.ApplicationJson end
+end)
+if not CONTENT_TYPE_JSON then CONTENT_TYPE_JSON = 2 end -- Enum value for ApplicationJson
+
 -- Proxy tool call to MCP server via HTTP
 local function proxyToServer(toolName, args)
     local body = HttpService:JSONEncode({
@@ -315,7 +323,7 @@ local function proxyToServer(toolName, args)
         params={name=toolName, arguments=args}
     })
     local ok, r = pcall(function()
-        return HttpService:PostAsync("http://"..HOST..":"..PORT.."/mcp", body, Enum.ContentType.ApplicationJson, false)
+        return HttpService:PostAsync("http://"..HOST..":"..PORT.."/mcp", body, CONTENT_TYPE_JSON, false)
     end)
     if not ok then return {success=false, error="Server proxy failed: "..tostring(r)} end
     local ok2, d = pcall(function() return HttpService:JSONDecode(r) end)
