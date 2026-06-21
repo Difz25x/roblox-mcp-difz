@@ -99,24 +99,26 @@ function createApp(opts?: CreateAppOptions): AppComponents {
 
     const app: Application = express();
     app.use(express.json({ limit: '10mb' }));
+    const publicDir: string = path.join(PKG_DIR, 'public');
+
+    // MUST be before express.static: dedicated /mcp.luau route
+    // Serves the Luau client script with explicit utf-8 charset.
+    // express.static would serve .luau as application/octet-stream
+    // (unknown MIME type), which breaks loadstring(game:HttpGet(...)).
+    app.get('/mcp.luau', (req: Request, res: Response): void => {
+        const luauFile: string = path.join(PKG_DIR, 'public', 'mcp.luau');
+        if (fs.existsSync(luauFile)) {
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.send(fs.readFileSync(luauFile, 'utf-8'));
+        } else {
+            res.status(404).send('-- mcp.luau not found.');
+        }
+    });
 
     // Only serve static files if public/ directory exists
-    const publicDir: string = path.join(PKG_DIR, 'public');
     if (fs.existsSync(publicDir)) {
         app.use(express.static(publicDir));
     }
-
-    // Dedicated /mcp.luau route — serves the Luau client script directly.
-    // This is more reliable than express.static for executor environments
-    // where loadstring(game:HttpGet("http://127.0.0.1:28429/mcp.luau")) is needed.
-    app.get('/mcp.luau', (req: Request, res: Response): void => {
-        const luauPath: string = path.join(PKG_DIR, 'public', 'mcp.luau');
-        if (fs.existsSync(luauPath)) {
-            res.type('text/plain').send(fs.readFileSync(luauPath, 'utf-8'));
-        } else {
-            res.status(404).type('text/plain').send('-- mcp.luau not found. Reinstall roblox-mcp-difz.');
-        }
-    });
 
     // CORS
     app.use((req: Request, res: Response, next: NextFunction): void => {
