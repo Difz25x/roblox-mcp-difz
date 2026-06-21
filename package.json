@@ -14,6 +14,7 @@
     "dev": "node bin/roblox-mcp --verbose",
     "build": "tsc",
     "publish": "node publish.mjs",
+    "publish:force": "node publish.mjs --force",
     "publish:dry": "node publish.mjs --dry-run",
     "prepublishOnly": "npm run build"
   },
