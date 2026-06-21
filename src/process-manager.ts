@@ -69,7 +69,7 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
                 memoryMB: parseInt(memStr, 10) || 0,
             });
         }
-    } catch {}
+    } catch (e: any) { console.error('[PM] listRobloxProcesses error:', e?.message || e); }
     return results;
 }
 
@@ -90,7 +90,7 @@ function findRobloxPath(): string | null {
             const launcher: string = path.join(match[1].trim(), 'RobloxPlayerLauncher.exe');
             if (fs.existsSync(launcher)) return launcher;
         }
-    } catch {}
+    } catch (e: any) { console.error('[PM] registry error:', e?.message || e); }
 
     // 2. Common version directories
     const candidates: string[] = [
@@ -106,7 +106,7 @@ function findRobloxPath(): string | null {
                 const launcher: string = path.join(dir, ver, 'RobloxPlayerLauncher.exe');
                 if (fs.existsSync(launcher)) return launcher;
             }
-        } catch {}
+        } catch (e: any) { console.error('[PM] readdir error:', e?.message || e); }
     }
     return null;
 }
@@ -200,9 +200,15 @@ function openGame(placeId: string, opts?: OpenGameOptions): OpenGameResult {
 
     try {
         if (IS_WIN) {
-            execSync(`cmd /c start "" "${launchUrl}"`, { timeout: 5000, windowsHide: true });
+            const start = spawn('cmd', ['/c', 'start', '', launchUrl], {
+                detached: true, stdio: 'ignore', windowsHide: true,
+            });
+            start.unref();
         } else {
-            execSync(`open "${launchUrl}"`, { timeout: 5000 });
+            const open = spawn('open', [launchUrl], {
+                detached: true, stdio: 'ignore',
+            });
+            open.unref();
         }
         return { success: true, launchUrl };
     } catch (err: any) {
@@ -294,10 +300,17 @@ foreach ($p in $procs) {
 Write-Output "ERROR:Process with window not found"
 `;
 
+        // Write PS script to temp file to avoid shell escaping issues
+        const psFile = path.join(os.tmpdir(), `roblox_capture_${Date.now()}.ps1`);
+        fs.writeFileSync(psFile, psScript, 'utf-8');
+
         const result: string = execSync(
-            `powershell -NoProfile -NonInteractive -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`,
+            `powershell -NoProfile -NonInteractive -File "${psFile}"`,
             { encoding: 'utf-8' as BufferEncoding, timeout: 10000 }
         ) as string;
+
+        // Clean up temp script
+        try { fs.unlinkSync(psFile); } catch (e: any) { console.error('[PM] cleanup error:', e?.message || e); }
 
         const trimmed: string = result.trim();
         if (trimmed.startsWith('CAPTURED:')) {

@@ -22,6 +22,7 @@ import type { Request, Response, Application, RequestHandler, NextFunction } fro
 import type { Server } from 'http';
 
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { QueueManager: QueueManagerCls } = require('./queue-manager');
@@ -97,7 +98,12 @@ function createApp(opts?: CreateAppOptions): AppComponents {
 
     const app: Application = express();
     app.use(express.json({ limit: '10mb' }));
-    app.use(express.static(path.join(PKG_DIR, 'public')));
+
+    // Only serve static files if public/ directory exists
+    const publicDir: string = path.join(PKG_DIR, 'public');
+    if (fs.existsSync(publicDir)) {
+        app.use(express.static(publicDir));
+    }
 
     // CORS
     app.use((req: Request, res: Response, next: NextFunction): void => {
@@ -150,6 +156,25 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         }
         const ok: boolean = queue.resolveTask(id, data, error);
         res.json(ok ? { success: true } : { success: false, reason: 'Unknown or expired task ID' });
+    });
+
+    // Server info endpoint — auto-detect transports
+    app.get('/type', (req: Request, res: Response): void => {
+        const port = parseInt(process.env.MCP_PORT as string, 10) || 28429;
+        const host = req.hostname || 'localhost';
+        res.json({
+            server: 'roblox-mcp-difz',
+            version: '1.1.5',
+            description: 'Universal MCP server for Roblox game control',
+            transports: {
+                http: { url: `http://${host}:${port}/mcp`, methods: ['POST'] },
+                websocket: { url: `ws://${host}:${port}/ws` },
+                stdio: { command: 'npx', args: ['roblox-mcp-difz', 'start:stdio'] },
+            },
+            tools: tools.count,
+            health: '/health',
+            metadata: '/type',
+        });
     });
 
     // Health

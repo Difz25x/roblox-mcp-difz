@@ -73,7 +73,7 @@ class WsServer {
                         if (oldWs && oldWs !== ws) { try { oldWs.close(); } catch {} }
                         this.connections.set(workerId, ws);
                         this.reverseMap.set(ws, workerId);
-                        this.sessions.register(workerId, { pid: msg.pid || msg.pid, name: 'RobloxPlayerBeta' });
+                        this.sessions.register(workerId, { pid: msg.pid, name: 'RobloxPlayerBeta' });
                         ws.send(JSON.stringify({ type: 'registered', worker_id: workerId }));
                         break;
                     case 'result':

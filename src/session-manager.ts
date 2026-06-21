@@ -28,10 +28,19 @@ interface RegisterResult {
 
 class SessionManager {
     sessions: Map<string, SessionInfo>;
+    private _cleanupTimer?: NodeJS.Timeout;
 
     constructor() {
         this.sessions = new Map();
         this._startCleanup();
+    }
+
+    destroy(): void {
+        if (this._cleanupTimer) {
+            clearInterval(this._cleanupTimer);
+            this._cleanupTimer = undefined;
+        }
+        this.sessions.clear();
     }
 
     register(workerId: string, info?: RegisterInfo): RegisterResult {
@@ -81,7 +90,7 @@ class SessionManager {
     }
 
     _startCleanup(): void {
-        setInterval(() => {
+        this._cleanupTimer = setInterval(() => {
             const cutoff = Date.now() - 300_000;
             for (const [id, session] of this.sessions.entries()) {
                 if (session.lastSeen < cutoff) session.status = 'disconnected';

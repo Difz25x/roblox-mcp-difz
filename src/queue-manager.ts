@@ -28,6 +28,7 @@ interface PendingResult {
     resolve: (value: any) => void;
     reject: (reason: any) => void;
     timer: NodeJS.Timeout;
+    submittedAt: number;
 }
 
 interface WaitingPoller {
@@ -90,7 +91,7 @@ class QueueManager extends EventEmitter {
                 ));
             }, timeoutMs);
 
-            this.pendingResults.set(id, { resolve, reject, timer });
+            this.pendingResults.set(id, { resolve, reject, timer, submittedAt: Date.now() });
 
             // If a poller with matching workerId is waiting, hand the task to it
             if (this.waitingPollers.length > 0) {
@@ -182,9 +183,11 @@ class QueueManager extends EventEmitter {
                 console.log(`[Queue] Cleaned up ${cleaned} stale task(s)`);
             }
 
-            // Clean up unresolved pending results (orphans)
+            // Clean up orphaned pending results that have exceeded max age
+            const maxPendingAge = 180_000;
             for (const [id, pending] of this.pendingResults.entries()) {
-                if ((pending.timer as any)._destroyed) {
+                if (Date.now() - pending.submittedAt > maxPendingAge) {
+                    clearTimeout(pending.timer);
                     this.pendingResults.delete(id);
                 }
             }
