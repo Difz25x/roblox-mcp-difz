@@ -108,6 +108,7 @@ local function wsConnect()
     local sent=pcall(function() WS:Send(reg) end)
     if not sent then WS_CONNECTED=false; WS=nil; error("WS register failed") end
     WS.OnMessage:Connect(function(msg)
+        print("[MCP] >> " .. msg)
         local ok,d=pcall(function() return HttpService:JSONDecode(msg) end)
         if ok and d and d.type=="task" then table.insert(WS_BUFFER,d) end
     end)
@@ -121,7 +122,9 @@ local function wsPoll()
 end
 local function wsSend(id,data,err)
     if not WS_CONNECTED or not WS then return false end
-    return pcall(function() WS:Send(HttpService:JSONEncode({type="result",id=id,data=data,error=err})) end)
+    local payload = HttpService:JSONEncode({type="result",id=id,data=data,error=err})
+    print("[MCP] << " .. payload)
+    return pcall(function() WS:Send(payload) end)
 end
 
 -- Task handlers

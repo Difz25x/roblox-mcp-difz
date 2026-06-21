@@ -107,6 +107,8 @@ class QueueManager extends EventEmitter {
             }
             // No matching poller — queue the task
             this.taskQueue.push(task);
+            this.emit('task', task);
+            return;
         });
     }
 

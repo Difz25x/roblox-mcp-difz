@@ -42,6 +42,7 @@ class WsServer {
     connections: Map<string, WS>;
     reverseMap: Map<WS, string>;
     wss: WSServer | null;
+    _taskHandler: ((task: any) => void) | null;
 
     constructor(queue: QueueManagerLike, sessions: SessionManagerLike) {
         this.queue = queue;
@@ -49,6 +50,7 @@ class WsServer {
         this.connections = new Map();
         this.reverseMap = new Map();
         this.wss = null;
+        this._taskHandler = null;
         this._startHeartbeat();
     }
 
@@ -75,6 +77,7 @@ class WsServer {
                         this.reverseMap.set(ws, workerId);
                         this.sessions.register(workerId, { pid: msg.pid, name: 'RobloxPlayerBeta' });
                         ws.send(JSON.stringify({ type: 'registered', worker_id: workerId }));
+                        console.log(`[WS] Registered worker: ${workerId}`);
                         break;
                     case 'result':
                         if (msg.id) this.queue.resolveTask(msg.id, msg.data, msg.error);
@@ -86,12 +89,25 @@ class WsServer {
             });
 
             ws.on('close', () => {
-                if (workerId) { this.connections.delete(workerId); this.reverseMap.delete(ws); this.sessions.unregister(workerId); }
+                if (workerId) { this.connections.delete(workerId); this.reverseMap.delete(ws); this.sessions.unregister(workerId); console.log(`[WS] Disconnected: ${workerId}`); }
             });
             ws.on('error', () => {
                 if (workerId) { this.connections.delete(workerId); this.reverseMap.delete(ws); }
             });
         });
+
+        // Listen for queued tasks and push via WS
+        try {
+            this._taskHandler = (task: any) => {
+                const sent = this.sendTask(task, task.targetWorkerId);
+                if (sent) {
+                    console.log(`[WS] Pushed ${task.type} (${task.id.slice(0,8)}...) to ${task.targetWorkerId || 'any worker'}`);
+                }
+            };
+            (this.queue as any).on('task', this._taskHandler);
+        } catch (e: any) {
+            console.error('[WS] Could not attach task listener:', e.message);
+        }
 
         return this.wss;
     }
