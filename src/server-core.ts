@@ -25,6 +25,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const PKG = require('../package.json');
 const { QueueManager: QueueManagerCls } = require('./queue-manager');
 const { McpHandler: McpHandlerCls } = require('./mcp-handler');
 const { ToolDefinitions: ToolDefinitionsCls } = require('./tool-definitions');
@@ -158,23 +159,24 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         res.json(ok ? { success: true } : { success: false, reason: 'Unknown or expired task ID' });
     });
 
-    // Server info endpoint — auto-detect transports
+    // Server info endpoint — compact, shows active transport
     app.get('/type', (req: Request, res: Response): void => {
         const port = parseInt(process.env.MCP_PORT as string, 10) || 28429;
         const host = req.hostname || 'localhost';
-        res.json({
+        const base: Record<string, any> = {
             server: 'roblox-mcp-difz',
-            version: '1.1.5',
-            description: 'Universal MCP server for Roblox game control',
-            transports: {
-                http: { url: `http://${host}:${port}/mcp`, methods: ['POST'] },
-                websocket: { url: `ws://${host}:${port}/ws` },
-                stdio: { command: 'npx', args: ['roblox-mcp-difz', 'start:stdio'] },
-            },
+            version: PKG.version,
             tools: tools.count,
-            health: '/health',
-            metadata: '/type',
-        });
+            transport: IS_STDIO ? 'stdio' : 'http',
+        };
+        if (IS_STDIO) {
+            base.command = 'npx roblox-mcp-difz start:stdio';
+        } else {
+            base.http = `http://${host}:${port}/mcp`;
+            base.ws = `ws://${host}:${port}/ws`;
+            base.info = `http://${host}:${port}/type`;
+        }
+        res.json(base);
     });
 
     // Health

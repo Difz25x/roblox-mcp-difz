@@ -4,26 +4,30 @@
  * cli.ts — CLI dispatcher for roblox-mcp-difz
  *
  * Commands:
- *   roblox-mcp-difz              → start HTTP server
+ *   roblox-mcp-difz              → show help
  *   roblox-mcp-difz start        → start HTTP server
  *   roblox-mcp-difz start:stdio  → start stdio MCP transport + HTTP
  *   roblox-mcp-difz setup        → interactive setup wizard
- *   roblox-mcp-difz setup --ai <name> → auto-setup for specific AI
+ *   roblox-mcp-difz setup --ai <name>     auto-setup for specific AI
+ *   roblox-mcp-difz setup --transport <t>  transport: stdio, http, ws
+ *   roblox-mcp-difz setup --ai-list       list available AI platforms
  */
 const path = require('path');
 const readline = require('readline');
+const PKG = require('../package.json');
 
 function printBanner(port: number, toolsCount: number, mode: string, wsCount: number): void {
-    console.log('╔══════════════════════════════════════════════════════╗');
-    console.log('║           Roblox MCP Server v1.0.0                  ║');
-    console.log('╠══════════════════════════════════════════════════════╣');
-    console.log(`║  HTTP Server : http://localhost:${port}               ║`);
-    console.log(`║  MCP Endpoint: POST http://localhost:${port}/mcp      ║`);
-    console.log(`║  WS Endpoint : ws://localhost:${port}/ws              ║`);
-    console.log(`║  Client Script: http://localhost:${port}/mcp.luau     ║`);
-    console.log(`║  Tools       : ${String(toolsCount).padStart(2)} registered                  ║`);
-    console.log(`║  Mode        : ${mode.padEnd(20)}        ║`);
-    console.log('╚══════════════════════════════════════════════════════╝');
+    const BOX = 54;
+    const pad = (s: string): string => s + ' '.repeat(Math.max(0, BOX - s.length));
+    console.log('╔' + '═'.repeat(BOX) + '╗');
+    console.log(`║${pad(`           Roblox MCP Server v${PKG.version}`)}║`);
+    console.log('╠' + '═'.repeat(BOX) + '╣');
+    console.log(`║${pad(`  HTTP : http://localhost:${port}/mcp`)}║`);
+    console.log(`║${pad(`  WS   : ws://localhost:${port}/ws`)}║`);
+    console.log(`║${pad(`  Info : http://localhost:${port}/type`)}║`);
+    console.log(`║${pad(`  Tools: ${toolsCount} registered`)}║`);
+    console.log(`║${pad(`  Mode : ${mode}`)}║`);
+    console.log('╚' + '═'.repeat(BOX) + '╝');
 }
 
 async function cmdStart(stdioMode: boolean): Promise<void> {
@@ -67,31 +71,44 @@ async function cmdStart(stdioMode: boolean): Promise<void> {
     });
 }
 
-async function cmdSetup(targetAI: string | null): Promise<void> {
+async function cmdSetup(targetAI: string | null, transport?: string): Promise<void> {
     const { runSetupWizard } = require('./setup');
-    await runSetupWizard(targetAI);
+    await runSetupWizard(targetAI, transport);
 }
 
 function cmdHelp(): void {
     console.log(`
-roblox-mcp-difz — Roblox MCP Server
+Usage: roblox-mcp-difz [command]
 
-USAGE:
-  roblox-mcp-difz                     Start HTTP server (port 28429)
-  roblox-mcp-difz start               Start HTTP server
-  roblox-mcp-difz start:stdio         Start stdio MCP transport + HTTP
-  roblox-mcp-difz setup               Interactive setup wizard
-  roblox-mcp-difz setup --ai <name>   Setup for specific AI (claude-code, claude-desktop, cursor, windsurf, generic)
-  roblox-mcp-difz --help              Show this help
+Commands:
+  roblox-mcp-difz                       Show this help (does not start)
+  roblox-mcp-difz start                 Start HTTP server (port 28429)
+  roblox-mcp-difz start:stdio           Start stdio mode (for AI clients)
+  roblox-mcp-difz setup                 Interactive setup wizard
+  roblox-mcp-difz setup --ai <name>     Auto-setup for a specific AI
+  roblox-mcp-difz setup --transport <t>  Transport: stdio, http, ws
+  roblox-mcp-difz setup --ai-list       List supported AI platforms
+  roblox-mcp-difz --help                Show this help
 
-ENV:
-  MCP_PORT  Port for HTTP server (default: 28429)
+Endpoints:
+  http://localhost:28429/type            Server info (active transport)
+  http://localhost:28429/mcp             MCP HTTP endpoint (POST)
+  ws://localhost:28429/ws                WebSocket transport
+
+Environment:
+  MCP_PORT  HTTP server port (default: 28429)
 `);
 }
 
 async function main(): Promise<void> {
     const args: string[] = process.argv.slice(2);
     const cmd: string | undefined = args[0];
+
+    if (!cmd) {
+        console.log('\n  Roblox MCP — type "roblox-mcp-difz --help" to see available commands.\n');
+        cmdHelp();
+        return;
+    }
 
     if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
         cmdHelp();
@@ -100,8 +117,29 @@ async function main(): Promise<void> {
 
     if (cmd === 'setup') {
         const aiFlag: number = args.indexOf('--ai');
+        const transportFlag: number = args.indexOf('--transport');
+        const aiListFlag: boolean = args.includes('--ai-list') || args.includes('-al');
+
+        if (aiListFlag) {
+            const setup = require('./setup');
+            console.log('\nAvailable AI platforms:\n');
+            for (const [key, p] of Object.entries(setup.PLATFORMS)) {
+                const plat = p as { icon: string; name: string };
+                console.log(`  ${key.padEnd(20)} ${plat.icon} ${plat.name}`);
+            }
+            console.log('\nAvailable transports: stdio, http, ws');
+            console.log('Usage: roblox-mcp-difz setup --ai <name> [--transport <type>]\n');
+            return;
+        }
+
         const targetAI: string | null = aiFlag !== -1 ? args[aiFlag + 1] : null;
-        await cmdSetup(targetAI);
+        const transport: string | undefined = transportFlag !== -1 ? args[transportFlag + 1] : undefined;
+        await cmdSetup(targetAI, transport);
+        return;
+    }
+
+    if (cmd === 'start' || cmd === 'start:http') {
+        await cmdStart(false);
         return;
     }
 
@@ -110,7 +148,8 @@ async function main(): Promise<void> {
         return;
     }
 
-    await cmdStart(false);
+    console.log(`\n  Unknown: "${cmd}". Use "roblox-mcp-difz --help".\n`);
+    cmdHelp();
 }
 
 main().catch((err: any) => {
