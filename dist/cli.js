@@ -15,7 +15,7 @@ const path = require('path');
 const readline = require('readline');
 function printBanner(port, toolsCount, mode, wsCount) {
     console.log(``);
-    console.log(`Roblox MCP Server v1.1.4`);
+    console.log(`Roblox MCP Server v1.1.5`);
     console.log(`  HTTP:  http://localhost:${port}/mcp`);
     console.log(`  WS:    ws://localhost:${port}/ws`);
     console.log(`  Info:  http://localhost:${port}/type`);

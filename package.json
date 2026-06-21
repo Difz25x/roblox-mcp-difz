@@ -1,6 +1,6 @@
 {
   "name": "roblox-mcp-difz",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Universal MCP server for Roblox game control, reverse engineering, and exploitation — supports Claude Code, Claude Desktop, Cursor, Windsurf, and any MCP-compatible AI.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,8 +13,7 @@
     "setup": "node bin/roblox-mcp setup",
     "dev": "node bin/roblox-mcp --verbose",
     "build": "tsc",
-    "publish": "node publish.mjs",
-    "publish:dry": "node publish.mjs --dry-run",
+    "publish:full": "npm run build && npm publish && node -e \"var v=require('./package.json').version; require('child_process').execSync('git tag v'+v,{stdio:'inherit'}); require('child_process').execSync('git push origin v'+v,{stdio:'inherit'})\"",
     "prepublishOnly": "npm run build"
   },
   "files": [
