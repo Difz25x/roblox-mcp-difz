@@ -106,6 +106,18 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         app.use(express.static(publicDir));
     }
 
+    // Dedicated /mcp.luau route — serves the Luau client script directly.
+    // This is more reliable than express.static for executor environments
+    // where loadstring(game:HttpGet("http://127.0.0.1:28429/mcp.luau")) is needed.
+    app.get('/mcp.luau', (req: Request, res: Response): void => {
+        const luauPath: string = path.join(PKG_DIR, 'public', 'mcp.luau');
+        if (fs.existsSync(luauPath)) {
+            res.type('text/plain').send(fs.readFileSync(luauPath, 'utf-8'));
+        } else {
+            res.status(404).type('text/plain').send('-- mcp.luau not found. Reinstall roblox-mcp-difz.');
+        }
+    });
+
     // CORS
     app.use((req: Request, res: Response, next: NextFunction): void => {
         res.setHeader('Access-Control-Allow-Origin', '*');
