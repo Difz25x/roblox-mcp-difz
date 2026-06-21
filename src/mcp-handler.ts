@@ -138,6 +138,8 @@ class McpHandler {
                 return await this._handleResourcesRead(params);
             case 'prompts/list':
                 return this._handlePromptsList();
+            case 'prompts/get':
+                return await this._handlePromptsGet(params);
             case 'ping':
                 return { result: { status: 'pong', timestamp: Date.now(), stats: this.queue.getStats() } };
             case 'mcp/setup':
@@ -155,7 +157,7 @@ class McpHandler {
                 capabilities: {
                     tools: { listChanged: false },
                     resources: { listChanged: false, subscribe: false },
-                    prompts: {},
+                    prompts: { listChanged: false },
                 },
                 serverInfo: this.serverInfo,
             },
@@ -337,6 +339,34 @@ class McpHandler {
                 ],
             },
         };
+    }
+
+    async _handlePromptsGet(params?: Record<string, unknown>): Promise<McpResult> {
+        const name = (params && params.name) as string | undefined;
+        if (!name) {
+            return { error: { code: -32602, message: 'Prompt name is required' } };
+        }
+        if (name === 'analyze_game') {
+            return {
+                result: {
+                    description: 'Dumps game metadata, remotes, and player data in one shot.',
+                    messages: [
+                        { role: 'user', content: { type: 'text', text: 'Run get_game_metadata, dump_remote_events, and dump_workspace_players. Return all results in a single structured report.' } },
+                    ],
+                },
+            };
+        }
+        if (name === 'find_exploit_vector') {
+            return {
+                result: {
+                    description: 'Scan remotes and workspace to find exploit entry points.',
+                    messages: [
+                        { role: 'user', content: { type: 'text', text: 'Scan all RemoteEvents/RemoteFunctions for connections and ownership. Check workspace for exploitable parts. Look for vulnerable clickdetectors and proximity prompts. Return a prioritized list of exploit vectors.' } },
+                    ],
+                },
+            };
+        }
+        return { error: { code: -32602, message: `Unknown prompt: ${name}` } };
     }
 
     _handleSetup(): McpResult {

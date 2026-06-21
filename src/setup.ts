@@ -40,6 +40,57 @@ function normPath(p: string): string {
     return p.replace(/\\/g, '/');
 }
 
+/**
+ * Remove entry from JSON file's mcpServers by server name.
+ * Returns true if the file was modified, false otherwise.
+ */
+function removeServerFromJson(filePath: string, serverName: string): boolean {
+    if (!fs.existsSync(filePath)) return false;
+    try {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        if (!data.mcpServers || !data.mcpServers[serverName]) return false;
+        delete data.mcpServers[serverName];
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+        return true;
+    } catch { return false; }
+}
+
+/**
+ * Remove conflicting scope before setting up a new one.
+ *
+ * Claude Code picks up servers from BOTH ~/.claude.json (user scope)
+ * and ~/.mcp.json (project scope). If the same server name exists in
+ * both with different transports, Claude Code warns "Conflicting scopes"
+ * and the connection fails.
+ *
+ * - stdio config  lives in ~/.mcp.json       → remove from ~/.claude.json
+ * - http/ws config lives in ~/.claude.json    → remove from ~/.mcp.json
+ */
+function removeConflictingScope(transport: TransportType, serverName: string): void {
+    const claudeJson = path.join(HOME, '.claude.json');
+    const mcpJson = path.join(HOME, '.mcp.json');
+
+    if (transport === 'stdio') {
+        // Writing stdio → ensure it's NOT in .claude.json (user scope)
+        if (removeServerFromJson(claudeJson, serverName)) {
+            console.log(`     Removed old "${serverName}" from ~/.claude.json (would conflict)`);
+        }
+    } else {
+        // Writing http/ws → ensure it's NOT in .mcp.json (project scope)
+        if (removeServerFromJson(mcpJson, serverName)) {
+            console.log(`     Removed old "${serverName}" from ~/.mcp.json (would conflict)`);
+        }
+    }
+
+    // Also try the `claude mcp remove` CLI command as a belt-and-suspenders approach
+    try {
+        const targetScope = transport === 'stdio' ? 'user' : 'project';
+        execSync(`claude mcp remove ${serverName} -s ${targetScope} 2>nul`, {
+            timeout: 5000, windowsHide: true, stdio: 'pipe',
+        });
+    } catch { /* if claude CLI isn't available, the file cleanup above suffices */ }
+}
+
 /** Detect if we're running from the dev repo directory */
 function getDevCliPath(): string | null {
     try {
@@ -97,6 +148,9 @@ const PLATFORMS: Record<string, PlatformEntry> = {
             return 'Claude Code supports stdio or HTTP.';
         },
         setup: async (transport: TransportType): Promise<boolean> => {
+            // Remove conflicting scope FIRST to avoid "defined in multiple scopes" warning
+            removeConflictingScope(transport, 'roblox-mcp-difz');
+
             if (transport === 'stdio') {
                 // Try claude mcp add first (official method)
                 const resolved = resolveCliPath();
