@@ -4,11 +4,12 @@
  * Generates the correct MCP server config file for each AI tool
  * using the user's chosen transport type (stdio, http, or websocket).
  *
- * Config files go to USER's home directory (not package dir) so they
- * work with globally installed packages.
- *
- * Claude Code uses the official CLI command `claude mcp add` instead of
- * writing config files directly.
+ * v2 fixes:
+ *  - Detects dev directory (CWD = roblox-mcp-difz repo) → uses local build
+ *  - Adds `type: "stdio"` to stdio config for Claude Code v2 compat
+ *  - Forward slashes in paths to avoid Windows escape issues (\r, \n, etc.)
+ *  - Validates server binary exists before saving config
+ *  - Falls back to direct ~/.mcp.json write if `claude` CLI unavailable
  */
 const fs = require('fs');
 const path = require('path');
@@ -34,6 +35,58 @@ interface PlatformEntry {
     setup: (transport: TransportType) => Promise<boolean>;
 }
 
+/** Normalize Windows backslashes to forward slashes to avoid escape issues */
+function normPath(p: string): string {
+    return p.replace(/\\/g, '/');
+}
+
+/** Detect if we're running from the dev repo directory */
+function getDevCliPath(): string | null {
+    try {
+        const pkgPath = path.join(CWD, 'package.json');
+        if (!fs.existsSync(pkgPath)) return null;
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        if (pkg.name !== 'roblox-mcp-difz') return null;
+        const cliPath = path.join(CWD, 'dist', 'cli.js');
+        if (!fs.existsSync(cliPath)) return null;
+        return normPath(cliPath);
+    } catch { return null; }
+}
+
+/** Get the best CLI path: dev build if available, else global install, else null */
+function resolveCliPath(): { cmd: string; args: string[] } | null {
+    // Priority 1: running from dev repo
+    const devPath = getDevCliPath();
+    if (devPath) {
+        return { cmd: 'node', args: [devPath, 'start:stdio'] };
+    }
+    // Priority 2: global npm install
+    try {
+        const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
+        const cliPath = normPath(path.join(globalRoot, 'roblox-mcp-difz', 'dist', 'cli.js'));
+        if (fs.existsSync(cliPath)) {
+            return { cmd: 'node', args: [cliPath, 'start:stdio'] };
+        }
+    } catch { /* fall through */ }
+    // Priority 3: npx fallback (slow, but works if globally registered)
+    return { cmd: 'npx', args: ['roblox-mcp-difz', 'start:stdio'] };
+}
+
+/** Full stdio server config with `type: "stdio"` — required by Claude Code v2 */
+function buildStdioConfig(): Record<string, any> {
+    const resolved = resolveCliPath();
+    return {
+        mcpServers: {
+            'roblox-mcp-difz': {
+                type: 'stdio',
+                command: resolved!.cmd,
+                args: resolved!.args,
+                env: {},
+            },
+        },
+    };
+}
+
 const PLATFORMS: Record<string, PlatformEntry> = {
     'claude-code': {
         name: 'Claude Code',
@@ -44,23 +97,59 @@ const PLATFORMS: Record<string, PlatformEntry> = {
             return 'Claude Code supports stdio or HTTP.';
         },
         setup: async (transport: TransportType): Promise<boolean> => {
-            try {
-                let cmd: string;
-                if (transport === 'stdio') {
-                    const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-                    const cliPath = path.join(globalRoot, 'roblox-mcp-difz', 'dist', 'cli.js');
-                    cmd = `claude mcp add roblox-mcp-difz -s user -- node "${cliPath}" start:stdio`;
-                } else {
-                    cmd = `claude mcp add roblox-mcp-difz -s user --transport http http://localhost:${MCP_PORT}/mcp`;
+            if (transport === 'stdio') {
+                // Try claude mcp add first (official method)
+                const resolved = resolveCliPath();
+                if (!resolved) {
+                    console.error('     Could not resolve server path');
+                    return false;
                 }
-                const result = execSync(cmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
-                console.log(`     ${result.toString().trim().split('\n').pop()}`);
-                return true;
-            } catch (err: any) {
-                const msg = err.stderr?.toString() || err.message || '';
-                if (msg.includes('already exists') || msg.includes('Added')) return true;
-                console.error(`     Error: ${msg.trim()}`);
-                return false;
+                const argsStr = resolved.args.map((a: string) =>
+                    /^[A-Za-z0-9_./:@-]+$/.test(a) ? a : `"${a}"`
+                ).join(' ');
+                const claudeCmd = `claude mcp add roblox-mcp-difz -s user -- ${resolved.cmd} ${argsStr}`;
+
+                try {
+                    const result = execSync(claudeCmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
+                    console.log(`     ${result.toString().trim().split('\n').pop()}`);
+                    // Show the config that was written
+                    const mcpPath = normPath(path.join(HOME, '.mcp.json'));
+                    if (fs.existsSync(path.join(HOME, '.mcp.json'))) {
+                        console.log(`     File: ${mcpPath}`);
+                    }
+                    return true;
+                } catch (err: any) {
+                    const msg = err.stderr?.toString() || err.message || '';
+                    if (msg.includes('already exists') || msg.includes('Added')) {
+                        return true;
+                    }
+                    // claude CLI failed — fall back to direct file write
+                    console.error(`     claude CLI error: ${msg.trim().split('\n')[0]}`);
+                    console.log('     Falling back to direct ~/.mcp.json write...');
+                    const ok = writeConfigFile(
+                        HOME,
+                        path.join(HOME, '.mcp.json'),
+                        buildStdioConfig(),
+                    );
+                    if (ok) {
+                        console.log('     ✅ Config written directly to ~/.mcp.json');
+                        console.log('     Run: claude mcp add roblox-mcp-difz -s user --transport stdio');
+                    }
+                    return ok;
+                }
+            } else {
+                // HTTP transport — claude mcp add with --transport http
+                try {
+                    const cmd = `claude mcp add roblox-mcp-difz -s user --transport http http://localhost:${MCP_PORT}/mcp`;
+                    const result = execSync(cmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
+                    console.log(`     ${result.toString().trim().split('\n').pop()}`);
+                    return true;
+                } catch (err: any) {
+                    const msg = err.stderr?.toString() || err.message || '';
+                    if (msg.includes('already exists') || msg.includes('Added')) return true;
+                    console.error(`     Error: ${msg.trim()}`);
+                    return false;
+                }
             }
         },
     },
@@ -123,17 +212,7 @@ const PLATFORMS: Record<string, PlatformEntry> = {
 
 function generateConfigForPlatform(transport: TransportType): Record<string, any> {
     if (transport === 'stdio') {
-        let cmd: string;
-        let args: string[];
-        try {
-            const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-            cmd = 'node';
-            args = [path.join(globalRoot, 'roblox-mcp-difz', 'dist', 'cli.js'), 'start:stdio'];
-        } catch {
-            cmd = 'npx';
-            args = ['roblox-mcp-difz', 'start:stdio'];
-        }
-        return { mcpServers: { 'roblox-mcp-difz': { command: cmd, args, env: {} } } };
+        return buildStdioConfig();
     } else if (transport === 'http') {
         return { mcpServers: { 'roblox-mcp-difz': { type: 'http', url: `http://localhost:${MCP_PORT}/mcp` } } };
     } else {
@@ -154,7 +233,7 @@ function writeConfigFile(configDir: string, configFile: string, config: Record<s
             }
         }
         fs.writeFileSync(configFile, JSON.stringify(merged, null, 2), 'utf-8');
-        console.log(`     File: ${configFile}`);
+        console.log(`     File: ${normPath(configFile)}`);
         return true;
     } catch (err: any) {
         console.error(`     Failed: ${err.message}`);
@@ -232,9 +311,21 @@ async function runSetupWizard(targetAI?: string, transportArg?: string): Promise
     }
 
     console.log(`  Done! ${successCount}/${selectedKeys.length} config(s) created.\n`);
+    if (selectedKeys.includes('claude-code') && transport === 'stdio') {
+        const mcpJsonPath = normPath(path.join(HOME, '.mcp.json'));
+        console.log('  Claude Code config:');
+        console.log(`    File: ${mcpJsonPath}`);
+        console.log('    Restart Claude Code or type "Reconnect" in the MCP menu.\n');
+    }
     console.log('  Next steps:');
-    console.log(`  1. Start server: roblox-mcp-difz start`);
-    console.log(`  2. ${transport === 'stdio' ? 'Stdio mode: roblox-mcp-difz start:stdio' : `${transport.toUpperCase()}: ${transport === 'http' ? 'POST http://localhost:28429/mcp' : 'ws://localhost:28429/ws'}`}`);
+    const devPath = getDevCliPath();
+    if (devPath) {
+        console.log(`  1. Start server (dev): node ${devPath} start:stdio`);
+        console.log(`     Or build + publish: npm run publish`);
+    } else {
+        console.log(`  1. Start server: roblox-mcp-difz start`);
+        console.log(`  2. ${transport === 'stdio' ? 'Stdio mode: roblox-mcp-difz start:stdio' : `${transport.toUpperCase()}: ${transport === 'http' ? 'POST http://localhost:28429/mcp' : 'ws://localhost:28429/ws'}`}`);
+    }
     console.log('  3. Check /type:  http://localhost:28429/type\n');
     rl.close();
 }
