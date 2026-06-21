@@ -50,12 +50,11 @@ interface ProcessManager {
             experienceId?: string;
         }
     ): { success: boolean; launchUrl?: string; error?: string };
-    captureRobloxWindow(pid: string | number | null): {
-        success: boolean;
-        pid?: number;
-        image?: string;
-        sizeBytes?: number;
+    performScreenshot(pid?: number): {
         error?: string;
+        needsDisambiguation?: boolean;
+        windows?: Array<{ pid: number; hwnd: string; title: string }>;
+        imageBase64?: string;
     };
 }
 
@@ -243,8 +242,14 @@ class McpHandler {
                     experienceId: args.experience_id as string | undefined,
                 });
 
-            case 'capture_roblox_screenshot':
-                return this.proc.captureRobloxWindow((args.pid as string | number) || null);
+            case 'capture_roblox_screenshot': {
+                const ssResult = this.proc.performScreenshot(args.pid ? Number(args.pid) : undefined);
+                if (ssResult.error) return { success: false, error: ssResult.error };
+                if (ssResult.needsDisambiguation) {
+                    return { success: true, needsDisambiguation: true, windows: ssResult.windows };
+                }
+                return { success: true, image: `data:image/png;base64,${ssResult.imageBase64}`, pid: args.pid || null };
+            }
 
             case 'get_roblox_versions':
                 return this._getRobloxVersions();

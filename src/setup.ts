@@ -1,49 +1,20 @@
 /**
- * setup.ts — Interactive MCP setup wizard for various AI platforms.
- *
- * Generates the correct MCP server config file for each AI tool
- * using the user's chosen transport type (stdio, http, or websocket).
- *
- * v2 fixes:
- *  - Detects dev directory (CWD = roblox-mcp-difz repo) → uses local build
- *  - Adds `type: "stdio"` to stdio config for Claude Code v2 compat
- *  - Forward slashes in paths to avoid Windows escape issues (\r, \n, etc.)
- *  - Validates server binary exists before saving config
- *  - Falls back to direct ~/.mcp.json write if `claude` CLI unavailable
+ * setup.ts — MCP setup wizard.
+ * Configures AI platforms to connect via HTTP to the running server.
  */
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const readline = require('readline');
 
-const HOME: string = process.env.USERPROFILE || process.env.HOME || '';
-const CWD: string = process.cwd();
-const MCP_PORT: number = parseInt(process.env.MCP_PORT as string, 10) || 28429;
+const HOME = process.env.USERPROFILE || process.env.HOME || '';
+const CWD = process.cwd();
+const MCP_PORT = parseInt(process.env.MCP_PORT!, 10) || 28429;
 
-type TransportType = 'stdio' | 'http' | 'ws';
-
-const TRANSPORTS: Array<{ key: TransportType; icon: string; label: string; desc: string }> = [
-    { key: 'stdio', icon: '🔌', label: 'Stdio', desc: 'Run as subprocess (fastest, for Claude Code, Cursor, etc.)' },
-    { key: 'http', icon: '🌐', label: 'HTTP', desc: 'Connect via HTTP POST (requires server running, for Claude Desktop, etc.)' },
-    { key: 'ws', icon: '🔗', label: 'WebSocket', desc: 'Connect via WebSocket (requires server running, for custom clients)' },
-];
-
-interface PlatformEntry {
-    name: string;
-    icon: string;
-    instructions: (transport: TransportType) => string;
-    setup: (transport: TransportType) => Promise<boolean>;
-}
-
-/** Normalize Windows backslashes to forward slashes to avoid escape issues */
 function normPath(p: string): string {
     return p.replace(/\\/g, '/');
 }
 
-/**
- * Remove entry from JSON file's mcpServers by server name.
- * Returns true if the file was modified, false otherwise.
- */
 function removeServerFromJson(filePath: string, serverName: string): boolean {
     if (!fs.existsSync(filePath)) return false;
     try {
@@ -55,43 +26,6 @@ function removeServerFromJson(filePath: string, serverName: string): boolean {
     } catch { return false; }
 }
 
-/**
- * Remove conflicting scope before setting up a new one.
- *
- * Claude Code picks up servers from BOTH ~/.claude.json (user scope)
- * and ~/.mcp.json (project scope). If the same server name exists in
- * both with different transports, Claude Code warns "Conflicting scopes"
- * and the connection fails.
- *
- * - stdio config  lives in ~/.mcp.json       → remove from ~/.claude.json
- * - http/ws config lives in ~/.claude.json    → remove from ~/.mcp.json
- */
-function removeConflictingScope(transport: TransportType, serverName: string): void {
-    const claudeJson = path.join(HOME, '.claude.json');
-    const mcpJson = path.join(HOME, '.mcp.json');
-
-    if (transport === 'stdio') {
-        // Writing stdio → ensure it's NOT in .claude.json (user scope)
-        if (removeServerFromJson(claudeJson, serverName)) {
-            console.log(`     Removed old "${serverName}" from ~/.claude.json (would conflict)`);
-        }
-    } else {
-        // Writing http/ws → ensure it's NOT in .mcp.json (project scope)
-        if (removeServerFromJson(mcpJson, serverName)) {
-            console.log(`     Removed old "${serverName}" from ~/.mcp.json (would conflict)`);
-        }
-    }
-
-    // Also try the `claude mcp remove` CLI command as a belt-and-suspenders approach
-    try {
-        const targetScope = transport === 'stdio' ? 'user' : 'project';
-        execSync(`claude mcp remove ${serverName} -s ${targetScope} 2>nul`, {
-            timeout: 5000, windowsHide: true, stdio: 'pipe',
-        });
-    } catch { /* if claude CLI isn't available, the file cleanup above suffices */ }
-}
-
-/** Detect if we're running from the dev repo directory */
 function getDevCliPath(): string | null {
     try {
         const pkgPath = path.join(CWD, 'package.json');
@@ -104,175 +38,73 @@ function getDevCliPath(): string | null {
     } catch { return null; }
 }
 
-/** Get the best CLI path: dev build if available, else global install, else null */
-function resolveCliPath(): { cmd: string; args: string[] } | null {
-    // Priority 1: running from dev repo
-    const devPath = getDevCliPath();
-    if (devPath) {
-        return { cmd: 'node', args: [devPath, 'start:stdio'] };
-    }
-    // Priority 2: global npm install
-    try {
-        const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-        const cliPath = normPath(path.join(globalRoot, 'roblox-mcp-difz', 'dist', 'cli.js'));
-        if (fs.existsSync(cliPath)) {
-            return { cmd: 'node', args: [cliPath, 'start:stdio'] };
-        }
-    } catch { /* fall through */ }
-    // Priority 3: npx fallback (slow, but works if globally registered)
-    return { cmd: 'npx', args: ['roblox-mcp-difz', 'start:stdio'] };
-}
+const HTTP_CONFIG = {
+    mcpServers: {
+        'roblox-mcp-difz': { type: 'http', url: `http://localhost:${MCP_PORT}/mcp` },
+    },
+};
 
-/** Full stdio server config with `type: "stdio"` — required by Claude Code v2 */
-function buildStdioConfig(): Record<string, any> {
-    const resolved = resolveCliPath();
-    return {
-        mcpServers: {
-            'roblox-mcp-difz': {
-                type: 'stdio',
-                command: resolved!.cmd,
-                args: resolved!.args,
-                env: {},
-            },
-        },
-    };
-}
-
-const PLATFORMS: Record<string, PlatformEntry> = {
+const PLATFORMS: Record<string, { name: string; icon: string; instructions: string; setup: () => Promise<boolean> }> = {
     'claude-code': {
-        name: 'Claude Code',
-        icon: '🤖',
-        instructions: (t: TransportType): string => {
-            if (t === 'stdio') return 'Registered via claude mcp add (stdio).';
-            if (t === 'http') return 'Registered via claude mcp add (HTTP transport).';
-            return 'Claude Code supports stdio or HTTP.';
-        },
-        setup: async (transport: TransportType): Promise<boolean> => {
-            // Remove conflicting scope FIRST to avoid "defined in multiple scopes" warning
-            removeConflictingScope(transport, 'roblox-mcp-difz');
-
-            if (transport === 'stdio') {
-                // Try claude mcp add first (official method)
-                const resolved = resolveCliPath();
-                if (!resolved) {
-                    console.error('     Could not resolve server path');
-                    return false;
-                }
-                const argsStr = resolved.args.map((a: string) =>
-                    /^[A-Za-z0-9_./:@-]+$/.test(a) ? a : `"${a}"`
-                ).join(' ');
-                const claudeCmd = `claude mcp add roblox-mcp-difz -s user -- ${resolved.cmd} ${argsStr}`;
-
-                try {
-                    const result = execSync(claudeCmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
-                    console.log(`     ${result.toString().trim().split('\n').pop()}`);
-                    // Show the config that was written
-                    const mcpPath = normPath(path.join(HOME, '.mcp.json'));
-                    if (fs.existsSync(path.join(HOME, '.mcp.json'))) {
-                        console.log(`     File: ${mcpPath}`);
-                    }
-                    return true;
-                } catch (err: any) {
-                    const msg = err.stderr?.toString() || err.message || '';
-                    if (msg.includes('already exists') || msg.includes('Added')) {
-                        return true;
-                    }
-                    // claude CLI failed — fall back to direct file write
-                    console.error(`     claude CLI error: ${msg.trim().split('\n')[0]}`);
-                    console.log('     Falling back to direct ~/.mcp.json write...');
-                    const ok = writeConfigFile(
-                        HOME,
-                        path.join(HOME, '.mcp.json'),
-                        buildStdioConfig(),
-                    );
-                    if (ok) {
-                        console.log('     ✅ Config written directly to ~/.mcp.json');
-                        console.log('     Run: claude mcp add roblox-mcp-difz -s user --transport stdio');
-                    }
-                    return ok;
-                }
-            } else {
-                // HTTP transport — claude mcp add with --transport http
-                try {
-                    const cmd = `claude mcp add roblox-mcp-difz -s user --transport http http://localhost:${MCP_PORT}/mcp`;
-                    const result = execSync(cmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
-                    console.log(`     ${result.toString().trim().split('\n').pop()}`);
-                    return true;
-                } catch (err: any) {
-                    const msg = err.stderr?.toString() || err.message || '';
-                    if (msg.includes('already exists') || msg.includes('Added')) return true;
-                    console.error(`     Error: ${msg.trim()}`);
-                    return false;
-                }
+        name: 'Claude Code', icon: '🤖',
+        instructions: 'Registered via claude mcp add (HTTP).',
+        setup: async () => {
+            removeServerFromJson(path.join(HOME, '.mcp.json'), 'roblox-mcp-difz');
+            try {
+                const cmd = `claude mcp add roblox-mcp-difz -s user --transport http http://localhost:${MCP_PORT}/mcp`;
+                const result = execSync(cmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
+                console.log(`     ${result.toString().trim().split('\n').pop()}`);
+                return true;
+            } catch (err: any) {
+                const msg = err.stderr?.toString() || err.message || '';
+                if (msg.includes('already exists') || msg.includes('Added')) return true;
+                console.error(`     Error: ${msg.trim()}`);
+                return false;
             }
         },
     },
     'claude-desktop': {
-        name: 'Claude Desktop',
-        icon: '💻',
-        instructions: (t: TransportType): string => `Restart Claude Desktop. (${t})`,
-        setup: async (transport: TransportType): Promise<boolean> =>
-            writeConfigFile(
-                path.join(HOME, 'AppData', 'Roaming', 'Claude'),
-                path.join(HOME, 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json'),
-                generateConfigForPlatform(transport),
-            ),
+        name: 'Claude Desktop', icon: '💻',
+        instructions: 'Restart Claude Desktop.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, 'AppData', 'Roaming', 'Claude'),
+            path.join(HOME, 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json'),
+            HTTP_CONFIG,
+        ),
     },
     'cursor': {
-        name: 'Cursor',
-        icon: '🔷',
-        instructions: (t: TransportType): string => `Global config at ~/.cursor/mcp.json. (${t})`,
-        setup: async (transport: TransportType): Promise<boolean> =>
-            writeConfigFile(
-                path.join(HOME, '.cursor'),
-                path.join(HOME, '.cursor', 'mcp.json'),
-                generateConfigForPlatform(transport),
-            ),
+        name: 'Cursor', icon: '🔷',
+        instructions: 'Config at ~/.cursor/mcp.json.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.cursor'),
+            path.join(HOME, '.cursor', 'mcp.json'),
+            HTTP_CONFIG,
+        ),
     },
     'windsurf': {
-        name: 'Windsurf',
-        icon: '🏄',
-        instructions: (t: TransportType): string => `Config at ~/.windsurf/mcp_config.json. (${t})`,
-        setup: async (transport: TransportType): Promise<boolean> =>
-            writeConfigFile(
-                path.join(HOME, '.windsurf'),
-                path.join(HOME, '.windsurf', 'mcp_config.json'),
-                generateConfigForPlatform(transport),
-            ),
+        name: 'Windsurf', icon: '🏄',
+        instructions: 'Config at ~/.windsurf/mcp_config.json.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.windsurf'),
+            path.join(HOME, '.windsurf', 'mcp_config.json'),
+            HTTP_CONFIG,
+        ),
     },
     'vscode': {
-        name: 'VS Code (Cline / Continue)',
-        icon: '📝',
-        instructions: (t: TransportType): string => `Config at ~/.vscode/mcp.json. (${t})`,
-        setup: async (transport: TransportType): Promise<boolean> =>
-            writeConfigFile(
-                path.join(HOME, '.vscode'),
-                path.join(HOME, '.vscode', 'mcp.json'),
-                generateConfigForPlatform(transport),
-            ),
+        name: 'VS Code (Cline / Continue)', icon: '📝',
+        instructions: 'Config at ~/.vscode/mcp.json.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.vscode'),
+            path.join(HOME, '.vscode', 'mcp.json'),
+            HTTP_CONFIG,
+        ),
     },
     'generic': {
-        name: 'Generic MCP Client',
-        icon: '🔌',
-        instructions: (t: TransportType): string => `Saved to CWD as mcp-config.json. (${t})`,
-        setup: async (transport: TransportType): Promise<boolean> =>
-            writeConfigFile(
-                CWD,
-                path.join(CWD, 'mcp-config.json'),
-                generateConfigForPlatform(transport),
-            ),
+        name: 'Generic MCP Client', icon: '🔌',
+        instructions: 'Saved to CWD as mcp-config.json.',
+        setup: async () => writeConfigFile(CWD, path.join(CWD, 'mcp-config.json'), HTTP_CONFIG),
     },
 };
-
-function generateConfigForPlatform(transport: TransportType): Record<string, any> {
-    if (transport === 'stdio') {
-        return buildStdioConfig();
-    } else if (transport === 'http') {
-        return { mcpServers: { 'roblox-mcp-difz': { type: 'http', url: `http://localhost:${MCP_PORT}/mcp` } } };
-    } else {
-        return { mcpServers: { 'roblox-mcp-difz': { url: `ws://localhost:${MCP_PORT}/ws` } } };
-    }
-}
 
 function writeConfigFile(configDir: string, configFile: string, config: Record<string, any>): boolean {
     try {
@@ -299,48 +131,28 @@ function question(rl: any, query: string): Promise<string> {
     return new Promise<string>(resolve => rl.question(query, resolve));
 }
 
-async function runSetupWizard(targetAI?: string, transportArg?: string): Promise<void> {
+async function runSetupWizard(targetAI?: string): Promise<void> {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
-    console.log('');
-    console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║     Roblox MCP — Setup Menu                   ║');
-    console.log('╚══════════════════════════════════════════════════╝');
-    console.log('');
+    console.log('\n  Roblox MCP — Setup\n');
 
-    let transport: TransportType;
-    if (transportArg && TRANSPORTS.some(t => t.key === transportArg)) {
-        transport = transportArg as TransportType;
-    } else if (targetAI === 'claude-code') {
-        transport = 'stdio';
-        console.log(`  → Transport: 🔌 STDIO (default for Claude Code)`);
-    } else {
-        console.log('  Select transport type:');
-        console.log('');
-        for (let i = 0; i < TRANSPORTS.length; i++) {
-            console.log(`    ${i + 1}. ${TRANSPORTS[i].icon} ${TRANSPORTS[i].label} — ${TRANSPORTS[i].desc}`);
-        }
-        console.log('');
-        const answer = await question(rl, '  Enter number (1-3) [default: 1]: ');
-        const idx = parseInt(answer.trim(), 10) - 1;
-        transport = (idx >= 0 && idx < TRANSPORTS.length) ? TRANSPORTS[idx].key : 'stdio';
-    }
-    console.log(`  → Selected: ${TRANSPORTS.find(t => t.key === transport)?.icon} ${transport.toUpperCase()}`);
-    console.log('');
+    let selectedKeys: string[] | null = null;
 
-    let selectedKeys: string[] | null;
     if (targetAI) {
         const key = targetAI.toLowerCase().replace(/ /g, '-');
-        if (PLATFORMS[key]) { selectedKeys = [key]; console.log(`  → Auto-setup for: ${PLATFORMS[key].icon} ${PLATFORMS[key].name}`); }
-        else { console.log(`  ✗ Unknown AI: "${targetAI}".`); selectedKeys = null; }
-    } else { selectedKeys = null; }
-
-    if (!selectedKeys) {
-        console.log('  Select AI platform(s) to configure:\n');
+        if (PLATFORMS[key]) {
+            selectedKeys = [key];
+            console.log(`  Auto-setup for: ${PLATFORMS[key].icon} ${PLATFORMS[key].name}`);
+        } else {
+            console.log(`  Unknown AI: "${targetAI}".`);
+            rl.close(); return;
+        }
+    } else {
+        console.log('  Select AI platform(s):\n');
         const keys = Object.keys(PLATFORMS);
         for (let i = 0; i < keys.length; i++) console.log(`    ${i + 1}. ${PLATFORMS[keys[i]].icon} ${PLATFORMS[keys[i]].name}`);
         console.log('');
-        const answer = await question(rl, '  Enter numbers (comma-separated, e.g. "1,3" or "all"): ');
+        const answer = await question(rl, '  Enter numbers (comma-separated, or "all"): ');
         const trimmed = answer.trim().toLowerCase();
         if (trimmed === 'all') { selectedKeys = keys; }
         else {
@@ -350,38 +162,31 @@ async function runSetupWizard(targetAI?: string, transportArg?: string): Promise
                 if (idx >= 0 && idx < keys.length) selectedKeys.push(keys[idx]);
             }
         }
-        if (selectedKeys.length === 0) { console.log('  No valid selection. Exiting.'); rl.close(); return; }
+        if (!selectedKeys || selectedKeys.length === 0) { console.log('  No selection. Exiting.'); rl.close(); return; }
     }
 
-    console.log('\n  Configuring...\n');
+    console.log('\n  Configuring (HTTP transport)...\n');
     let successCount = 0;
     for (const key of selectedKeys) {
         const platform = PLATFORMS[key];
-        process.stdout.write(`  ${platform.icon} ${platform.name} (${transport.toUpperCase()})... `);
-        const ok = await platform.setup(transport);
-        console.log(ok ? `✅\n     ${platform.instructions(transport)}` : `❌`);
+        process.stdout.write(`  ${platform.icon} ${platform.name}... `);
+        const ok = await platform.setup();
+        console.log(ok ? `✅\n     ${platform.instructions}` : `❌`);
         console.log('');
         if (ok) successCount++;
     }
 
-    console.log(`  Done! ${successCount}/${selectedKeys.length} config(s) created.\n`);
-    if (selectedKeys.includes('claude-code') && transport === 'stdio') {
-        const mcpJsonPath = normPath(path.join(HOME, '.mcp.json'));
-        console.log('  Claude Code config:');
-        console.log(`    File: ${mcpJsonPath}`);
-        console.log('    Restart Claude Code or type "Reconnect" in the MCP menu.\n');
-    }
-    console.log('  Next steps:');
+    console.log(`  Done! ${successCount}/${selectedKeys.length}\n`);
     const devPath = getDevCliPath();
     if (devPath) {
-        console.log(`  1. Start server (dev): node ${devPath} start:stdio`);
-        console.log(`     Or build + publish: npm run publish`);
+        console.log(`  Start server: node ${devPath} start`);
+        console.log(`  Inject: loadstring(game:HttpGet("http://127.0.0.1:${MCP_PORT}/mcp.lua"))()`);
     } else {
-        console.log(`  1. Start server: roblox-mcp-difz start`);
-        console.log(`  2. ${transport === 'stdio' ? 'Stdio mode: roblox-mcp-difz start:stdio' : `${transport.toUpperCase()}: ${transport === 'http' ? 'POST http://localhost:28429/mcp' : 'ws://localhost:28429/ws'}`}`);
+        console.log(`  Start server: rblx-mcp start`);
+        console.log(`  Inject: loadstring(game:HttpGet("http://127.0.0.1:${MCP_PORT}/mcp.lua"))()`);
     }
-    console.log('  3. Check /type:  http://localhost:28429/type\n');
+    console.log('');
     rl.close();
 }
 
-module.exports = { runSetupWizard, PLATFORMS, TRANSPORTS };
+module.exports = { runSetupWizard, PLATFORMS };
