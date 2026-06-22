@@ -99,61 +99,61 @@ local function serialize(v,d)
 end
 
 local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
+local MCP_SPY_LOG = {}
+local MCP_SPY_NAMEHOOK = nil
+local MCP_SPY_INCOMING = {}
+local MCP_SPY_WATCHER = nil
+local RECONNECT_DELAY = 3
 
 local MCP_CAPABILITIES = {}
+pcall(function()
 local function testUncCapabilities()
-    local cap = {}
+    local cap = {total=0, supported=0, missing={}}
     local uncs = {
-        cloneref="function", getnilinstances="function", fireclickdetector="function",
-        fireproximityprompt="function", firesignal="function", getconnections="function",
-        sethiddenproperty="function", gethiddenproperty="function", setscriptable="function",
-        hookfunction="function", newcclosure="function", getrawmetatable="function",
-        setrawmetatable="function", setreadonly="function", isreadonly="function",
-        getnamecallmethod="function", gethui="function", writefile="function",
-        readfile="function", isfile="function", delfile="function",
-        makefolder="function", listfiles="function", getcustomasset="function",
-        getloadedmodules="function", getrunningscripts="function",
-        getscriptbytecode="function", getscriptclosure="function", getscripthash="function",
-        getcallingscript="function", getsenv="function", getrenv="function",
-        hookmetamethod="function", iscclosure="function", islclosure="function",
-        isexecutorclosure="function", getgc="function", getreg="function",
-        compareinstances="function", identifyexecutor="function",
-        getgenv="function", loadstring="function", getrawmetatable="function",
+        "cloneref","getnilinstances","fireclickdetector","fireproximityprompt",
+        "firesignal","getconnections","sethiddenproperty","gethiddenproperty",
+        "setscriptable","hookfunction","newcclosure","getrawmetatable",
+        "setrawmetatable","setreadonly","isreadonly","getnamecallmethod",
+        "gethui","writefile","readfile","isfile","delfile",
+        "makefolder","listfiles","getcustomasset",
+        "getloadedmodules","getrunningscripts",
+        "getscriptbytecode","getscriptclosure","getscripthash",
+        "getcallingscript","getsenv","getrenv",
+        "hookmetamethod","iscclosure","islclosure",
+        "isexecutorclosure","getgc","getreg",
+        "compareinstances","identifyexecutor",
+        "getgenv","loadstring",
     }
-    cap.total = 0; cap.supported = 0; cap.missing = {}
-    for name, _ in pairs(uncs) do
+    for _, name in ipairs(uncs) do
         cap.total = cap.total + 1
-        local ok, found = pcall(function()
+        local ok = pcall(function()
             local v = _G[name]
             if type(v) ~= "function" then
                 local lsOk, lsFn = pcall(loadstring, "return " .. name)
                 if lsOk then v = lsFn() end
             end
-            return type(v) == "function"
+            return v ~= nil
         end)
-        if ok and found then
-            cap.supported = cap.supported + 1
-            if name == "identifyexecutor" then
-                pcall(function() local r = {_G[name]()}; if type(r[1])=="string" then cap.executorName=r[1] end end)
-            elseif name == "getgenv" then
-                pcall(function() cap.hasGenv = (_G[name]() ~= nil) end)
-            end
-        else
-            table.insert(cap.missing, name)
-        end
+        if ok then cap.supported = cap.supported + 1 else table.insert(cap.missing, name) end
     end
+    pcall(function() local r={_G.identifyexecutor()}; if type(r[1])=="string" then cap.executorName=r[1] end end)
+    pcall(function() cap.hasGenv = (_G.getgenv() ~= nil) end)
     cap.hasVirtualInput = (VirtualInputManager ~= nil)
     cap.missingCount = #cap.missing
     return cap
 end
 MCP_CAPABILITIES = testUncCapabilities()
+end)
 
-local function wsConnect()
+local function wsReconnect()
+    WS_BUFFER = {}
+    if WS then pcall(function() WS:Close() end) end
+    WS = nil; WS_CONNECTED = false
     local connectFn = (typeof(WebSocket)=="table" and WebSocket.connect) or nil
-    if not connectFn then error("No WebSocket support") end
-    local ok,s = pcall(connectFn, WS_URL)
-    if not ok or not s then error("WS connect failed: " .. tostring(s)) end
-    WS=s; WS_CONNECTED=true
+    if not connectFn then return false, "No WebSocket support" end
+    local ok, s = pcall(connectFn, WS_URL)
+    if not ok or not s then return false, tostring(s) end
+    WS = s; WS_CONNECTED = true
     local placeName = ""
     pcall(function()
         local pi = MarketplaceService:GetProductInfo(game.PlaceId)
@@ -164,32 +164,33 @@ local function wsConnect()
         placeId=game.PlaceId, jobId=game.JobId, placeName=placeName,
         capabilities=MCP_CAPABILITIES
     }
-    local reg = HttpService:JSONEncode(regData)
-    print("[MCP] Registering: " .. tostring(placeName) .. " (" .. tostring(game.JobId) .. ")")
-    local sent=pcall(function() WS:Send(reg) end)
-    if not sent then WS_CONNECTED=false; WS=nil; error("WS register failed") end
+    local ok, sent = pcall(function() WS:Send(HttpService:JSONEncode(regData)) end)
+    if not ok then WS = nil; WS_CONNECTED = false; return false, "Register send failed" end
     WS.OnMessage:Connect(function(msg)
         print("[MCP] >> " .. msg)
-        local ok,d=pcall(function() return HttpService:JSONDecode(msg) end)
-        if ok and d and d.type=="task" then
-            if d.workerId and d.workerId ~= WORKER_ID then return end
-            table.insert(WS_BUFFER,d)
+        local ok, d = pcall(function() return HttpService:JSONDecode(msg) end)
+        if ok and d then
+            if d.type == "pong" then lastPong = tick() end
+            if d.type == "task" then
+                if d.workerId and d.workerId ~= WORKER_ID then return end
+                table.insert(WS_BUFFER, d)
+            end
         end
     end)
-    WS.OnClose:Connect(function() WS_CONNECTED=false end)
+    WS.OnClose:Connect(function() WS_CONNECTED = false end)
     return true
 end
+
 local function wsPoll()
     if not WS_CONNECTED or not WS then return nil end
-    if #WS_BUFFER>0 then local m=table.remove(WS_BUFFER,1); return {type=m.tool,id=m.id,args=m.args or {},pid=m.pid} end
+    if #WS_BUFFER > 0 then local m = table.remove(WS_BUFFER,1); return {type=m.tool, id=m.id, args=m.args or {}, pid=m.pid} end
     return nil
 end
-local function wsSend(id,data,err,taskPid)
+
+local function wsSend(id, data, err, taskPid)
     if not WS_CONNECTED or not WS then return false end
     local pid = taskPid or getPid()
-    local payload = HttpService:JSONEncode({type="result",id=id,data=data,error=err,pid=pid})
-    print("[MCP] << " .. payload)
-    return pcall(function() WS:Send(payload) end)
+    return pcall(function() WS:Send(HttpService:JSONEncode({type="result", id=id, data=data, error=err, pid=pid})) end)
 end
 
 local function handleGetMetadata(args)
@@ -724,57 +725,123 @@ end
 
 local function handleRemoteSpy(args)
     local action = args.action or "install"
-    local filter = args.remote_filter or ""
-    if action == "install" then
-        local maxLog = args.max_logs or 200
-        local captured = {}
-        local hooked = 0
-        local services = {ReplicatedStorage, Workspace}
-        for _, sv in ipairs(services) do
-            if sv then
-                local function scan(inst)
-                    if inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction") or inst:IsA("UnreliableRemoteEvent") then
-                        local name = inst.Name
-                        if filter == "" or name:find(filter, 1, true) then
-                            local oldFire = inst.FireServer
-                            local oldInvoke = inst.InvokeServer
-                            local ok4, _ = pcall(hookfunction, inst.FireServer, function(self, ...)
-                                if #captured < maxLog then table.insert(captured, {remote=name, method="FireServer", args={...}, timestamp=tick()}) end
-                                return oldFire(self, ...)
-                            end)
-                            if ok4 then
-                                pcall(hookfunction, inst.InvokeServer, function(self, ...)
-                                    if #captured < maxLog then table.insert(captured, {remote=name, method="InvokeServer", args={...}, timestamp=tick()}) end
-                                    return oldInvoke(self, ...)
-                                end)
-                            end
-                            hooked = hooked + 1
-                        end
-                    end
-                    for _, c in ipairs(inst:GetChildren()) do scan(c) end
+    local filter = args.filter_remote_path or ""
+    local maxLog = args.max_log_entries or args.max_logs or 500
+    local includeBind = args.include_bindables or false
+
+    if action == "install" or action == "install_outgoing" then
+        if MCP_SPY_NAMEHOOK then return {success=true, action="already_installed_outgoing"} end
+        MCP_SPY_LOG = {}
+        local cls = {RemoteEvent="FireServer", RemoteFunction="InvokeServer", UnreliableRemoteEvent="FireServer"}
+        if includeBind then cls.BindableEvent="Fire"; cls.BindableFunction="Invoke" end
+        local ok, orig = pcall(hookmetamethod, game, "__namecall", function(self, ...)
+            local m = getnamecallmethod()
+            if typeof(self)=="Instance" and cls[self.ClassName] and cls[self.ClassName]==m then
+                if #MCP_SPY_LOG < maxLog and (filter=="" or self.Name:find(filter,1,true)) then
+                    table.insert(MCP_SPY_LOG, {remote=self.Name, remotePath=getFullPath(self), method=m, direction="outgoing", args={...}, timestamp=tick()})
                 end
-                scan(sv)
             end
+            return orig(self, ...)
+        end)
+        if not ok then return {success=false, error="Cannot hook __namecall: "..tostring(orig)} end
+        MCP_SPY_NAMEHOOK = orig
+        return {success=true, action="outgoing_installed"}
+    end
+
+    if action == "install_incoming" or action == "install" then
+        MCP_SPY_INCOMING = MCP_SPY_INCOMING or {}; MCP_SPY_INCOMING_CT = 0
+        local function hookEvt(inst)
+            if MCP_SPY_INCOMING[inst] then return end
+            local conns = {}
+            if inst:IsA("RemoteEvent") or inst:IsA("UnreliableRemoteEvent") then
+                local ok, c = pcall(function() return inst.OnClientEvent:Connect(function(...)
+                    if #MCP_SPY_LOG < maxLog and (filter=="" or inst.Name:find(filter,1,true)) then
+                        table.insert(MCP_SPY_LOG, {remote=inst.Name, remotePath=getFullPath(inst), method="OnClientEvent", direction="incoming", args={...}, timestamp=tick()})
+                    end
+                end) end)
+                if ok then table.insert(conns, c) end
+            end
+            if includeBind and inst:IsA("BindableEvent") then
+                local ok, c = pcall(function() return inst.Event:Connect(function(...)
+                    if #MCP_SPY_LOG < maxLog and (filter=="" or inst.Name:find(filter,1,true)) then
+                        table.insert(MCP_SPY_LOG, {remote=inst.Name, remotePath=getFullPath(inst), method="Event", direction="incoming", args={...}, timestamp=tick()})
+                    end
+                end) end)
+                if ok then table.insert(conns, c) end
+            end
+            if inst:IsA("RemoteFunction") then
+                local mt = getrawmetatable(inst)
+                if mt then
+                    local origNewIdx = mt.__newindex
+                    if origNewIdx then
+                        pcall(hookmetamethod, inst, "__newindex", function(self2, k, v)
+                            if k=="OnClientInvoke" and type(v)=="function" then
+                                local wrapped = function(...)
+                                    if #MCP_SPY_LOG < maxLog and (filter=="" or inst.Name:find(filter,1,true)) then
+                                        table.insert(MCP_SPY_LOG, {remote=inst.Name, remotePath=getFullPath(inst), method="OnClientInvoke", direction="incoming", args={...}, timestamp=tick()})
+                                    end
+                                    local r = {v(...)}
+                                    if #r>0 then table.insert(MCP_SPY_LOG, {remote=inst.Name, method="OnClientInvokeResult", direction="incoming", args=r, timestamp=tick()}) end
+                                    return table.unpack(r,1,#r)
+                                end
+                                return origNewIdx(self2, k, wrapped)
+                            end
+                            return origNewIdx(self2, k, v)
+                        end)
+                    end
+                end
+            end
+            if #conns>0 then MCP_SPY_INCOMING[inst]=conns; MCP_SPY_INCOMING_CT=MCP_SPY_INCOMING_CT+1 end
         end
-        return {success=true, action="installed", remotesHooked=hooked, capturedLog=captured}
+        local function scan(inst)
+            pcall(hookEvt, inst)
+            for _, c in ipairs(inst:GetChildren()) do scan(c) end
+        end
+        for _, sv in ipairs({ReplicatedStorage, workspace, Players, ServerScriptService, ServerStorage, StarterGui}) do
+            if sv then pcall(scan, sv) end
+        end
+        if not MCP_SPY_WATCHER then
+            MCP_SPY_WATCHER = game.DescendantAdded:Connect(function(inst)
+                if not MCP_SPY_INCOMING[inst] then pcall(hookEvt, inst) end
+            end)
+        end
+        return {success=true, action="incoming_installed", remotesHooked=MCP_SPY_INCOMING_CT}
     end
+
     if action == "get_log" then
-        return {success=true, action="get_log", entries={}}
+        local max = args.max_results or 500; local entries = {}
+        for i = 1, math.min(#(MCP_SPY_LOG or {}), max) do entries[i] = MCP_SPY_LOG[i] end
+        return {success=true, entries=entries, total=#(MCP_SPY_LOG or {})}
     end
-    if action == "clear" then
-        return {success=true, action="cleared"}
+
+    if action == "clear" then MCP_SPY_LOG = {}; return {success=true} end
+
+    if action == "remove" then
+        if MCP_SPY_NAMEHOOK then pcall(hookmetamethod, game, "__namecall", MCP_SPY_NAMEHOOK); MCP_SPY_NAMEHOOK = nil end
+        if MCP_SPY_WATCHER then pcall(function() MCP_SPY_WATCHER:Disconnect() end); MCP_SPY_WATCHER = nil end
+        if MCP_SPY_INCOMING then
+            for _, conns in pairs(MCP_SPY_INCOMING) do
+                if type(conns)=="table" then for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end end
+            end
+            MCP_SPY_INCOMING = {}
+        end
+        MCP_SPY_INCOMING_CT = 0
+        return {success=true, action="removed"}
     end
-    return {success=false, error="Unknown action"}
+    return {success=false, error="Unknown action: "..tostring(action)}
 end
 
 local function handleTrafficInterceptor(args)
     local action = args.action or "install"
     local path = args.remote_path or ""
-    if path == "" then return {success=false, error="remote_path required"} end
     local inst, err = resolvePath(path)
     if not inst then return {success=false, error=err} end
     if action == "install" then
-        local ok, old = pcall(hookfunction, inst.FireServer, function() end)
+        local ok, orig = pcall(hookmetamethod, inst, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            if method == "FireServer" or method == "InvokeServer" then return nil end
+            return orig(self, ...)
+        end)
         if not ok then return {success=false, error="Cannot hook remote"} end
         return {success=true, action="intercepted", remotePath=path}
     end
@@ -782,8 +849,13 @@ local function handleTrafficInterceptor(args)
         return {success=true, action="released", remotePath=path}
     end
     if action == "block" then
-        pcall(hookfunction, inst.FireServer, function() end)
-        pcall(hookfunction, inst.InvokeServer, function() return nil end)
+        local ok, orig = pcall(hookmetamethod, inst, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            if method == "FireServer" then return nil end
+            if method == "InvokeServer" then return nil end
+            return orig(self, ...)
+        end)
+        if not ok then return {success=false, error="Cannot block remote"} end
         return {success=true, action="blocked", remotePath=path}
     end
     return {success=false, error="Unknown action"}
@@ -795,10 +867,14 @@ local function handleArgSpoofer(args)
     local inst, err = resolvePath(path)
     if not inst then return {success=false, error=err} end
     local spoofArgs = args.spoof_arguments or {}
-    local oldFire = inst.FireServer
-    pcall(hookfunction, inst.FireServer, function(self, ...)
-        return oldFire(self, table.unpack(spoofArgs))
+    local ok, orig = pcall(hookmetamethod, inst, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        if method == "FireServer" then
+            return orig(self, table.unpack(spoofArgs))
+        end
+        return orig(self, ...)
     end)
+    if not ok then return {success=false, error="Cannot hook remote"} end
     return {success=true, remotePath=path, spoofedArgs=spoofArgs}
 end
 
@@ -1400,18 +1476,35 @@ proxyToServer = function(toolName, args)
     return {success=false, error="Feature '"..tostring(toolName).."' is not handled by this executor. The executor's HttpService:PostAsync is blocked and no local handler was registered.", tool=toolName}
 end
 
-print("[MCP] Connecting to " .. WS_URL)
-local ok, err = pcall(wsConnect)
-if not ok then
-    print("[MCP] Failed: " .. tostring(err))
-    return
-end
-print("[MCP] Connected | Worker: " .. WORKER_ID)
-
+print("[MCP] Starting: " .. WS_URL)
+local lastPing = tick()
+local lastPong = tick()
+local PONG_TIMEOUT = 3
 while true do
+    if WS_CONNECTED and WS then
+        if tick() - lastPong >= PONG_TIMEOUT then
+            print("[MCP] No pong for " .. PONG_TIMEOUT .. "s, WebSocket dead")
+            WS = nil; WS_CONNECTED = false
+        end
+    end
+    if not WS_CONNECTED or not WS then
+        print("[MCP] Connecting...")
+        local ok, err = pcall(wsReconnect)
+        if ok then
+            print("[MCP] Connected | Worker: " .. WORKER_ID)
+            lastPong = tick()
+        else
+            print("[MCP] Connect failed: " .. tostring(err) .. " (retry in " .. RECONNECT_DELAY .. "s)")
+            task.wait(RECONNECT_DELAY)
+        end
+    end
+    if WS_CONNECTED and WS and tick() - lastPing >= 1 then
+        lastPing = tick()
+        pcall(function() WS:Send(HttpService:JSONEncode({type="ping"})) end)
+    end
     local tsk = wsPoll()
     if not tsk then
-        task.wait(0.05)
+        task.wait(0.1)
     else
         local handler = HANDLERS[tsk.type]
         local resultData
