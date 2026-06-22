@@ -166,7 +166,9 @@ local function wsReconnect()
     }
     local ok, sent = pcall(function() WS:Send(HttpService:JSONEncode(regData)) end)
     if not ok then WS = nil; WS_CONNECTED = false; return false, "Register send failed" end
+    local savedWS = WS
     WS.OnMessage:Connect(function(msg)
+        if WS ~= savedWS then return end
         print("[MCP] >> " .. msg)
         local ok, d = pcall(function() return HttpService:JSONDecode(msg) end)
         if ok and d then
@@ -177,7 +179,9 @@ local function wsReconnect()
             end
         end
     end)
-    WS.OnClose:Connect(function() WS_CONNECTED = false end)
+    WS.OnClose:Connect(function()
+        if WS == savedWS then WS_CONNECTED = false; WS = nil end
+    end)
     return true
 end
 
