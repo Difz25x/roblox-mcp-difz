@@ -4,6 +4,7 @@ node_modules/
 .cursor/
 .windsurf/
 .env
+.npmrc
 *.bat
 *.log
 # package-lock.json is required for npm ci in CI/CD

@@ -79,7 +79,14 @@ function runServerTool(name, args, proc, sessions) {
         case 'get_roblox_processes': return { success: true, processes: proc.listRobloxProcesses(), count: sessions.activeCount };
         case 'launch_roblox': return proc.launchRoblox(args?.path || null);
         case 'open_game': return proc.openGame(args?.place_id, args || {});
-        case 'capture_roblox_screenshot': return proc.captureRobloxWindow(args?.pid || null);
+        case 'capture_roblox_screenshot': {
+            const ss = proc.performScreenshot(args?.pid ? Number(args.pid) : undefined);
+            if (ss.error)
+                return { success: false, error: ss.error };
+            if (ss.needsDisambiguation)
+                return { success: true, needsDisambiguation: true, windows: ss.windows };
+            return { success: true, image: 'data:image/png;base64,' + ss.imageBase64, pid: args?.pid || null };
+        }
         case 'get_roblox_versions': return getRobloxVersions();
         default: return { success: false, error: `Unknown: ${name}` };
     }

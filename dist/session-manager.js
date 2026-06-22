@@ -30,6 +30,7 @@ class SessionManager {
             firstSeen: existing ? existing.firstSeen : Date.now(),
             lastSeen: Date.now(),
             status: 'active',
+            capabilities: info && info.capabilities,
         });
         return { workerId, isNew };
     }

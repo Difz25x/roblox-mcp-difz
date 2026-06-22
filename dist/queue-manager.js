@@ -47,6 +47,8 @@ class QueueManager extends EventEmitter {
             const task = { id, type, args, timestamp: Date.now() };
             if (opts.workerId)
                 task.targetWorkerId = opts.workerId;
+            if (opts.targetPid)
+                task.targetPid = opts.targetPid;
             this.totalSubmitted++;
             // Safety timeout — if the executor never responds, reject the promise
             const timer = setTimeout(() => {
@@ -71,6 +73,8 @@ class QueueManager extends EventEmitter {
             }
             // No matching poller — queue the task
             this.taskQueue.push(task);
+            this.emit('task', task);
+            return;
         });
     }
     /**

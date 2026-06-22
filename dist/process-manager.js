@@ -8,66 +8,68 @@
  *   listRobloxProcesses()   — scan OS for RobloxPlayerBeta processes
  *   launchRoblox(path)      — spawn RobloxPlayerLauncher.exe
  *   openGame(placeId, opts) — open game via roblox-player protocol with full join URL
- *   captureRobloxWindow(pid) — capture screenshot of a Roblox process window
+ *   performScreenshot(pid)  — capture screenshot of a Roblox process window (anticheat-safe)
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const IS_WIN = os.platform() === 'win32';
+const IS_WIN = process.platform === 'win32';
 const ROBLOX_PROCESS = 'RobloxPlayerBeta';
 const BROWSER_TRACKER_ID = () => `tracker_${Date.now()}`;
+let _procCache = null;
+const PROC_CACHE_TTL = 3000; // 3 seconds
 function listRobloxProcesses() {
+    const now = Date.now();
+    if (_procCache && now - _procCache.time < PROC_CACHE_TTL) {
+        return _procCache.data;
+    }
     const results = [];
     try {
         let output;
         if (IS_WIN) {
-            output = execSync('tasklist /FO CSV /NH /V', { encoding: 'utf-8', timeout: 5000 });
+            // WMIC is significantly faster than tasklist /V
+            output = execSync(`wmic process where "name='${ROBLOX_PROCESS}.exe'" get ProcessId,CommandLine,WorkingSetSize /format:csv 2>nul`, { encoding: 'utf-8', timeout: 3000, windowsHide: true });
         }
         else {
-            output = execSync("ps aux | grep -i roblox || true", { encoding: 'utf-8', timeout: 5000 });
+            output = execSync("ps aux | grep -i roblox || true", { encoding: 'utf-8', timeout: 3000 });
         }
-        const lines = output.split('\n');
+        const lines = output.split('\n').filter(l => l.trim());
         for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed)
-                continue;
-            let pid, name, windowTitle, memStr;
             if (IS_WIN) {
-                const parts = trimmed.match(/"([^"]*)"/g);
-                if (!parts || parts.length < 5)
+                // CSV format: Node,CommandLine,ProcessId,WorkingSetSize
+                const parts = line.split(',');
+                if (parts.length < 4)
                     continue;
-                name = (parts[0] || '').replace(/"/g, '');
-                pid = parseInt((parts[1] || '').replace(/"/g, ''), 10);
-                memStr = (parts[4] || '').replace(/[^0-9,]/g, '').replace(',', '');
-                windowTitle = parts.length > 8 ? parts[8].replace(/"/g, '') : '';
+                const name = ROBLOX_PROCESS;
+                const pid = parseInt(parts[2], 10);
+                const memStr = parts[3] || '0';
+                const cmdLine = (parts[1] || '').toLowerCase();
+                if (!pid || isNaN(pid))
+                    continue;
+                results.push({ pid, name, windowTitle: '', memoryMB: Math.round(parseInt(memStr, 10) / 1048576) || 0 });
             }
             else {
-                const parts = trimmed.split(/\s+/);
+                const parts = line.split(/\s+/);
                 if (parts.length < 11)
                     continue;
-                name = parts[10] || '';
-                pid = parseInt(parts[1], 10);
-                memStr = parts[5] || '0';
-                windowTitle = parts.slice(10).join(' ');
+                const name = parts[10] || '';
+                const pid = parseInt(parts[1], 10);
+                const memStr = parts[5] || '0';
+                const nameLower = name.toLowerCase();
+                if (!nameLower.includes('roblox'))
+                    continue;
+                results.push({ pid, name, windowTitle: parts.slice(10).join(' '), memoryMB: parseInt(memStr, 10) || 0 });
             }
-            const nameLower = name.toLowerCase();
-            if (!nameLower.includes('roblox') && !windowTitle.toLowerCase().includes('roblox'))
-                continue;
-            if (nameLower.includes('launcher'))
-                continue;
-            results.push({
-                pid,
-                name: name || 'RobloxPlayerBeta',
-                windowTitle,
-                memoryMB: parseInt(memStr, 10) || 0,
-            });
         }
     }
     catch (e) {
-        console.error('[PM] listRobloxProcesses error:', e?.message || e);
+        // Silent fail for cache misses — don't spam console
+        if (_procCache)
+            return _procCache.data;
     }
+    _procCache = { data: results, time: Date.now() };
     return results;
 }
 // ================================================================
@@ -186,111 +188,150 @@ function openGame(placeId, opts) {
         return { success: false, error: `Failed to open game: ${err.message}` };
     }
 }
-function captureRobloxWindow(pid) {
-    if (!IS_WIN) {
-        return { success: false, error: 'Screenshot capture is only supported on Windows' };
+function isSupported() {
+    return process.platform === 'win32';
+}
+function enumRobloxWindows() {
+    const ps = `
+Add-Type @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+public class WinEnum {
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder sb, int maxCount);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    public static List<object[]> GetVisibleWindows() {
+        var result = new List<object[]>();
+        EnumWindows((hWnd, _) => {
+            if (!IsWindowVisible(hWnd)) return true;
+            var sb = new StringBuilder(256);
+            GetWindowText(hWnd, sb, 256);
+            string title = sb.ToString();
+            if (string.IsNullOrEmpty(title)) return true;
+            uint pid;
+            GetWindowThreadProcessId(hWnd, out pid);
+            result.Add(new object[] { pid, hWnd.ToString(), title });
+            return true;
+        }, IntPtr.Zero);
+        return result;
     }
+}
+"@
+$robloxPids = @(Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+if ($robloxPids.Count -eq 0) { Write-Output '[]'; exit }
+$allWindows = [WinEnum]::GetVisibleWindows()
+$found = @()
+foreach ($w in $allWindows) {
+    if ($robloxPids -contains [int]$w[0]) {
+        $found += [PSCustomObject]@{ pid=[int]$w[0]; hwnd=$w[1]; title=$w[2] }
+    }
+}
+if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Compress }
+`;
+    const tmpFile = path.join(os.tmpdir(), `roblox_enum_${Date.now()}.ps1`);
     try {
-        const targetPid = pid || (listRobloxProcesses()[0] || {}).pid;
-        if (!targetPid) {
-            return { success: false, error: 'No Roblox process found to capture' };
+        fs.writeFileSync(tmpFile, ps, "utf-8");
+        const raw = execSync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpFile}"`, { encoding: "utf-8", timeout: 15000, windowsHide: true }).trim();
+        if (!raw || raw === "null")
+            return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [parsed];
+    }
+    catch {
+        return [];
+    }
+    finally {
+        try {
+            fs.unlinkSync(tmpFile);
         }
-        const outputPath = path.join(os.tmpdir(), `roblox_ss_${Date.now()}.png`);
-        // PowerShell script to capture a specific window by PID using .NET
-        const psScript = `
+        catch { }
+    }
+}
+function captureWindowPNG(hwnd) {
+    const outFile = path.join(os.tmpdir(), `roblox_ss_${Date.now()}.b64`);
+    const escapedOut = outFile.replace(/\\/g, '\\\\');
+    const ps = `
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-using System.Drawing;
-public class Capture {
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetWindowThreadProcessId(IntPtr hWnd, out int pid);
-    [DllImport("user32.dll")]
-    public static extern IntPtr FindWindow(string c, string t);
-    [DllImport("user32.dll")]
-    public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
-    [DllImport("user32.dll")]
-    public static extern IntPtr WindowFromPoint(long point);
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetDesktopWindow();
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetWindowDC(IntPtr hWnd);
-    [DllImport("user32.dll")]
-    public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, int nFlags);
-    [DllImport("gdi32.dll")]
-    public static extern bool DeleteDC(IntPtr hdc);
-    [DllImport("gdi32.dll")]
-    public static extern bool DeleteObject(IntPtr hObject);
-    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-    public static Bitmap CaptureWindow(IntPtr hWnd) {
-        RECT r; GetWindowRect(hWnd, out r);
-        int w = r.Right - r.Left; int h = r.Bottom - r.Top;
-        if (w <= 0 || h <= 0) return null;
-        Bitmap bmp = new Bitmap(w, h);
-        Graphics gfx = Graphics.FromImage(bmp);
-        IntPtr hdc = gfx.GetHdc();
-        PrintWindow(hWnd, hdc, 0);
-        gfx.ReleaseHdc(hdc);
-        gfx.Dispose();
-        return bmp;
-    }
+public class WinCapture {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hDC, uint nFlags);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }
 "@
-$targetPid = ${targetPid}
-$procs = [System.Diagnostics.Process]::GetProcesses()
-foreach ($p in $procs) {
-    if ($p.Id -eq $targetPid -and $p.MainWindowHandle -ne [IntPtr]::Zero) {
-        $bmp = [Capture]::CaptureWindow($p.MainWindowHandle)
-        if ($bmp) {
-            $bmp.Save("${outputPath}", [System.Drawing.Imaging.ImageFormat]::Png)
-            $bmp.Dispose()
-            Write-Output "CAPTURED:${outputPath}"
-        } else {
-            Write-Output "ERROR:Window capture returned null"
+$hwnd = [IntPtr]::new([long]${hwnd})
+if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
+$rect = New-Object WinCapture+RECT
+[WinCapture]::GetClientRect($hwnd, [ref]$rect) | Out-Null
+$w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
+if ($w -le 0 -or $h -le 0) { Write-Error "Zero size"; exit 1 }
+$bmp = New-Object System.Drawing.Bitmap($w, $h)
+$gfx = [System.Drawing.Graphics]::FromImage($bmp)
+$hdc = $gfx.GetHdc()
+[WinCapture]::PrintWindow($hwnd, $hdc, 2) | Out-Null
+$gfx.ReleaseHdc($hdc); $gfx.Dispose()
+$ms = New-Object System.IO.MemoryStream
+$bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+$bytes = $ms.ToArray(); $ms.Dispose()
+$b64 = [Convert]::ToBase64String($bytes)
+[System.IO.File]::WriteAllText('${escapedOut}', $b64)
+Write-Output 'OK'
+`;
+    const tmpFile = path.join(os.tmpdir(), `roblox_cap_${Date.now()}.ps1`);
+    try {
+        fs.writeFileSync(tmpFile, ps, "utf-8");
+        execSync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpFile}"`, { encoding: "utf-8", timeout: 15000, windowsHide: true });
+        if (!fs.existsSync(outFile))
+            throw new Error("No output");
+        const result = fs.readFileSync(outFile, "utf-8").trim();
+        if (!result)
+            throw new Error("Empty output");
+        return result;
+    }
+    finally {
+        try {
+            fs.unlinkSync(tmpFile);
         }
-        exit
+        catch { }
+        try {
+            fs.unlinkSync(outFile);
+        }
+        catch { }
     }
 }
-Write-Output "ERROR:Process with window not found"
-`;
-        // Write PS script to temp file to avoid shell escaping issues
-        const psFile = path.join(os.tmpdir(), `roblox_capture_${Date.now()}.ps1`);
-        fs.writeFileSync(psFile, psScript, 'utf-8');
-        const result = execSync(`powershell -NoProfile -NonInteractive -File "${psFile}"`, { encoding: 'utf-8', timeout: 10000 });
-        // Clean up temp script
-        try {
-            fs.unlinkSync(psFile);
-        }
-        catch (e) {
-            console.error('[PM] cleanup error:', e?.message || e);
-        }
-        const trimmed = result.trim();
-        if (trimmed.startsWith('CAPTURED:')) {
-            const filePath = trimmed.substring(9);
-            if (fs.existsSync(filePath)) {
-                const base64 = fs.readFileSync(filePath, { encoding: 'base64' });
-                const sizeBytes = base64.length;
-                fs.unlinkSync(filePath);
-                return {
-                    success: true,
-                    pid: targetPid,
-                    image: `data:image/png;base64,${base64}`,
-                    sizeBytes,
-                };
-            }
-            return { success: false, error: 'Screenshot file was not created' };
-        }
-        return { success: false, error: trimmed || 'Unknown capture error' };
+function performScreenshot(pid) {
+    const windows = enumRobloxWindows();
+    if (windows.length === 0) {
+        return { error: "No visible Roblox windows found." };
     }
-    catch (err) {
-        return { success: false, error: `Screenshot failed: ${err.message}` };
+    let targets = windows;
+    if (pid !== undefined) {
+        targets = windows.filter((w) => w.pid === pid);
+        if (targets.length === 0) {
+            return { error: `No Roblox window for PID ${pid}. Available:\n` + windows.map((w) => `  PID ${w.pid} - "${w.title}"`).join("\n") };
+        }
     }
+    if (targets.length > 1 && pid === undefined) {
+        return { needsDisambiguation: true, windows: targets };
+    }
+    const imageBase64 = captureWindowPNG(targets[0].hwnd);
+    return { imageBase64 };
 }
 module.exports = {
     listRobloxProcesses,
     launchRoblox,
     openGame,
     findRobloxPath,
-    captureRobloxWindow,
+    isSupported,
+    enumRobloxWindows,
+    performScreenshot,
 };
