@@ -22,6 +22,7 @@ interface Task {
     args: Record<string, any>;
     timestamp: number;
     targetWorkerId?: string;
+    targetPid?: number;
 }
 
 interface PendingResult {
@@ -40,6 +41,7 @@ interface WaitingPoller {
 interface SubmitTaskOpts {
     timeoutMs?: number;
     workerId?: string;
+    targetPid?: number;
 }
 
 class QueueManager extends EventEmitter {
@@ -78,6 +80,7 @@ class QueueManager extends EventEmitter {
             const id = uuidv4();
             const task: Task = { id, type, args, timestamp: Date.now() };
             if (opts.workerId) task.targetWorkerId = opts.workerId;
+            if (opts.targetPid) task.targetPid = opts.targetPid;
             this.totalSubmitted++;
 
             // Safety timeout — if the executor never responds, reject the promise

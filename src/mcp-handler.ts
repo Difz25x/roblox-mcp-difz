@@ -196,10 +196,14 @@ class McpHandler {
                 };
             }
 
-            // Executor tools — queue for executor, with optional workerId targeting
+            // Executor tools — queue for executor, with optional PID targeting
             const startTime = Date.now();
-            const workerId = (args && args.pid) ? String(args.pid) : undefined;
-            const result = await this.queue.submitTask(name, args || {}, { workerId });
+            const opts: any = {};
+            if (args && args.pid) {
+                const parsedPid = typeof args.pid === 'number' ? args.pid : Number(args.pid);
+                if (!isNaN(parsedPid)) opts.targetPid = parsedPid;
+            }
+            const result = await this.queue.submitTask(name, args || {}, opts);
             const elapsed = Date.now() - startTime;
 
             return {

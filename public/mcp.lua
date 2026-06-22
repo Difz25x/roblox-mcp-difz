@@ -39,6 +39,8 @@ if G.MCP_WORKER_ID then WORKER_ID = G.MCP_WORKER_ID else
     local ok,guid = pcall(function() return HttpService:GenerateGuid(false) end)
     WORKER_ID = ok and guid or (tostring(tick()) .. tostring(math.random(1,999999)))
 end
+local PROCESS_PID = nil; pcall(function() PROCESS_PID = getpid() end)
+local function getPid() return PROCESS_PID end
 local function jsonDecode(str)
     if type(str) ~= "string" or str == "" then return nil end
     local ok,v = pcall(function() return HttpService:JSONDecode(str) end)
@@ -99,30 +101,39 @@ local function wsConnect()
     local ok,s = pcall(connectFn, WS_URL)
     if not ok or not s then error("WS connect failed: " .. tostring(s)) end
     WS=s; WS_CONNECTED=true
-    local reg = HttpService:JSONEncode({
-        type="register", worker_id=WORKER_ID,
-        username=LocalPlayer and LocalPlayer.Name or "Unknown",
+    local placeName = ""
+    pcall(function()
+        local pi = MarketplaceService:GetProductInfo(game.PlaceId)
+        if pi and pi.Name then placeName = pi.Name end
+    end)
+    local regData = {type="register", worker_id=WORKER_ID, username=LocalPlayer and LocalPlayer.Name or "Unknown",
         userId=LocalPlayer and LocalPlayer.UserId or 0,
-        placeId=game.PlaceId, jobId=game.JobId
-    })
+        placeId=game.PlaceId, jobId=game.JobId, placeName=placeName
+    }
+    local reg = HttpService:JSONEncode(regData)
+    print("[MCP] Registering: " .. tostring(placeName) .. " (" .. tostring(game.JobId) .. ")")
     local sent=pcall(function() WS:Send(reg) end)
     if not sent then WS_CONNECTED=false; WS=nil; error("WS register failed") end
     WS.OnMessage:Connect(function(msg)
         print("[MCP] >> " .. msg)
         local ok,d=pcall(function() return HttpService:JSONDecode(msg) end)
-        if ok and d and d.type=="task" then table.insert(WS_BUFFER,d) end
+        if ok and d and d.type=="task" then
+            if d.workerId and d.workerId ~= WORKER_ID then return end
+            table.insert(WS_BUFFER,d)
+        end
     end)
     WS.OnClose:Connect(function() WS_CONNECTED=false end)
     return true
 end
 local function wsPoll()
     if not WS_CONNECTED or not WS then return nil end
-    if #WS_BUFFER>0 then local m=table.remove(WS_BUFFER,1); return {type=m.tool,id=m.id,args=m.args or {}} end
+    if #WS_BUFFER>0 then local m=table.remove(WS_BUFFER,1); return {type=m.tool,id=m.id,args=m.args or {},pid=m.pid} end
     return nil
 end
-local function wsSend(id,data,err)
+local function wsSend(id,data,err,taskPid)
     if not WS_CONNECTED or not WS then return false end
-    local payload = HttpService:JSONEncode({type="result",id=id,data=data,error=err})
+    local pid = taskPid or getPid()
+    local payload = HttpService:JSONEncode({type="result",id=id,data=data,error=err,pid=pid})
     print("[MCP] << " .. payload)
     return pcall(function() WS:Send(payload) end)
 end
@@ -396,6 +407,6 @@ while true do
             local ok2, res = pcall(handler, tsk.args or {})
             if ok2 then resultData = res else resultData = {success=false,error="Handler: "..tostring(res)} end
         end
-        pcall(wsSend, tsk.id, resultData, nil)
+        pcall(wsSend, tsk.id, resultData, nil, tsk.pid)
     end
 end
