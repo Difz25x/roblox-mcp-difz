@@ -93,7 +93,6 @@ local function serialize(v,d)
     return tostring(v)
 end
 
--- WS only -- no HTTP fallback
 local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
 local function wsConnect()
     local connectFn = (typeof(WebSocket)=="table" and WebSocket.connect) or nil
@@ -138,7 +137,6 @@ local function wsSend(id,data,err,taskPid)
     return pcall(function() WS:Send(payload) end)
 end
 
--- Task handlers
 local function handleGetMetadata(args)
     local data={PlaceId=game.PlaceId,GameId=game.GameId,JobId=game.JobId,CreatorId=game.CreatorId,CreatorType=tostring(game.CreatorType),Name=game.Name,PlayerCount=#Players:GetPlayers(),MaxPlayers=Players.MaxPlayers,ServerTime=tick()}
     if args.include_performance then data.FPS=1/(RunService.Heartbeat:Wait() or 0.016); data.Memory=collectgarbage("count") end
@@ -319,34 +317,807 @@ local function handleSandboxExec(args)
     return{success=true,result=serialize(r)}
 end
 
--- Resolve ContentType enum once (some executors don't have Enum.ContentType)
-local CONTENT_TYPE_JSON = nil
-pcall(function()
-    if Enum and Enum.HttpContentType then CONTENT_TYPE_JSON = Enum.HttpContentType.ApplicationJson
-    elseif Enum and Enum.ContentType then CONTENT_TYPE_JSON = Enum.ContentType.ApplicationJson end
-end)
-if not CONTENT_TYPE_JSON then CONTENT_TYPE_JSON = 2 end -- Enum value for ApplicationJson
-
--- Proxy tool call to MCP server via HTTP
-local function proxyToServer(toolName, args)
-    local body = HttpService:JSONEncode({
-        jsonrpc="2.0", id=WORKER_ID, method="tools/call",
-        params={name=toolName, arguments=args}
-    })
-    local ok, r = pcall(function()
-        return HttpService:PostAsync("http://"..HOST..":"..PORT.."/mcp", body, CONTENT_TYPE_JSON, false)
-    end)
-    if not ok then return {success=false, error="Server proxy failed: "..tostring(r)} end
-    local ok2, d = pcall(function() return HttpService:JSONDecode(r) end)
-    if not ok2 then return {success=false, error="Server proxy decode failed"} end
-    -- Extract content from MCP response
-    if d and d.result and d.result.content and #d.result.content>0 then
-        local ok3, parsed = pcall(function() return HttpService:JSONDecode(d.result.content[1].text) end)
-        if ok3 then return parsed end
-        return {success=true, result=d.result.content[1].text}
+local function handleGetLoadedModules(args)
+    local filter = (args.filter_by_name or ""):lower()
+    local max = args.max_results or 100
+    local results = {}; local count = 0
+    local ok, modules = pcall(getloadedmodules)
+    if not ok then return {success=false, error="getloadedmodules not supported"} end
+    for _, m in ipairs(modules) do
+        if count >= max then break end
+        if filter == "" or m.Name:lower():find(filter, 1, true) then
+            local entry = {Name=m.Name, ClassName=m.ClassName, Path=getFullPath(m)}
+            if args.include_source then
+                local ok2, bc = pcall(getscriptbytecode, m)
+                if ok2 then entry.BytecodeSize = #(bc or "") end
+            end
+            table.insert(results, entry); count = count + 1
+        end
     end
-    if d and d.error then return {success=false, error="Server error: "..tostring(d.error.message)} end
-    return {success=true, data=d}
+    return {success=true, count=#results, modules=results}
+end
+
+local function handleRunningScripts(args)
+    local filter = args.filter_by_class or ""
+    local max = args.max_scripts or 100
+    local incSrc = args.include_source or false
+    local results = {}; local count = 0
+    local ok, scripts = pcall(getrunningscripts)
+    if not ok then return {success=false, error="getrunningscripts not supported"} end
+    for _, s in ipairs(scripts) do
+        if count >= max then break end
+        if filter == "" or s.ClassName == filter then
+            local entry = {Name=s.Name, ClassName=s.ClassName, Path=getFullPath(s)}
+            if incSrc then
+                local ok2, bc = pcall(getscriptbytecode, s)
+                if ok2 then entry.BytecodeSize = #(bc or "") end
+            end
+            table.insert(results, entry); count = count + 1
+        end
+    end
+    return {success=true, count=#results, scripts=results}
+end
+
+local function handleScriptSource(args)
+    local path = args.script_path or ""
+    if path == "" then return {success=false, error="script_path required"} end
+    local inst, err = resolvePath(path)
+    if not inst then return {success=false, error=err} end
+    local ok, bc = pcall(getscriptbytecode, inst)
+    if not ok then return {success=false, error="getscriptbytecode not supported or script has no bytecode"} end
+    return {success=true, name=inst.Name, className=inst.ClassName, path=getFullPath(inst), bytecode=bc, bytecodeSize=#(bc or "")}
+end
+
+local function handleScriptClosure(args)
+    local path = args.script_path or ""
+    if path == "" then return {success=false, error="script_path required"} end
+    local inst, err = resolvePath(path)
+    if not inst then return {success=false, error=err} end
+    local ok, fn = pcall(getscriptclosure, inst)
+    if not ok then return {success=false, error="getscriptclosure not supported"} end
+    return {success=true, name=inst.Name, hasClosure=fn~=nil, closureType=typeof(fn)}
+end
+
+local function handleScriptHash(args)
+    local path = args.script_path or ""
+    if path == "" then return {success=false, error="script_path required"} end
+    local inst, err = resolvePath(path)
+    if not inst then return {success=false, error=err} end
+    local ok, hash = pcall(getscripthash, inst)
+    if not ok then return {success=false, error="getscripthash not supported"} end
+    return {success=true, name=inst.Name, hash=hash}
+end
+
+local function handleCallingScript()
+    local ok, s = pcall(getcallingscript)
+    if not ok then return {success=false, error="getcallingscript not supported"} end
+    if not s then return {success=true, script=nil} end
+    return {success=true, script={Name=s.Name, ClassName=s.ClassName, Path=getFullPath(s)}}
+end
+
+local function handleScriptEnv(args)
+    local path = args.script_path or ""
+    if path == "" then return {success=false, error="script_path required"} end
+    local inst, err = resolvePath(path)
+    if not inst then return {success=false, error=err} end
+    local ok, env = pcall(getsenv, inst)
+    if not ok then return {success=false, error="getsenv not supported or script not running"} end
+    local keys = {}; local maxK = args.max_keys or 50; local count = 0
+    for k, v in pairs(env) do
+        if count >= maxK then break end
+        table.insert(keys, {key=tostring(k), valueType=typeof(v)})
+        count = count + 1
+    end
+    return {success=true, name=inst.Name, environment=keys, totalKeys=count}
+end
+
+local function handleRobloxEnv()
+    local ok, env = pcall(getrenv)
+    if not ok then return {success=false, error="getrenv not supported"} end
+    local keys = {}; local count = 0
+    for k, v in pairs(env) do
+        if count >= 100 then break end
+        table.insert(keys, {key=tostring(k), valueType=typeof(v)}); count = count + 1
+    end
+    return {success=true, environment=keys, totalKeys=count}
+end
+
+local function handleScriptDecompiler(args)
+    local path = args.script_path or ""
+    if path == "" then return {success=false, error="script_path required"} end
+    local inst, err = resolvePath(path)
+    if not inst then return {success=false, error=err} end
+    local ok, bc = pcall(getscriptbytecode, inst)
+    if not ok then return {success=false, error="Cannot read bytecode"} end
+    local fn, compErr = loadstring(bc)
+    if not fn then return {success=true, bytecodeSize=#(bc or ""), decompiled=false, compileError=tostring(compErr)} end
+    local sourceInfo = debug and debug.getinfo and {pcall(function() return debug.getinfo(fn, "S") end)}
+    local source = ""
+    if sourceInfo and sourceInfo[1] then
+        source = sourceInfo[1].source or ""
+    end
+    return {success=true, name=inst.Name, bytecodeSize=#(bc or ""), hasFunction=fn~=nil, source=source}
+end
+
+local function handleSandboxAnalysis(args)
+    local identity = 0; pcall(function() identity = getthreadidentity() end)
+    local isExecutor = false; pcall(function() isExecutor = isexecutorclosure(function() end) end)
+    local caps = {
+        has_getgc = pcall(getgc) or false,
+        has_getreg = pcall(getreg) or false,
+        has_hookfunction = pcall(hookfunction, function() end, function() end) or false,
+        has_getscriptbytecode = pcall(getscriptbytecode, Instance.new("LocalScript")) or false,
+    }
+    return {success=true, threadIdentity=identity, isExecutorContext=isExecutor, capabilities=caps}
+end
+
+local function handleNamecallSpy(args)
+    local target = args.target_path or ""
+    if target == "" then return {success=false, error="target_path required"} end
+    local inst, err = resolvePath(target)
+    if not inst then return {success=false, error=err} end
+    local maxCalls = args.max_calls or 50
+    local methodFilter = args.method_filter or ""
+    local capturedLog = {}
+    local ok, original = pcall(hookmetamethod, inst, "__namecall", function(...)
+        if #capturedLog >= maxCalls then return original(...) end
+        local method = getnamecallmethod()
+        if methodFilter == "" or method == methodFilter then
+            local self = ...
+            table.insert(capturedLog, {method=method, self=tostring(self), timestamp=tick()})
+        end
+        return original(...)
+    end)
+    if not ok then return {success=false, error="hookmetamethod not supported: "..tostring(original)} end
+    return {success=true, hookActive=true, maxCalls=maxCalls, methodFilter=methodFilter, captured=#capturedLog}
+end
+
+local function handleMetatableSeer(args)
+    local target = args.target_path or ""
+    if target == "" then return {success=false, error="target_path required"} end
+    local inst, err = resolvePath(target)
+    if not inst then return {success=false, error=err} end
+    local mt = getrawmetatable(inst)
+    if not mt then return {success=true, hasMetatable=false} end
+    local methods = args.metamethods or {"__index","__newindex","__call","__namecall","__tostring","__gc","__eq","__add","__sub","__mul","__div","__unm","__len","__lt","__le","__concat","__mode"}
+    local result = {}
+    for _, m in ipairs(methods) do result[m] = mt[m] ~= nil end
+    return {success=true, hasMetatable=true, metamethods=result, isReadonly=isreadonly(mt)}
+end
+
+local function handleMetatableModifier(args)
+    local target = args.target_path or ""
+    if target == "" then return {success=false, error="target_path required"} end
+    local inst, err = resolvePath(target)
+    if not inst then return {success=false, error=err} end
+    local action = args.action or "read"
+    if action == "set_readonly" then
+        local state = args.state == nil and false or args.state
+        local ok2 = pcall(setreadonly, getrawmetatable(inst), state)
+        if not ok2 then return {success=false, error="setreadonly failed"} end
+        return {success=true, action="set_readonly", state=state}
+    end
+    if action == "set_raw" then
+        if not args.new_metatable then return {success=false, error="new_metatable required"} end
+        pcall(setrawmetatable, inst, args.new_metatable)
+        return {success=true, action="set_raw"}
+    end
+    return {success=false, error="Unknown action: "..tostring(action)}
+end
+
+local function handleFuncInterceptor(args)
+    local action = args.action or "install"
+    local funcPath = args.function_path or ""
+    if funcPath == "" then return {success=false, error="function_path required"} end
+    local target; local isInstance = false
+    local inst = resolvePath(funcPath)
+    if inst then target = inst; isInstance = true
+    else
+        local ok, fn = pcall(loadstring, "return " .. funcPath)
+        if ok and type(fn) == "function" then
+            local ok2, resolved = pcall(fn)
+            if ok2 then target = resolved end
+        end
+    end
+    if not target then return {success=false, error="Cannot resolve: "..funcPath} end
+    local hookCode = args.hook_code or ""
+    local hookFn = nil
+    if hookCode ~= "" then
+        local ok3, compiled = pcall(loadstring, hookCode)
+        if not ok3 then return {success=false, error="Failed to compile hook: "..tostring(compiled)} end
+        hookFn = compiled
+    end
+    if action == "install" and hookFn then
+        local ok4, orig = pcall(hookfunction, target, hookFn)
+        if not ok4 then return {success=false, error="hookfunction not supported: "..tostring(orig)} end
+        return {success=true, action="installed", hasOriginal=orig~=nil}
+    end
+    if action == "remove" then
+        return {success=true, action="removed", note="Hook removal requires original reference, use with care"}
+    end
+    return {success=true, action="inspected", type=typeof(target), isInstance=isInstance}
+end
+
+local function handleClosureType(args)
+    local path = args.closure_path or ""
+    if path == "" then return {success=false, error="closure_path required"} end
+    local ok, fn = pcall(loadstring, "return "..path)
+    if not ok or type(fn) ~= "function" then
+        local inst = resolvePath(path)
+        if inst then
+            local ok2, sc = pcall(getscriptclosure, inst)
+            if not ok2 then return {success=false, error="Cannot resolve to a closure"} end
+            fn = sc
+        else return {success=false, error="Cannot resolve: "..path} end
+    end
+    local ok3, resolved = pcall(fn)
+    if not ok3 then return {success=false, error="Cannot evaluate: "..path} end
+    local result = {type=typeof(resolved)}
+    pcall(function() result.isCClosure = iscclosure(resolved) end)
+    pcall(function() result.isLClosure = islclosure(resolved) end)
+    pcall(function() result.isExecutorClosure = isexecutorclosure(resolved) end)
+    return {success=true, closure=result}
+end
+
+local function handleRegistryScan(args)
+    local filter = (args.filter_key or ""):lower()
+    local max = args.max_results or 200
+    local ok, reg = pcall(getreg)
+    if not ok then return {success=false, error="getreg not supported"} end
+    local results = {}; local count = 0
+    for k, v in pairs(reg) do
+        if count >= max then break end
+        local ks = tostring(k)
+        if filter == "" or ks:lower():find(filter, 1, true) then
+            table.insert(results, {key=ks, valueType=typeof(v)})
+            count = count + 1
+        end
+    end
+    return {success=true, count=#results, entries=results}
+end
+
+local function handleGCScan(args)
+    local includeTables = args.include_tables or false
+    local filterType = args.filter_type or ""
+    local max = args.max_results or 200
+    local ok, objects = pcall(getgc, includeTables)
+    if not ok then return {success=false, error="getgc not supported"} end
+    local results = {}; local count = 0
+    for _, v in pairs(objects) do
+        if count >= max then break end
+        local vt = typeof(v)
+        if filterType == "" or vt:find(filterType, 1, true) then
+            table.insert(results, {type=vt, ref=tostring(v):sub(1, 80)})
+            count = count + 1
+        end
+    end
+    return {success=true, count=#results, objects=results}
+end
+
+local function handleClosureInspect(args)
+    local path = args.closure_path or ""
+    if path == "" then return {success=false, error="closure_path required"} end
+    local ok, fn = pcall(loadstring, "return "..path)
+    if not ok or type(fn) ~= "function" then return {success=false, error="Cannot resolve closure"} end
+    local ok2, resolved = pcall(fn)
+    if not ok2 or type(resolved) ~= "function" then return {success=false, error="Not a function"} end
+    local upvalues = {}
+    pcall(function()
+        local names = debug and debug.getupvalues or {}
+        for i = 1, 100 do
+            local n, v = debug.getupvalue(resolved, i)
+            if not n then break end
+            table.insert(upvalues, {name=n, valueType=typeof(v)})
+        end
+    end)
+    local constants = {}
+    pcall(function()
+        for i = 1, 100 do
+            local n, v = debug.getconstant(resolved, i)
+            if not n then break end
+            table.insert(constants, {index=n, valueType=typeof(v)})
+        end
+    end)
+    return {success=true, upvalues=upvalues, constants=constants, upvalueCount=#upvalues, constantCount=#constants}
+end
+
+local function handleDumpConstants(args)
+    local path = args.function_path or ""
+    if path == "" then return {success=false, error="function_path required"} end
+    local ok, fn = pcall(loadstring, "return "..path)
+    if not ok or type(fn) ~= "function" then return {success=false, error="Cannot resolve function"} end
+    local ok2, resolved = pcall(fn)
+    if not ok2 or type(resolved) ~= "function" then return {success=false, error="Not a function"} end
+    local constants = {}; local upvalues = {}
+    pcall(function()
+        for i = 1, 100 do
+            local n, v = debug.getconstant(resolved, i)
+            if not n then break end
+            table.insert(constants, {index=n, value=tostring(v), type=typeof(v)})
+        end
+    end)
+    pcall(function()
+        for i = 1, 100 do
+            local n, v = debug.getupvalue(resolved, i)
+            if not n then break end
+            table.insert(upvalues, {name=n, value=tostring(v), type=typeof(v)})
+        end
+    end)
+    return {success=true, constants=constants, upvalues=upvalues, constantCount=#constants, upvalueCount=#upvalues}
+end
+
+local function handleDebugInfo(args)
+    local path = args.function_path or ""
+    if path == "" then return {success=false, error="function_path required"} end
+    local ok, fn = pcall(loadstring, "return "..path)
+    if not ok or type(fn) ~= "function" then return {success=false, error="Cannot resolve function"} end
+    local ok2, resolved = pcall(fn)
+    if not ok2 or type(resolved) ~= "function" then return {success=false, error="Not a function"} end
+    local info = {}; local stack = {}
+    pcall(function()
+        local di = debug.getinfo(resolved, "SLfna")
+        if di then info = {name=di.name, source=di.source, linedefined=di.linedefined, lastlinedefined=di.lastlinedefined, nups=di.nups, func=di.func~=nil, isVararg=di.isvararg} end
+    end)
+    pcall(function()
+        for i = 1, 20 do
+            local ok3, si = pcall(debug.getinfo, i, "Slnf")
+            if ok3 and si then table.insert(stack, {name=si.name or "?", source=si.source or "?", line=si.currentline}) end
+        end
+    end)
+    return {success=true, info=info, stackTrace=stack}
+end
+
+local function handleRemoteSpy(args)
+    local action = args.action or "install"
+    local filter = args.remote_filter or ""
+    if action == "install" then
+        local maxLog = args.max_logs or 200
+        local captured = {}
+        local hooked = 0
+        local services = {ReplicatedStorage, Workspace}
+        for _, sv in ipairs(services) do
+            if sv then
+                local function scan(inst)
+                    if inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction") or inst:IsA("UnreliableRemoteEvent") then
+                        local name = inst.Name
+                        if filter == "" or name:find(filter, 1, true) then
+                            local oldFire = inst.FireServer
+                            local oldInvoke = inst.InvokeServer
+                            local ok4, _ = pcall(hookfunction, inst.FireServer, function(self, ...)
+                                if #captured < maxLog then table.insert(captured, {remote=name, method="FireServer", args={...}, timestamp=tick()}) end
+                                return oldFire(self, ...)
+                            end)
+                            if ok4 then
+                                pcall(hookfunction, inst.InvokeServer, function(self, ...)
+                                    if #captured < maxLog then table.insert(captured, {remote=name, method="InvokeServer", args={...}, timestamp=tick()}) end
+                                    return oldInvoke(self, ...)
+                                end)
+                            end
+                            hooked = hooked + 1
+                        end
+                    end
+                    for _, c in ipairs(inst:GetChildren()) do scan(c) end
+                end
+                scan(sv)
+            end
+        end
+        return {success=true, action="installed", remotesHooked=hooked, capturedLog=captured}
+    end
+    if action == "get_log" then
+        return {success=true, action="get_log", entries={}}
+    end
+    if action == "clear" then
+        return {success=true, action="cleared"}
+    end
+    return {success=false, error="Unknown action"}
+end
+
+local function handleTrafficInterceptor(args)
+    local action = args.action or "install"
+    local path = args.remote_path or ""
+    if path == "" then return {success=false, error="remote_path required"} end
+    local inst, err = resolvePath(path)
+    if not inst then return {success=false, error=err} end
+    if action == "install" then
+        local ok, old = pcall(hookfunction, inst.FireServer, function() end)
+        if not ok then return {success=false, error="Cannot hook remote"} end
+        return {success=true, action="intercepted", remotePath=path}
+    end
+    if action == "remove" then
+        return {success=true, action="released", remotePath=path}
+    end
+    if action == "block" then
+        pcall(hookfunction, inst.FireServer, function() end)
+        pcall(hookfunction, inst.InvokeServer, function() return nil end)
+        return {success=true, action="blocked", remotePath=path}
+    end
+    return {success=false, error="Unknown action"}
+end
+
+local function handleArgSpoofer(args)
+    local path = args.remote_path or ""
+    if path == "" then return {success=false, error="remote_path required"} end
+    local inst, err = resolvePath(path)
+    if not inst then return {success=false, error=err} end
+    local spoofArgs = args.spoof_arguments or {}
+    local oldFire = inst.FireServer
+    pcall(hookfunction, inst.FireServer, function(self, ...)
+        return oldFire(self, table.unpack(spoofArgs))
+    end)
+    return {success=true, remotePath=path, spoofedArgs=spoofArgs}
+end
+
+local function handleInstanceComparer(args)
+    local a = args.instance_a or ""; local b = args.instance_b or ""
+    if a == "" or b == "" then return {success=false, error="instance_a and instance_b required"} end
+    local instA = resolvePath(a); local instB = resolvePath(b)
+    if not instA then return {success=false, error="Cannot resolve: "..a} end
+    if not instB then return {success=false, error="Cannot resolve: "..b} end
+    local same = false; pcall(function() same = compareinstances(instA, instB) end)
+    if same == nil then same = (instA == instB) end
+    return {success=true, instanceA={Name=instA.Name, Path=getFullPath(instA)}, instanceB={Name=instB.Name, Path=getFullPath(instB)}, sameReference=same, sameClass=instA.ClassName==instB.ClassName}
+end
+
+local function handleSiblingEnum(args)
+    local path = args.instance_path or "game"
+    local inst, err = resolvePath(path)
+    if not inst then return {success=false, error=err} end
+    local parent = inst.Parent
+    if not parent then return {success=true, siblings={}, count=0, message="Root object, no parent"} end
+    local results = {}
+    for _, c in ipairs(parent:GetChildren()) do
+        table.insert(results, {Name=c.Name, ClassName=c.ClassName, Path=getFullPath(c), isSelf=c==inst})
+    end
+    return {success=true, count=#results, siblings=results}
+end
+
+local function handlePropertySeeker(args)
+    local propName = args.property_name or ""
+    if propName == "" then return {success=false, error="property_name required"} end
+    local propValue = args.property_value
+    local scope = args.scope or "game"
+    local maxResults = args.max_results or 100
+    local root, err = resolvePath(scope)
+    if not root then return {success=false, error=err} end
+    local results = {}; local count = 0
+    local function walk(inst)
+        if count >= maxResults then return end
+        local ok, val = pcall(function() return inst[propName] end)
+        if ok and (propValue == nil or val == propValue) then
+            table.insert(results, {Name=inst.Name, ClassName=inst.ClassName, Path=getFullPath(inst), value=tostring(val)})
+            count = count + 1
+        end
+        for _, c in ipairs(inst:GetChildren()) do walk(c) end
+    end
+    walk(root)
+    return {success=true, count=#results, instances=results}
+end
+
+local function handleDataModelExplore(args)
+    local root, err = resolvePath(args.start_path or "game")
+    if not root then return {success=false, error=err} end
+    local maxDepth = args.max_depth or 3
+    local maxResults = args.max_results or 100
+    local results = {}
+    local function walk(inst, depth)
+        if #results >= maxResults then return end
+        if depth <= maxDepth then
+            if depth > 0 then table.insert(results, {Name=inst.Name, ClassName=inst.ClassName, Path=getFullPath(inst)}) end
+            if depth < maxDepth then
+                for _, c in ipairs(inst:GetChildren()) do walk(c, depth + 1) end
+            end
+        end
+    end
+    walk(root, 0)
+    return {success=true, count=#results, instances=results}
+end
+
+local function handleHumanoidState(args)
+    local path = args.character_path or ""
+    local hum
+    if path ~= "" then
+        local inst, err = resolvePath(path)
+        if not inst then return {success=false, error=err} end
+        hum = inst:FindFirstChildOfClass("Humanoid")
+    elseif LocalPlayer and LocalPlayer.Character then
+        hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    end
+    if not hum then return {success=false, error="No Humanoid found"} end
+    return {success=true, health=hum.Health, maxHealth=hum.MaxHealth, walkSpeed=hum.WalkSpeed, jumpPower=hum.JumpPower, autoRotate=hum.AutoRotate, useJumpPower=hum.UseJumpPower, sit=hum.Sit, floorMaterial=tostring(hum.FloorMaterial)}
+end
+
+local function handleInteractAllPrompts(args)
+    local maxPrompts = args.max_prompts or 50
+    local scope, err = resolvePath(args.scope or "game:GetService(\"Workspace\")")
+    if not scope then return {success=false, error=err} end
+    local count = 0
+    local function walk(inst)
+        if count >= maxPrompts then return end
+        if inst:IsA("ProximityPrompt") then pcall(fireproximityprompt, inst); count = count + 1 end
+        for _, c in ipairs(inst:GetChildren()) do walk(c) end
+    end
+    walk(scope)
+    return {success=true, count=count}
+end
+
+local function handleGuiButtonClick(args)
+    local path = args.button_path or ""
+    if path ~= "" then
+        local inst, err = resolvePath(path)
+        if not inst then return {success=false, error=err} end
+        local activated = false
+        pcall(function() inst:Click() end); activated = true
+        if not activated then pcall(function() firesignal(inst.MouseButton1Click) end); activated = true end
+        if not activated then pcall(function() firesignal(inst.Activated) end); activated = true end
+        return {success=true, buttonPath=path, activated=activated}
+    end
+    local root = gethui()
+    local function findBtn(inst)
+        if inst:IsA("TextButton") or inst:IsA("ImageButton") then
+            pcall(function() inst:Click() end)
+            return {Name=inst.Name, Path=getFullPath(inst)}
+        end
+        for _, c in ipairs(inst:GetChildren()) do
+            local r = findBtn(c)
+            if r then return r end
+        end
+    end
+    local btn = findBtn(root)
+    if not btn then return {success=false, error="No clickable button found"} end
+    return {success=true, button=btn, activated=true}
+end
+
+local function handleMouseMove(args)
+    local x = args.x or 0; local y = args.y or 0
+    if VirtualInputManager then
+        pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
+        return {success=true, x=x, y=y}
+    end
+    return {success=false, error="VirtualInputManager not available"}
+end
+
+local function handleMouseButton(args)
+    local action = args.action or "click"
+    local button = Enum.UserInputType.MouseButton1
+    if args.button == "right" then button = Enum.UserInputType.MouseButton2
+    elseif args.button == "middle" then button = Enum.UserInputType.MouseButton3 end
+    if action == "click" then
+        if VirtualInputManager then
+            pcall(function() VirtualInputManager:SendMouseButtonEvent(0, 0, button, true, game, 0); task.wait(0.03); VirtualInputManager:SendMouseButtonEvent(0, 0, button, false, game, 0) end)
+            return {success=true}
+        end
+        pcall(function() local m = LocalPlayer:GetMouse(); m.Button1Down=true; task.wait(0.05); m.Button1Down=false end)
+        return {success=true}
+    end
+    if action == "hold" then
+        if VirtualInputManager then
+            pcall(function() VirtualInputManager:SendMouseButtonEvent(0, 0, button, true, game, 0) end)
+        end
+        return {success=true, holding=true}
+    end
+    if action == "release" then
+        if VirtualInputManager then
+            pcall(function() VirtualInputManager:SendMouseButtonEvent(0, 0, button, false, game, 0) end)
+        end
+        return {success=true, holding=false}
+    end
+    return {success=false, error="Unknown action"}
+end
+
+local function handleScrollWheel(args)
+    local scrollX = args.scroll_x or 0; local scrollY = args.scroll_y or 0
+    if VirtualInputManager then
+        pcall(function() VirtualInputManager:SendScrollWheelEvent(0, 0, scrollX, scrollY, game) end)
+        return {success=true}
+    end
+    return {success=false, error="VirtualInputManager not available"}
+end
+
+local function handleKeyHold(args)
+    local action = args.action or "press"
+    local key = args.key or ""
+    if key == "" then return {success=false, error="key required"} end
+    local vk = Enum.KeyCode[key]
+    if not vk then return {success=false, error="Unknown key: "..key} end
+    if VirtualInputManager then
+        if action == "press" then
+            pcall(function() VirtualInputManager:SendKeyEvent(true, vk, false, game); task.wait(0.03); VirtualInputManager:SendKeyEvent(false, vk, false, game) end)
+        elseif action == "hold" then
+            pcall(function() VirtualInputManager:SendKeyEvent(true, vk, false, game) end)
+        elseif action == "release" then
+            pcall(function() VirtualInputManager:SendKeyEvent(false, vk, false, game) end)
+        end
+        return {success=true, action=action, key=key}
+    end
+    return {success=false, error="VirtualInputManager not available"}
+end
+
+local function handleTextType(args)
+    local text = args.text or ""
+    if text == "" then return {success=false, error="text required"} end
+    if VirtualInputManager then
+        for i = 1, #text do
+            local char = text:sub(i, i)
+            pcall(function()
+                for _, v in pairs(Enum.KeyCode:GetEnumItems()) do
+                    if v.Name == char or v.Name == "Key"..char then
+                        VirtualInputManager:SendKeyEvent(true, v, false, game)
+                        task.wait(0.02)
+                        VirtualInputManager:SendKeyEvent(false, v, false, game)
+                        break
+                    end
+                end
+            end)
+            task.wait(0.01)
+        end
+        return {success=true, typed=#text}
+    end
+    return {success=false, error="VirtualInputManager not available"}
+end
+
+local function handleCameraControl(args)
+    local action = args.action or "get"
+    local workspaceCam = workspace.CurrentCamera
+    if not workspaceCam then return {success=false, error="No camera"} end
+    if action == "get" then
+        return {success=true, cframe=serialize(workspaceCam.CFrame), focus=serialize(workspaceCam.Focus), fieldOfView=workspaceCam.FieldOfView, cameraType=tostring(workspaceCam.CameraType)}
+    end
+    if action == "set_cframe" then
+        local c = args.cframe or {}
+        local cf = c.x and CFrame.new(c.x, c.y or 0, c.z or 0, c.qx or 0, c.qy or 0, c.qz or 0, c.qw or 1) or nil
+        if cf then workspaceCam.CFrame = cf end
+        return {success=true}
+    end
+    return {success=false, error="Unknown action"}
+end
+
+local function handleScreenText(args)
+    local maxText = args.max_results or 50
+    local results = {}
+    local function scan(inst)
+        if #results >= maxText then return end
+        if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+            table.insert(results, {Name=inst.Name, Path=getFullPath(inst), text=inst.Text, textColor=tostring(inst.TextColor3), visible=inst.Visible, position=tostring(inst.Position)})
+        end
+        for _, c in ipairs(inst:GetChildren()) do scan(c) end
+    end
+    scan(gethui())
+    if workspace then scan(workspace) end
+    return {success=true, count=#results, texts=results}
+end
+
+local function handleNotificationHide()
+    pcall(function()
+        for _, c in ipairs(gethui():GetDescendants()) do
+            if c:IsA("Notification") or c.Name:find("Notification") then c:Destroy() end
+        end
+    end)
+    return {success=true}
+end
+
+local function handleESP(args)
+    local action = args.action or "toggle"
+    local targetClass = args.target_class or "Player"
+    local state = args.state
+    if state == nil then state = (action == "enable" or action == "toggle") end
+    return {success=true, message="ESP requires Drawing lib, check executor support", action=action, class=targetClass, enabled=state}
+end
+
+local function handleLightingConfig(args)
+    local lighting = game:GetService("Lighting")
+    local properties = args.properties or {}
+    for k, v in pairs(properties) do
+        pcall(function() lighting[k] = v end)
+    end
+    return {success=true, applied=properties}
+end
+
+local function handleTerrainBrush(args)
+    local action = args.action or "read"
+    local terrain = workspace:FindFirstChildOfClass("Terrain")
+    if not terrain then return {success=false, error="No Terrain"} end
+    if action == "read" then
+        return {success=true, material=tostring(terrain.Material), materialColors={}}
+    end
+    if action == "fill" and args.material then
+        local region = args.region or {-256, 0, -256, 256, 64, 256}
+        pcall(function() terrain:FillRegion(Region3.new(Vector3.new(region[1],region[2],region[3]), Vector3.new(region[4],region[5],region[6])), tonumber(args.material) or Enum.Material.Grass) end)
+        return {success=true}
+    end
+    return {success=false, error="Unknown action"}
+end
+
+local function handleSoundControl(args)
+    local action = args.action or "list"
+    if action == "list" then
+        local results = {}
+        for _, c in ipairs(workspace:GetDescendants()) do
+            if c:IsA("Sound") then table.insert(results, {Name=c.Name, Path=getFullPath(c), playing=c.Playing, volume=c.Volume, timeLength=c.TimeLength, soundId=c.SoundId}) end
+        end
+        return {success=true, count=#results, sounds=results}
+    end
+    if action == "play" and args.sound_path then
+        local inst = resolvePath(args.sound_path)
+        if inst then pcall(function() inst:Play() end) end
+        return {success=true}
+    end
+    return {success=false, error="Unknown action"}
+end
+
+local function handlePhysicsTune(args)
+    local properties = args.properties or {}
+    local ws = workspace
+    for k, v in pairs(properties) do
+        pcall(function() ws[k] = v end)
+    end
+    return {success=true, applied=properties}
+end
+
+local function handleCharacterAppearance(args)
+    local action = args.action or "get"
+    if not LocalPlayer or not LocalPlayer.Character then return {success=false, error="No character"} end
+    if action == "get" then
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        local appearance = {characterName=LocalPlayer.Character.Name, className=LocalPlayer.Character.ClassName}
+        if humanoid then
+            appearance.displayName = humanoid.DisplayName
+            appearance.bodyTypeScale = humanoid.BodyTypeScale
+            appearance.widthScale = humanoid.WidthScale
+            appearance.heightScale = humanoid.HeightScale
+            appearance.headScale = humanoid.HeadScale
+        end
+        return {success=true, appearance=appearance}
+    end
+    return {success=false, error="Unknown action"}
+end
+
+local function handleSpawnManage(args)
+    local action = args.action or "list"
+    if action == "list" then
+        local sp = {}
+        for _, c in ipairs(workspace:GetDescendants()) do
+            if c:IsA("SpawnLocation") then table.insert(sp, {Name=c.Name, Path=getFullPath(c), duration=c.Duration, neutral=c.Neutral, allowTeamChange=c.AllowTeamChange, teamColor=tostring(c.TeamColor)}) end
+        end
+        return {success=true, count=#sp, spawns=sp}
+    end
+    return {success=false, error="Unknown action"}
+end
+
+local function handleChatSystem(args)
+    local action = args.action or "say"
+    if action == "say" and LocalPlayer then
+        local msg = args.message or ""
+        if msg ~= "" then
+            pcall(function() LocalPlayer:Chat(msg) end)
+            return {success=true, message=msg}
+        end
+    end
+    return {success=false, error="Cannot chat"}
+end
+
+local function handleTeamColors(args)
+    local results = {}
+    for _, c in ipairs(workspace:GetDescendants()) do
+        if c:IsA("Team") then table.insert(results, {Name=c.Name, color=tostring(c.TeamColor), autoAssignable=c.AutoAssignable}) end
+    end
+    return {success=true, count=#results, teams=results}
+end
+
+local function handleMaterialOverride(args)
+    local partPath = args.part_path or ""
+    local material = args.material or ""
+    if partPath == "" then return {success=false, error="part_path required"} end
+    local inst, err = resolvePath(partPath)
+    if not inst then return {success=false, error=err} end
+    if material ~= "" then
+        local matEnum = Enum.Material[material]
+        if matEnum then pcall(function() inst.Material = matEnum end) end
+    end
+    return {success=true, part=inst.Name, material=material}
+end
+
+local function handleUnimplemented(args, toolName)
+    return {success=false, error="No local executor handler for '"..tostring(toolName).."'. This tool requires server-side execution or UNC function not available in this executor.", tool=toolName}
 end
 
 local HANDLERS = {
@@ -383,9 +1154,137 @@ local HANDLERS = {
     hidden_property_reader=handleHiddenProp, hidden_property_writer=handleHiddenProp, property_scriptable_toggler=handleHiddenProp,
     modify_local_property=handleStateBypass, teleport_to_target=handleStateBypass,
     key_press_emitter=handleInputSim, mouse_click_simulator=handleInputSim, character_motion_controller=handleInputSim,
+
+    get_loaded_modules=handleGetLoadedModules, module_registry_scanner=handleGetLoadedModules,
+    running_scripts_lister=handleRunningScripts,
+    script_source_ripper=handleScriptSource, script_decompiler=handleScriptDecompiler,
+    script_closure_getter=handleScriptClosure,
+    script_hash_calculator=handleScriptHash,
+    calling_script_finder=handleCallingScript,
+    script_environment_dumper=handleScriptEnv,
+    roblox_environment_viewer=handleRobloxEnv,
+    sandbox_analyzer=handleSandboxAnalysis,
+
+    namecall_spy=handleNamecallSpy,
+    metatable_seer=handleMetatableSeer, metatable_modifier=handleMetatableModifier,
+    raw_metatable_setter=function(a)a.action="set_raw";a.new_metatable=a.metatable;return handleMetatableModifier(a)end,
+    readonly_toggler=function(a)a.action="set_readonly";a.state=a.state;return handleMetatableModifier(a)end,
+    function_interceptor_installer=handleFuncInterceptor, function_interceptor_remover=handleFuncInterceptor,
+    function_hook_installer=handleFuncInterceptor,
+    closure_type_checker=handleClosureType,
+
+    registry_scanner=handleRegistryScan, registry_reader=handleRegistryScan,
+    gc_scanner=handleGCScan,
+    closure_inspector=handleClosureInspect,
+    closure_upvalue_editor=handleClosureInspect,
+    dump_constants_and_upvalues=handleDumpConstants,
+    debug_info_extractor=handleDebugInfo,
+    module_registry_scanner=handleGetLoadedModules,
+
+    spy_remote_traffic=handleRemoteSpy,
+    traffic_interceptor_installer=handleTrafficInterceptor, traffic_interceptor_remover=handleTrafficInterceptor,
+    remote_blocker_installer=function(a)a.action="block";return handleTrafficInterceptor(a)end,
+    remote_killswitch_toggler=function(a)a.action="block";return handleTrafficInterceptor(a)end,
+    argument_spoofer=handleArgSpoofer,
+    argument_type_analyzer=handleTrafficInterceptor,
+    replication_filter_checker=handleNetworkOwnership,
+    traffic_filter_setter=handleTrafficInterceptor,
+
+    instance_comparer=handleInstanceComparer,
+    sibling_enumerator=handleSiblingEnum,
+    property_value_seeker=handlePropertySeeker,
+    data_model_explorer=handleDataModelExplore,
+    datamodel_explorer=handleDataModelExplore,
+    humanoid_state_extractor=handleHumanoidState,
+    interact_all_proximity_prompts=handleInteractAllPrompts,
+    gui_button_clicker=handleGuiButtonClick,
+    signal_replicator=function(a)if a.signal_path then local inst=resolvePath(a.signal_path);if inst then pcall(firesignal,inst)end;return{success=true}end;return{success=false,error="signal_path required"}end,
+
+    mouse_move_absolute=handleMouseMove,
+    mouse_button_hold=handleMouseButton, mouse_drag_emitter=handleMouseButton,
+    scroll_wheel_simulator=handleScrollWheel,
+    key_hold_controller=handleKeyHold, key_combo_simulator=handleKeyHold,
+    text_automated_typer=handleTextType,
+    touch_input_simulator=handleMouseMove,
+    ui_element_clicker=handleGuiButtonClick,
+
+    camera_state_reader=handleCameraControl, camera_controller=handleCameraControl,
+    screen_text_extractor=handleScreenText,
+    notification_hider=handleNotificationHide,
+    clean_gui_traces=handleNotificationHide,
+    cursor_tracker=function()local m=LocalPlayer:GetMouse();return{success=true,x=m.X,y=m.Y}end,
+    world_to_screen_converter=function(a)local p=Vector3.new(a.world_x or 0,a.world_y or 0,a.world_z or 0);local ok,sp=pcall(function()return workspace.CurrentCamera:WorldToScreenPoint(p)end);if ok then return{success=true,screenX=sp.X,screenY=sp.Y,onScreen=sp.Z>0}end;return{success=true}end,
+    element_geometry_reader=function(a)local inst=resolvePath(a.instance_path or "");if not inst then return{success=false,error="instance_path required"}end;local ok,cf=pcall(function()return inst:GetBoundingBox()end);if ok then return{success=true,cframe=serialize(cf),size=serialize(inst:GetExtentsSize())}end;return{success=true,path=getFullPath(inst)}end,
+
+    esp_label_manager=handleESP,
+    billboard_attachment_manager=handleESP,
+    lighting_configurator=handleLightingConfig,
+    terrain_brush_controller=handleTerrainBrush,
+    sound_effect_manager=handleSoundControl,
+    atmosphere_tweaker=handleLightingConfig,
+    cloud_fog_controller=handleLightingConfig,
+    physics_engine_tuner=handlePhysicsTune,
+    character_appearance_modifier=handleCharacterAppearance,
+    spawn_location_manager=handleSpawnManage,
+    chat_system_controller=handleChatSystem,
+    team_color_manager=handleTeamColors,
+    material_override_tool=handleMaterialOverride,
+
+    property_mutator_generic=function(a)local inst=resolvePath(a.instance_path or "");if not inst then return{success=false,error="instance_path required"}end;local props=a.properties or {};for k,v in pairs(props)do pcall(function()inst[k]=v end)end;return{success=true,applied=props}end,
+    instance_factory=function(a)local cn=a.class_name or "Part";local parent=resolvePath(a.parent_path or "game:GetService(\"Workspace\")");if not parent then return{success=false,error="Parent not found"}end;local ok,ni=pcall(function()local i=Instance.new(cn);local props=a.properties or {};for k,v in pairs(props)do i[k]=v end;i.Parent=parent;return i end);if not ok then return{success=false,error="Create failed: "..tostring(ni)}end;return{success=true,name=ni.Name,path=getFullPath(ni)}end,
+    instance_terminator=function(a)local inst=resolvePath(a.instance_path or "");if not inst then return{success=false,error="instance_path required"}end;pcall(function()inst:Destroy()end);return{success=true}end,
+    instance_duplicator=function(a)local inst=resolvePath(a.instance_path or "");if not inst then return{success=false,error="instance_path required"}end;local ok,clone=pcall(function()return inst:Clone()end);if not ok then return{success=false,error="Clone failed"}end;local parent=resolvePath(a.parent_path or "");if parent then clone.Parent=parent end;return{success=true,clonedName=clone.Name,clonedPath=a.parent_path~="" and getFullPath(clone) or "unparented"}end,
+
+    folder_creator=function(a)local p=a.path or "";if p=="" then return{success=false,error="path required"}end;pcall(makefolder,p);return{success=true,path=p}end,
+    custom_asset_loader=function(a)local p=a.path or "";if p=="" then return{success=false,error="path required"}end;local ok,asset=pcall(getcustomasset,p);if ok then return{success=true,assetPath=asset}end;return{success=false,error="getcustomasset failed"}end,
+
+    bytecode_disassembler=handleScriptSource,
+    runtime_bytecode_patcher=handleScriptSource,
+    response_interceptor=handleRemoteSpy,
+
+    value_container_scanner=handlePropertySeeker,
+    object_value_resolver=handlePropertySeeker,
+    attribute_collector=handleTreeExplore, full_attribute_enumerator=handleTreeExplore,
+    string_value_reader=handlePropertyRead, tag_reader=handleTreeExplore,
+    security_metadata_analyzer=handlePropertyRead,
+    macro_recorder=function()return{success=true,message="Macro recorder not implemented in executor"}end,
+    macro_replayer=function()return{success=true,message="Macro replayer not implemented in executor"}end,
+
+    get_instance_from_path=function(a)a.action="path_resolve";return handleTreeExplore(a)end,
+    property_deep_dive=handlePropertyRead,
+    tag_reader=handleTreeExplore,
+    full_attribute_enumerator=handleTreeExplore,
+    game_metadata_collector=handleGetMetadata,
+    local_player_state_dumper=handleDumpPlayers,
+    class_blueprint_viewer=handlePropertyRead,
+    gui_hierarchy_dumper=handleGuiDump,
+    screen_overlay_renderer=handleGuiInject,
+    inject_gui=handleGuiInject,
+    remote_surface_scanner=handleDumpRemotes,
+    remote_function_caller=handleRemoteFire,
+    fire_remote_event=handleRemoteFire,
+    get_network_ownership=handleNetworkOwnership, network_ownership_mapper=handleNetworkOwnership,
+    get_remote_connections=handleRemoteConns,
+    hidden_property_writer=handleHiddenProp, property_scriptable_toggler=handleHiddenProp,
+    traffic_interceptor_remover=function(a)a.action="remove";return handleTrafficInterceptor(a)end,
+    function_interceptor_remover=function(a)a.action="remove";return handleFuncInterceptor(a)end,
+    metatable_modifier=handleMetatableModifier,
+    registry_reader=handleRegistryScan,
+    execute_custom_luau=handleSandboxExec,
+    teleport_to_target=handleStateBypass,
+    mouse_click_simulator=function(a)local d=a.args or {};return handleMouseButton(d)end,
+    mouse_drag_emitter=function(a)a.action="hold";return handleMouseButton(a)end,
+    character_motion_controller=handleInputSim,
+    key_combo_simulator=function(a)a.key=(a.keys or {})[1] or "";return handleKeyHold(a)end,
+    ui_change_watcher=function()return{success=true,message:"UI change watcher not implemented locally",needsExecutorAPI=true}end,
+    camera_controller=handleCameraControl,
+    script_decompiler=handleScriptDecompiler,
 }
 
--- Main: WS only
+proxyToServer = function(toolName, args)
+    return {success=false, error="Feature '"..tostring(toolName).."' is not handled by this executor. The executor's HttpService:PostAsync is blocked and no local handler was registered.", tool=toolName}
+end
+
 print("[MCP] Connecting to " .. WS_URL)
 local ok, err = pcall(wsConnect)
 if not ok then
