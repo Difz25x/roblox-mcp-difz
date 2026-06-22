@@ -197,6 +197,23 @@ class McpHandler {
             }
 
             // Executor tools — queue for executor, with optional PID targeting
+            // If no executor is connected, fail fast instead of waiting for timeout
+            if (this.sessions.activeCount === 0) {
+                return {
+                    result: {
+                        content: [{
+                            type: 'text',
+                            text: JSON.stringify({
+                                success: false,
+                                error: 'No Roblox executor is connected. Launch or inject Roblox first.',
+                            }, null, 2),
+                        }],
+                        isError: true,
+                        meta: { tool: name },
+                    },
+                };
+            }
+
             const startTime = Date.now();
             const opts: any = {};
             if (args && args.pid) {

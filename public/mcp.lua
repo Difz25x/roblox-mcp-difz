@@ -1,4 +1,4 @@
-if not game:IsLoaded() then game.Loaded:Wait() end
+pcall(function() if not game:IsLoaded() then game.Loaded:Wait() end end)
 local G = {}; pcall(function() G = getgenv and getgenv() or _G end)
 local HOST = G.MCP_HOST or "127.0.0.1"
 local PORT = G.MCP_PORT or 28429
@@ -1116,8 +1116,89 @@ local function handleMaterialOverride(args)
     return {success=true, part=inst.Name, material=material}
 end
 
-local function handleUnimplemented(args, toolName)
-    return {success=false, error="No local executor handler for '"..tostring(toolName).."'. This tool requires server-side execution or UNC function not available in this executor.", tool=toolName}
+local function handleUiChangeWatcher(args)
+    local timeout = args.watch_time or args.duration or 5
+    local maxChanges = args.max_events or args.max_changes or 100
+    local filterClass = args.filter_class or ""
+    local filterName = (args.filter_name or ""):lower()
+    local changeTypes = args.change_types or {}
+    local propFilters = args.property_filters or {}
+    local command = args.command or "start"
+    if command ~= "start" then
+        return {success=true, message="Only 'start' command supported", changes={}}
+    end
+    local root = gethui()
+    local changes = {}
+    local watching = true
+    local conns = {}
+    local function matchFilter(inst)
+        if filterClass ~= "" and inst.ClassName ~= filterClass then return false end
+        if filterName ~= "" and not inst.Name:lower():find(filterName, 1, true) then return false end
+        return true
+    end
+    local function shouldTrack(ct)
+        if #changeTypes == 0 then return true end
+        for _, t in ipairs(changeTypes) do if t == ct then return true end end
+        return false
+    end
+    if shouldTrack("child_added") then
+        table.insert(conns, root.DescendantAdded:Connect(function(inst)
+            if not watching or #changes >= maxChanges then return end
+            if not matchFilter(inst) then return end
+            table.insert(changes, {type="child_added", name=inst.Name, className=inst.ClassName, path=getFullPath(inst), timestamp=tick()})
+        end))
+    end
+    if shouldTrack("child_removed") then
+        table.insert(conns, root.DescendantRemoving:Connect(function(inst)
+            if not watching or #changes >= maxChanges then return end
+            if not matchFilter(inst) then return end
+            table.insert(changes, {type="child_removed", name=inst.Name, className=inst.ClassName, path=getFullPath(inst), timestamp=tick()})
+        end))
+    end
+    if shouldTrack("property_changed") or shouldTrack("visibility_changed") or shouldTrack("position_changed") or shouldTrack("size_changed") then
+        local props = {}
+        if shouldTrack("visibility_changed") then table.insert(props, "Visible") end
+        if shouldTrack("position_changed") then table.insert(props, "Position") end
+        if shouldTrack("size_changed") then table.insert(props, "Size") end
+        if shouldTrack("property_changed") then
+            for _, p in ipairs(propFilters) do table.insert(props, p) end
+            if #props == 0 then props = {"Text", "Visible", "Position", "Size", "BackgroundColor3", "TextColor3", "Image", "Transparency", "Rotation", "ZIndex"} end
+        end
+        local propConns = {}
+        local function scanProps(inst)
+            if inst:IsA("GuiObject") then
+                for _, pn in ipairs(props) do
+                    local ok, sig = pcall(function() return inst:GetPropertyChangedSignal(pn) end)
+                    if ok then
+                        table.insert(propConns, sig:Connect(function()
+                            if not watching or #changes >= maxChanges then return end
+                            if not matchFilter(inst) then return end
+                            local ok2, val = pcall(function() return inst[pn] end)
+                            table.insert(changes, {type="property_changed", name=inst.Name, className=inst.ClassName, path=getFullPath(inst), property=pn, newValue=tostring(ok2 and val or "?"), timestamp=tick()})
+                        end))
+                    end
+                end
+            end
+        end
+        scanProps(root)
+        local function scanNew(inst)
+            if #changes >= maxChanges then return end
+            pcall(function() scanProps(inst) end)
+        end
+        if not shouldTrack("child_added") then
+            table.insert(conns, root.DescendantAdded:Connect(scanNew))
+        end
+        for _, c in ipairs(propConns) do table.insert(conns, c) end
+    end
+    local startTime = tick()
+    while watching do
+        if #changes >= maxChanges then break end
+        if tick() - startTime >= timeout then break end
+        task.wait(0.1)
+    end
+    watching = false
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    return {success=true, changes=changes, changeCount=#changes, watchedSeconds=tick()-startTime, reachedMax=(#changes >= maxChanges), timedOut=(#changes < maxChanges)}
 end
 
 local HANDLERS = {
@@ -1213,7 +1294,7 @@ local HANDLERS = {
     notification_hider=handleNotificationHide,
     clean_gui_traces=handleNotificationHide,
     cursor_tracker=function()local m=LocalPlayer:GetMouse();return{success=true,x=m.X,y=m.Y}end,
-    world_to_screen_converter=function(a)local p=Vector3.new(a.world_x or 0,a.world_y or 0,a.world_z or 0);local ok,sp=pcall(function()return workspace.CurrentCamera:WorldToScreenPoint(p)end);if ok then return{success=true,screenX=sp.X,screenY=sp.Y,onScreen=sp.Z>0}end;return{success=true}end,
+    world_to_screen_converter=function(a)local cam=workspace.CurrentCamera;if not cam then return{success=false,error="No camera"}end;local p=Vector3.new(a.world_x or 0,a.world_y or 0,a.world_z or 0);local ok,sp=pcall(function()return cam:WorldToScreenPoint(p)end);if ok then return{success=true,screenX=sp.X,screenY=sp.Y,onScreen=sp.Z>0}end;return{success=false,error="WorldToScreenPoint failed"}end,
     element_geometry_reader=function(a)local inst=resolvePath(a.instance_path or "");if not inst then return{success=false,error="instance_path required"}end;local ok,cf=pcall(function()return inst:GetBoundingBox()end);if ok then return{success=true,cframe=serialize(cf),size=serialize(inst:GetExtentsSize())}end;return{success=true,path=getFullPath(inst)}end,
 
     esp_label_manager=handleESP,
@@ -1251,34 +1332,12 @@ local HANDLERS = {
     macro_replayer=function()return{success=true,message="Macro replayer not implemented in executor"}end,
 
     get_instance_from_path=function(a)a.action="path_resolve";return handleTreeExplore(a)end,
-    property_deep_dive=handlePropertyRead,
-    tag_reader=handleTreeExplore,
-    full_attribute_enumerator=handleTreeExplore,
-    game_metadata_collector=handleGetMetadata,
-    local_player_state_dumper=handleDumpPlayers,
-    class_blueprint_viewer=handlePropertyRead,
-    gui_hierarchy_dumper=handleGuiDump,
-    screen_overlay_renderer=handleGuiInject,
-    inject_gui=handleGuiInject,
-    remote_surface_scanner=handleDumpRemotes,
-    remote_function_caller=handleRemoteFire,
-    fire_remote_event=handleRemoteFire,
-    get_network_ownership=handleNetworkOwnership, network_ownership_mapper=handleNetworkOwnership,
-    get_remote_connections=handleRemoteConns,
-    hidden_property_writer=handleHiddenProp, property_scriptable_toggler=handleHiddenProp,
+    network_ownership_mapper=handleNetworkOwnership,
     traffic_interceptor_remover=function(a)a.action="remove";return handleTrafficInterceptor(a)end,
     function_interceptor_remover=function(a)a.action="remove";return handleFuncInterceptor(a)end,
-    metatable_modifier=handleMetatableModifier,
-    registry_reader=handleRegistryScan,
-    execute_custom_luau=handleSandboxExec,
-    teleport_to_target=handleStateBypass,
-    mouse_click_simulator=function(a)local d=a.args or {};return handleMouseButton(d)end,
     mouse_drag_emitter=function(a)a.action="hold";return handleMouseButton(a)end,
-    character_motion_controller=handleInputSim,
     key_combo_simulator=function(a)a.key=(a.keys or {})[1] or "";return handleKeyHold(a)end,
-    ui_change_watcher=function()return{success=true,message:"UI change watcher not implemented locally",needsExecutorAPI=true}end,
-    camera_controller=handleCameraControl,
-    script_decompiler=handleScriptDecompiler,
+    ui_change_watcher=handleUiChangeWatcher,
 }
 
 proxyToServer = function(toolName, args)
