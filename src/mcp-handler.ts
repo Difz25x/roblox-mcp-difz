@@ -114,37 +114,42 @@ class McpHandler {
     }
 
     async handleMessage(message: McpMessage): Promise<McpResult> {
-        const { method, params } = message;
+        try {
+            const { method, params } = message;
 
-        if (!method) {
-            return { error: { code: -32600, message: 'Invalid Request: method is required' } };
-        }
+            if (!method) {
+                return { error: { code: -32600, message: 'Invalid Request: method is required' } };
+            }
 
-        switch (method) {
-            case 'initialize':
-                return this._handleInitialize(params);
-            case 'shutdown':
-                return this._handleShutdown();
-            case 'notifications/initialized':
-                return { result: { acknowledged: true } };
-            case 'tools/list':
-                return this._handleToolsList();
-            case 'tools/call':
-                return await this._handleToolsCall(params);
-            case 'resources/list':
-                return this._handleResourcesList();
-            case 'resources/read':
-                return await this._handleResourcesRead(params);
-            case 'prompts/list':
-                return this._handlePromptsList();
-            case 'prompts/get':
-                return await this._handlePromptsGet(params);
-            case 'ping':
-                return { result: { status: 'pong', timestamp: Date.now(), stats: this.queue.getStats() } };
-            case 'mcp/setup':
-                return this._handleSetup();
-            default:
-                return { error: { code: -32601, message: `Method not found: ${method}` } };
+            switch (method) {
+                case 'initialize':
+                    return this._handleInitialize(params);
+                case 'shutdown':
+                    return this._handleShutdown();
+                case 'notifications/initialized':
+                    return { result: { acknowledged: true } };
+                case 'tools/list':
+                    return this._handleToolsList();
+                case 'tools/call':
+                    return await this._handleToolsCall(params);
+                case 'resources/list':
+                    return this._handleResourcesList();
+                case 'resources/read':
+                    return await this._handleResourcesRead(params);
+                case 'prompts/list':
+                    return this._handlePromptsList();
+                case 'prompts/get':
+                    return await this._handlePromptsGet(params);
+                case 'ping':
+                    return { result: { status: 'pong', timestamp: Date.now(), stats: this.queue.getStats() } };
+                case 'mcp/setup':
+                    return this._handleSetup();
+                default:
+                    return { error: { code: -32601, message: `Method not found: ${method}` } };
+            }
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            return { error: { code: -32603, message: `Internal handler error: ${errorMessage}` } };
         }
     }
 

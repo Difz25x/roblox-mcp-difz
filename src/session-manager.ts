@@ -14,11 +14,13 @@ interface SessionInfo {
     firstSeen: number;
     lastSeen: number;
     status: string;
+    capabilities?: Record<string, any>;
 }
 
 interface RegisterInfo {
     pid?: number;
     name?: string;
+    capabilities?: Record<string, any>;
 }
 
 interface RegisterResult {
@@ -53,6 +55,7 @@ class SessionManager {
             firstSeen: existing ? existing.firstSeen : Date.now(),
             lastSeen: Date.now(),
             status: 'active',
+            capabilities: info && info.capabilities,
         });
         return { workerId, isNew };
     }

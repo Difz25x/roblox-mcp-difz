@@ -62,20 +62,20 @@ interface AppComponents {
 
 function handleMcpMessage(mcp: McpHandler): RequestHandler {
     return async (req: Request, res: Response): Promise<void> => {
-        const message: McpMessage = req.body;
-        if (!message || typeof message !== 'object' || !message.method) {
-            res.status(400).json({
-                jsonrpc: '2.0',
-                id: (message && message.id) || null,
-                error: { code: -32600, message: 'Invalid Request: method required' },
-            });
-            return;
-        }
         try {
+            const message: McpMessage = req.body;
+            if (!message || typeof message !== 'object' || !message.method) {
+                res.status(400).json({
+                    jsonrpc: '2.0',
+                    id: (message && message.id) || null,
+                    error: { code: -32600, message: 'Invalid Request: method required' },
+                });
+                return;
+            }
             const result = await mcp.handleMessage(message);
             res.json({ jsonrpc: '2.0', id: message.id, ...result });
         } catch (err: any) {
-            res.json({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: err.message } });
+            res.json({ jsonrpc: '2.0', id: null, error: { code: -32603, message: err.message } });
         }
     };
 }

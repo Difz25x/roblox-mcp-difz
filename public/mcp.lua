@@ -94,6 +94,51 @@ local function serialize(v,d)
 end
 
 local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
+
+local MCP_CAPABILITIES = {}
+local function testUncCapabilities()
+    local cap = {}
+    local uncs = {
+        cloneref="function", getnilinstances="function", fireclickdetector="function",
+        fireproximityprompt="function", firesignal="function", getconnections="function",
+        sethiddenproperty="function", gethiddenproperty="function", setscriptable="function",
+        hookfunction="function", newcclosure="function", getrawmetatable="function",
+        setrawmetatable="function", setreadonly="function", isreadonly="function",
+        getnamecallmethod="function", gethui="function", writefile="function",
+        readfile="function", isfile="function", delfile="function",
+        makefolder="function", listfiles="function", getcustomasset="function",
+        getpid="function", getloadedmodules="function", getrunningscripts="function",
+        getscriptbytecode="function", getscriptclosure="function", getscripthash="function",
+        getcallingscript="function", getsenv="function", getrenv="function",
+        hookmetamethod="function", iscclosure="function", islclosure="function",
+        isexecutorclosure="function", getgc="function", getreg="function",
+        compareinstances="function", identifyexecutor="function",
+        getgenv="function", loadstring="function", getrawmetatable="function",
+    }
+    cap.total = 0; cap.supported = 0; cap.missing = {}
+    for name, _ in pairs(uncs) do
+        cap.total = cap.total + 1
+        local ok = pcall(function()
+            local v = _G[name]
+            if type(v) == "function" then
+                if name == "identifyexecutor" then
+                    local r = {v()}
+                    if type(r[1]) == "string" then cap.executorName = r[1] end
+                elseif name == "getgenv" then
+                    cap.hasGenv = (v() ~= nil)
+                end
+                return true
+            end
+            return false
+        end)
+        if ok then cap.supported = cap.supported + 1
+        else table.insert(cap.missing, name) end
+    end
+    cap.hasVirtualInput = (VirtualInputManager ~= nil)
+    cap.missingCount = #cap.missing
+    return cap
+end
+
 local function wsConnect()
     local connectFn = (typeof(WebSocket)=="table" and WebSocket.connect) or nil
     if not connectFn then error("No WebSocket support") end
@@ -107,7 +152,8 @@ local function wsConnect()
     end)
     local regData = {type="register", worker_id=WORKER_ID, username=LocalPlayer and LocalPlayer.Name or "Unknown",
         userId=LocalPlayer and LocalPlayer.UserId or 0,
-        placeId=game.PlaceId, jobId=game.JobId, placeName=placeName
+        placeId=game.PlaceId, jobId=game.JobId, placeName=placeName,
+        capabilities=MCP_CAPABILITIES
     }
     local reg = HttpService:JSONEncode(regData)
     print("[MCP] Registering: " .. tostring(placeName) .. " (" .. tostring(game.JobId) .. ")")
@@ -1328,6 +1374,7 @@ local HANDLERS = {
     attribute_collector=handleTreeExplore, full_attribute_enumerator=handleTreeExplore,
     string_value_reader=handlePropertyRead, tag_reader=handleTreeExplore,
     security_metadata_analyzer=handlePropertyRead,
+    check_unc_capabilities=function()return{success=true,capabilities=MCP_CAPABILITIES}end,
     macro_recorder=function()return{success=true,message="Macro recorder not implemented in executor"}end,
     macro_replayer=function()return{success=true,message="Macro replayer not implemented in executor"}end,
 

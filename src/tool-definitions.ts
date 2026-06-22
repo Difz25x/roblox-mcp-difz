@@ -5604,6 +5604,15 @@ class ToolDefinitions {
             },
             },
             {
+                name: "check_unc_capabilities",
+                description: "Test which UNC functions are available in the executor and return the capability report. Useful for debugging why certain tools fail — the executor may not support all required UNC functions.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            {
                 name: "get_console_logs",
                 description: "Fetch LogService output (Messages / Errors / Warnings). Lets the AI detect when anti-cheat fires, observe server print statements, and debug exploit scripts in real-time. Each log entry includes the message text, type, timestamp, and (if available) script source line.",
                 inputSchema: {

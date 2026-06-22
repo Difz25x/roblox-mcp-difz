@@ -24,7 +24,7 @@ interface QueueManagerLike {
     resolveTask(id: string, data: any, error?: string): boolean;
 }
 interface SessionManagerLike {
-    register(wid: string, info?: { pid?: number; name?: string }): any;
+    register(wid: string, info?: { pid?: number; name?: string; capabilities?: Record<string, any> }): any;
     unregister(wid: string): void;
 }
 
@@ -98,7 +98,7 @@ class WsServer {
                         };
                         this.workers.set(workerId, info);
                         if (matchedPid) this.pidMap.set(matchedPid, workerId);
-                        this.sessions.register(workerId, { pid: matchedPid, name: 'RobloxPlayerBeta' });
+                        this.sessions.register(workerId, { pid: matchedPid, name: 'RobloxPlayerBeta', capabilities: msg.capabilities });
 
                         this._safeSend(ws, { type: 'registered', worker_id: workerId });
                         console.log(`[WS] Registered: ${workerId} game="${info.placeName}"${matchedPid ? ' pid='+matchedPid : ''}`);
@@ -207,15 +207,19 @@ class WsServer {
 
     _startHeartbeat(): void {
         setInterval(() => {
-            // Snapshot to avoid modifying collections during iteration
-            for (const ws of Array.from(this.allConnections)) {
-                if (ws.readyState !== WebSocket.OPEN) this.allConnections.delete(ws);
-            }
-            for (const [wid, info] of Array.from(this.workers.entries())) {
-                if (info.ws.readyState !== WebSocket.OPEN) {
-                    if (info.pid) this.pidMap.delete(info.pid);
-                    this.workers.delete(wid);
+            try {
+                // Snapshot to avoid modifying collections during iteration
+                for (const ws of Array.from(this.allConnections)) {
+                    if (ws.readyState !== WebSocket.OPEN) this.allConnections.delete(ws);
                 }
+                for (const [wid, info] of Array.from(this.workers.entries())) {
+                    if (info.ws.readyState !== WebSocket.OPEN) {
+                        if (info.pid) this.pidMap.delete(info.pid);
+                        this.workers.delete(wid);
+                    }
+                }
+            } catch (err: any) {
+                console.error('[WS] heartbeat error:', err?.message || err);
             }
         }, WS_HEARTBEAT_INTERVAL);
     }
