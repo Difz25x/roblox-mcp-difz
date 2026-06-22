@@ -23,6 +23,7 @@ local sethiddenproperty = sethiddenproperty or function() end
 local gethiddenproperty = gethiddenproperty or function() return nil end
 local setscriptable = setscriptable or function() end
 local hookfunction = hookfunction or function() end
+local clonefunction = clonefunction or function(f) return f end
 local newcclosure = newcclosure or function(f) return f end
 local getrawmetatable = getrawmetatable or getmetatable
 local setrawmetatable = setrawmetatable or function() end
@@ -102,6 +103,8 @@ local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
 local WS_GOT_PONG = true
 local MCP_SPY_ACTIVE = false
 local MCP_SPY_LOG = {}
+local MCP_BLOCKED = {}
+local MCP_SPOOF = {}
 local RECONNECT_DELAY = 3
 
 local MCP_CAPABILITIES = {}
@@ -715,38 +718,34 @@ local function handleRemoteSpy(args)
     if action == "install" or action == "install_outgoing" then
         if MCP_SPY_ACTIVE then return {success=true, action="already_installed"} end
         MCP_SPY_LOG = {}
-        local cls = {RemoteEvent="FireServer", RemoteFunction="InvokeServer", UnreliableRemoteEvent="FireServer"}
-        if includeBind then cls.BindableEvent="Fire"; cls.BindableFunction="Invoke" end
-        
-        local ok, orig = pcall(hookmetamethod, game, "__namecall", function(self, ...)
+
+        -- SimpleSpy pattern: hook raw metatable instead of using hookmetamethod
+        local gameMt = getrawmetatable(game)
+        if not gameMt then return {success=false, error="Cannot access game metatable"} end
+
+        local origNamecall = gameMt.__namecall
+        local spyHook = clonefunction(newcclosure(function(...)
+            if checkcaller and checkcaller() then
+                return origNamecall(...)
+            end
+            local self = ...
             local m = getnamecallmethod()
-            
-            if m and typeof(self)=="Instance" and cls[self.ClassName] and cls[self.ClassName]==m then
-                local rName = self.Name
-                
-                if MCP_BLOCKED[rName] == true then 
-                    return nil 
-                end
-                
-                local spoof = MCP_SPOOF[rName]
-                if spoof then 
-                    return orig(self, table.unpack(spoof)) 
-                end
-                
-                if #MCP_SPY_LOG < maxLog and (filter=="" or rName:find(filter,1,true)) then
-                    table.insert(MCP_SPY_LOG, {
-                        remote=rName, 
-                        remotePath=getFullPath(self), 
-                        method=m, 
-                        direction="outgoing", 
-                        args={...}, 
-                        timestamp=tick()
-                    })
+            if m and (m == "FireServer" or m == "InvokeServer") then
+                if typeof(self)=="Instance" and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction") or self:IsA("UnreliableRemoteEvent")) then
+                    local rName = self.Name
+                    if MCP_BLOCKED[rName] then return nil end
+                    local spoof = MCP_SPOOF[rName]
+                    if spoof then return origNamecall(self, table.unpack(spoof)) end
+                    if #MCP_SPY_LOG < maxLog and (filter=="" or rName:find(filter,1,true)) then
+                        local args = {select(2, ...)}
+                        table.insert(MCP_SPY_LOG, {remote=rName, remotePath=getFullPath(self), method=m, direction="outgoing", args=args, timestamp=tick()})
+                    end
                 end
             end
-            return orig(self, ...)
-        end)
-        if not ok then return {success=false, error="Hook failed: "..tostring(orig)} end
+            return origNamecall(...)
+        end))
+        local ok = pcall(hookfunction, gameMt.__namecall, spyHook)
+        if not ok then return {success=false, error="Hook failed"} end
         MCP_SPY_ACTIVE = true
         return {success=true, action="outgoing_installed"}
     end

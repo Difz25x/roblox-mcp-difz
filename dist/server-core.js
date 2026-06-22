@@ -1,9 +1,26 @@
 "use strict";
+/**
+ * server-core.ts
+ *
+ * Roblox MCP Server — core module.
+ *
+ * Standard MCP HTTP endpoints:
+ *   POST /              MCP JSON-RPC 2.0
+ *   POST /mcp           MCP JSON-RPC 2.0 (alias)
+ *   GET  /health        Health check
+ *
+ * WebSocket:
+ *   ws://host:port/ws   Executor transport (register/task/result) — WS ONLY
+ *
+ * Static:
+ *   GET /mcp.lua        Executor client script
+ */
 Object.defineProperty(exports, "__esModule", { value: true });
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const PKG = require('../package.json');
 const { QueueManager: QueueManagerCls } = require('./queue-manager');
 const { McpHandler: McpHandlerCls } = require('./mcp-handler');
 const { ToolDefinitions: ToolDefinitionsCls } = require('./tool-definitions');
@@ -11,28 +28,27 @@ const { SessionManager: SessionManagerCls } = require('./session-manager');
 const { WsServer: WsServerCls } = require('./ws-server');
 const processManager = require('./process-manager');
 const PKG_DIR = path.resolve(__dirname, '..');
-function handleMcpMessage(mcp, log) {
+function handleMcpMessage(mcp) {
     return async (req, res) => {
-        const message = req.body;
-        if (!message || typeof message !== 'object' || !message.method) {
-            res.status(400).json({
-                jsonrpc: '2.0',
-                id: (message && message.id) || null,
-                error: { code: -32600, message: 'Invalid Request: method required' },
-            });
-            return;
-        }
         try {
+            const message = req.body;
+            if (!message || typeof message !== 'object' || !message.method) {
+                res.status(400).json({
+                    jsonrpc: '2.0',
+                    id: (message && message.id) || null,
+                    error: { code: -32600, message: 'Invalid Request: method required' },
+                });
+                return;
+            }
             const result = await mcp.handleMessage(message);
             res.json({ jsonrpc: '2.0', id: message.id, ...result });
         }
         catch (err) {
-            res.json({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: err.message } });
+            res.json({ jsonrpc: '2.0', id: null, error: { code: -32603, message: err.message } });
         }
     };
 }
 function createApp(opts) {
-    const IS_STDIO = !!(opts && opts.stdio);
     const IS_VERBOSE = !!(opts && opts.verbose);
     const queue = new QueueManagerCls();
     const tools = new ToolDefinitionsCls();
@@ -43,98 +59,88 @@ function createApp(opts) {
         : () => { };
     const app = express();
     app.use(express.json({ limit: '10mb' }));
-    // Only serve static files if public/ directory exists (may not in global installs)
     const publicDir = path.join(PKG_DIR, 'public');
-    if (fs.existsSync(publicDir)) {
+    // Serve executor client script
+    app.get('/mcp.lua', (_req, res) => {
+        const f = path.join(PKG_DIR, 'public', 'mcp.lua');
+        if (fs.existsSync(f)) {
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.send(fs.readFileSync(f, 'utf-8'));
+        }
+        else
+            res.status(404).send('-- mcp.lua not found.');
+    });
+    app.get('/mcp.luau', (_req, res) => {
+        const f = path.join(PKG_DIR, 'public', 'mcp.lua');
+        if (fs.existsSync(f)) {
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.send(fs.readFileSync(f, 'utf-8'));
+        }
+        else
+            res.status(404).send('-- mcp.lua not found.');
+    });
+    if (fs.existsSync(publicDir))
         app.use(express.static(publicDir));
-    }
     // CORS
-    app.use((req, res, next) => {
+    app.use((_req, res, next) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        if (req.method === 'OPTIONS') {
+        if (_req.method === 'OPTIONS') {
             res.sendStatus(204);
             return;
         }
         next();
     });
-    // Create HTTP server + mount WebSocket (MUST be before routes that reference wss)
+    // HTTP + WS server
     const server = http.createServer(app);
     const wss = new WsServerCls(queue, sessions);
     wss.mount(server);
-    const mcpHandler = handleMcpMessage(mcp, log);
-    // MCP endpoints
+    const mcpHandler = handleMcpMessage(mcp);
+    // Dashboard at root
+    app.get('/', (_req, res) => {
+        const port = parseInt(process.env.MCP_PORT, 10) || 28429;
+        const dashboardPath = path.join(PKG_DIR, 'public', 'dashboard.html');
+        if (fs.existsSync(dashboardPath)) {
+            let html = fs.readFileSync(dashboardPath, 'utf-8');
+            html = html.replace(/\{\{port\}\}/g, String(port)).replace(/\{\{version\}\}/g, PKG.version);
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.send(html);
+        }
+        else {
+            res.send(`<h1>Roblox MCP Server v${PKG.version}</h1><p>Port: ${port}</p>`);
+        }
+    });
+    // MCP JSON-RPC via HTTP (for Claude Code etc.)
     app.post('/', mcpHandler);
     app.post('/mcp', mcpHandler);
-    // Bridge: executor long-poll (fallback, WebSocket preferred)
-    app.post('/req', async (req, res) => {
-        const timeout = Math.min((req.body && req.body.timeout) || 25000, 60000);
-        const workerId = req.body && req.body.worker_id;
-        if (workerId) {
-            sessions.register(workerId, { pid: req.body.pid, name: 'RobloxPlayerBeta' });
-        }
-        try {
-            const task = await queue.waitForTask(timeout, workerId);
-            if (task) {
-                res.json({ type: task.type, id: task.id, args: task.args, timestamp: task.timestamp });
-            }
-            else {
-                res.json({ type: '__timeout__', id: null, args: null });
-            }
-        }
-        catch (err) {
-            res.status(500).json({ type: '__error__', id: null, error: err.message });
-        }
-    });
-    // Bridge: executor result
-    app.post('/res', (req, res) => {
-        const { id, data, error } = req.body || {};
-        if (!id) {
-            res.status(400).json({ success: false, error: 'Missing task id' });
-            return;
-        }
-        const ok = queue.resolveTask(id, data, error);
-        res.json(ok ? { success: true } : { success: false, reason: 'Unknown or expired task ID' });
-    });
-    // Server info endpoint — used by mcp.luau to auto-detect endpoints
-    app.get('/type', (req, res) => {
+    // Server info
+    app.get('/type', (_req, res) => {
         const port = parseInt(process.env.MCP_PORT, 10) || 28429;
-        const host = req.hostname || 'localhost';
+        const host = _req.hostname || 'localhost';
         res.json({
             server: 'roblox-mcp-difz',
-            version: '1.1.4',
-            description: 'Universal MCP server for Roblox game control and reverse engineering',
-            transports: {
-                http: { url: `http://${host}:${port}/mcp`, methods: ['POST'] },
-                websocket: { url: `ws://${host}:${port}/ws` },
-                stdio: { command: 'npx', args: ['roblox-mcp-difz', 'start:stdio'] },
-            },
+            version: PKG.version,
             tools: tools.count,
-            health: '/health',
-            metadata: '/type',
+            transport: 'http+ws',
+            http: `http://${host}:${port}/mcp`,
+            ws: `ws://${host}:${port}/ws`,
+            info: `http://${host}:${port}/type`,
         });
     });
     // Health
-    app.get('/health', (req, res) => {
+    app.get('/health', (_req, res) => {
         res.json({
             status: 'ok',
             uptime: process.uptime(),
-            mode: IS_STDIO ? 'http+stdio' : 'http',
             port: parseInt(process.env.MCP_PORT, 10) || 28429,
             ...queue.getStats(),
             toolsRegistered: tools.count,
-            wsConnections: wss ? wss.connectedCount : 0,
+            wsConnections: wss.connectedCount,
             activeSessions: sessions.activeCount,
             robloxProcesses: processManager.listRobloxProcesses().length,
         });
     });
     return { app, server, queue, tools, mcp, sessions, processManager, wss };
 }
-function createMcpServerDeps() {
-    const queue = new QueueManagerCls();
-    const tools = new ToolDefinitionsCls();
-    const sessions = new SessionManagerCls();
-    return { queue, tools, sessions, proc: processManager };
-}
-module.exports = { createApp, createMcpServerDeps };
+module.exports = { createApp };

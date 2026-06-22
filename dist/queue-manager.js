@@ -47,6 +47,8 @@ class QueueManager extends EventEmitter {
             const task = { id, type, args, timestamp: Date.now() };
             if (opts.workerId)
                 task.targetWorkerId = opts.workerId;
+            if (opts.targetPid)
+                task.targetPid = opts.targetPid;
             this.totalSubmitted++;
             // Safety timeout — if the executor never responds, reject the promise
             const timer = setTimeout(() => {
@@ -71,6 +73,8 @@ class QueueManager extends EventEmitter {
             }
             // No matching poller — queue the task
             this.taskQueue.push(task);
+            this.emit('task', task);
+            return;
         });
     }
     /**
@@ -142,7 +146,7 @@ class QueueManager extends EventEmitter {
                 console.log(`[Queue] Cleaned up ${cleaned} stale task(s)`);
             }
             // Clean up orphaned pending results that have exceeded max age
-            const maxPendingAge = 180000; // 3 minutes
+            const maxPendingAge = 180000;
             for (const [id, pending] of this.pendingResults.entries()) {
                 if (Date.now() - pending.submittedAt > maxPendingAge) {
                     clearTimeout(pending.timer);
@@ -150,16 +154,6 @@ class QueueManager extends EventEmitter {
                 }
             }
         }, 60000);
-    }
-    /** Clean up — clear the cleanup interval */
-    destroy() {
-        if (this._cleanupInterval) {
-            clearInterval(this._cleanupInterval);
-            this._cleanupInterval = undefined;
-        }
-        this.taskQueue = [];
-        this.pendingResults.clear();
-        this.waitingPollers = [];
     }
     /** Get current queue stats for monitoring */
     getStats() {

@@ -7,6 +7,6 @@
  *   listRobloxProcesses()   — scan OS for RobloxPlayerBeta processes
  *   launchRoblox(path)      — spawn RobloxPlayerLauncher.exe
  *   openGame(placeId, opts) — open game via roblox-player protocol with full join URL
- *   captureRobloxWindow(pid) — capture screenshot of a Roblox process window
+ *   performScreenshot(pid)  — capture screenshot of a Roblox process window (anticheat-safe)
  */
 export {};
