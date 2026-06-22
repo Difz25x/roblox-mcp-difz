@@ -39,7 +39,6 @@ type SessionManager = InstanceType<typeof SessionManagerCls>;
 type WsServer = InstanceType<typeof WsServerCls>;
 
 interface CreateAppOptions {
-    stdio?: boolean;
     verbose?: boolean;
 }
 
@@ -84,7 +83,6 @@ function handleMcpMessage(mcp: McpHandler, log: (...args: any[]) => void): Reque
 }
 
 function createApp(opts?: CreateAppOptions): AppComponents {
-    const IS_STDIO: boolean = !!(opts && opts.stdio);
     const IS_VERBOSE: boolean = !!(opts && opts.verbose);
 
     const queue = new QueueManagerCls();
@@ -99,7 +97,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     const app: Application = express();
     app.use(express.json({ limit: '10mb' }));
 
-    // Only serve static files if public/ directory exists (may not in global installs)
+    // Only serve static files if public/ directory exists
     const publicDir: string = path.join(PKG_DIR, 'public');
     if (fs.existsSync(publicDir)) {
         app.use(express.static(publicDir));
@@ -117,7 +115,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         next();
     });
 
-    // Create HTTP server + mount WebSocket (MUST be before routes that reference wss)
+    // Create HTTP server + mount WebSocket
     const server: Server = http.createServer(app);
     const wss = new WsServerCls(queue, sessions);
     wss.mount(server);
@@ -158,18 +156,17 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         res.json(ok ? { success: true } : { success: false, reason: 'Unknown or expired task ID' });
     });
 
-    // Server info endpoint — used by mcp.luau to auto-detect endpoints
+    // Server info endpoint
     app.get('/type', (req: Request, res: Response): void => {
         const port = parseInt(process.env.MCP_PORT as string, 10) || 28429;
         const host = req.hostname || 'localhost';
         res.json({
             server: 'roblox-mcp-difz',
-            version: '1.1.4',
+            version: '1.3.2',
             description: 'Universal MCP server for Roblox game control and reverse engineering',
             transports: {
                 http: { url: `http://${host}:${port}/mcp`, methods: ['POST'] },
                 websocket: { url: `ws://${host}:${port}/ws` },
-                stdio: { command: 'npx', args: ['roblox-mcp-difz', 'start:stdio'] },
             },
             tools: tools.count,
             health: '/health',
@@ -182,7 +179,6 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         res.json({
             status: 'ok',
             uptime: process.uptime(),
-            mode: IS_STDIO ? 'http+stdio' : 'http',
             port: parseInt(process.env.MCP_PORT as string, 10) || 28429,
             ...queue.getStats(),
             toolsRegistered: tools.count,

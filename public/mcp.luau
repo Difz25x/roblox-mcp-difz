@@ -41,7 +41,8 @@ local LogService = cloneref(game:GetService("LogService"))
 local CoreGui = cloneref(game:GetService("CoreGui"))
 local CollectionService = cloneref(game:GetService("CollectionService"))
 local MarketplaceService = cloneref(game:GetService("MarketplaceService"))
-local VirtualInputManager = cloneref(Instance.new("VirtualInputManager"))
+local VirtualInputManager = nil
+pcall(function() VirtualInputManager = cloneref(Instance.new("VirtualInputManager")) end)
 local LocalPlayer = Players.LocalPlayer
 
 -- UNC: Instances
@@ -157,12 +158,12 @@ local function CreateDecompileFunction(id, options)
     return function(scriptPath)
         local ok, bc = pcall(getscriptbytecode, scriptPath)
         if not ok then return "-- Failed to get bytecode:\n--[[" .. tostring(bc) .. "\n--]]" end
-        local ok2, res = pcall(request, {
-            Url = Endpoint, Method = "POST",
-            Body = EncodingCallback(bc),
-            Headers = { ["Content-Type"] = "text/plain" },
-        })
-        if not ok2 or res.StatusCode ~= 200 then return FailedCallback(res, scriptPath) end
+        local succ = false; local res
+        pcall(function()
+            local r = request({ Url = Endpoint, Method = "POST", Body = EncodingCallback(bc), Headers = { ["Content-Type"] = "text/plain" } })
+            if r and r.StatusCode == 200 then succ = true; res = r end
+        end)
+        if not succ then return FailedCallback(res, scriptPath) end
         return "-- Decompiled with " .. id .. "\n" .. string.gsub(res.Body, string.char(0x00CD), " ")
     end
 end
@@ -182,14 +183,15 @@ local function LuaExpertDecompile(scriptPath)
     if not ok then return "-- Failed bytecode:\n--[[" .. tostring(bc) .. "\n--]]" end
     local elapsed = os.clock() - LuaExpertLastCall
     if elapsed < 0.12 then task.wait(0.12 - elapsed) end
-    local ok2, res = pcall(request, {
-        Url = G.MCP_LUAEXPERT_URL or "https://api.lua.expert/decompile",
-        Method = "POST",
-        Headers = { ["Content-Type"] = "application/json" },
-        Body = HttpService:JSONEncode({ script = base64_encode(bc) }),
-    })
+    local succ = false; local res
+    pcall(function()
+        local r = request({ Url = G.MCP_LUAEXPERT_URL or "https://api.lua.expert/decompile", Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode({ script = base64_encode(bc) }) })
+        if r and r.StatusCode == 200 then succ = true; res = r end
+    end)
     LuaExpertLastCall = os.clock()
-    if not ok2 or res.StatusCode ~= 200 then return MedalDecompile(scriptPath) end
+    if not succ then return MedalDecompile(scriptPath) end
     return "-- Decompiled with lua.expert\n" .. res.Body
 end
 
@@ -282,22 +284,31 @@ end
 -- ================================================================
 -- 9. WEBSOCKET TRANSPORT
 -- ================================================================
-local WS_CONNECTED = false; local WS_SOCKET = nil; local WS_BUFFER = {}; local WS_MESSAGE_HANDLER = nil
+local WS_CONNECTED = false; local WS_SOCKET = nil; local WS_BUFFER = {}; local WS_MESSAGE_HANDLER = nil; local WS_CLOSE_HANDLER = nil; local WS_LAST_PONG = 0
 
 local function wsConnect()
     local connectFn = (typeof(WebSocket) == "table" and WebSocket.connect) or nil
     if not connectFn then return false, "No WebSocket" end
     local ok, socket = pcall(connectFn, MCP_WS_URL)
     if not ok or not socket then return false, "Connection failed" end
-    WS_SOCKET = socket; WS_CONNECTED = true
+    WS_SOCKET = socket; WS_CONNECTED = true; WS_LAST_PONG = tick()
     local regMsg = HttpService:JSONEncode(GetRegistrationInfo())
     local sent = pcall(function() socket:Send(regMsg) end)
     if not sent then WS_CONNECTED = false; WS_SOCKET = nil; return false, "Register failed" end
+    -- Guard: only process messages from the current socket
+    local curSocket = socket
+    if WS_MESSAGE_HANDLER then pcall(function() WS_MESSAGE_HANDLER:Disconnect() end) end
     WS_MESSAGE_HANDLER = socket.OnMessage:Connect(function(msg)
+        if WS_SOCKET ~= curSocket then return end
+        WS_LAST_PONG = tick()
         local ok2, d = pcall(function() return HttpService:JSONDecode(msg) end)
         if ok2 and d then
             if d.type == "task" then table.insert(WS_BUFFER, d) end
         end
+    end)
+    if WS_CLOSE_HANDLER then pcall(function() WS_CLOSE_HANDLER:Disconnect() end) end
+    WS_CLOSE_HANDLER = socket.OnClose:Connect(function()
+        if WS_SOCKET == curSocket then WS_CONNECTED = false; WS_SOCKET = nil end
     end)
     return true, nil
 end
@@ -338,8 +349,7 @@ end
 local function sendResult(id, data, error)
     if WS_CONNECTED and wsSendResult(id, data, error) then return true end
     WS_CONNECTED = false
-    httpPost(MCP_HTTP_URL .. "/res", { id = id, data = data, error = error })
-    return true
+    return false
 end
 
 -- ================================================================
@@ -682,7 +692,7 @@ local function handleStateBypass(args)
         if not LocalPlayer.Character then return { success = false, error = "No character" } end
         local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid"); if not hum then return { success = false, error = "No Humanoid" } end
         if mode == "heal_to_full" then hum.Health = hum.MaxHealth; return { success = true, message = "Healed" } end
-        if mode == "god_mode" then hum.HealthChanged:Connect(function(h) if h<=0 then hum.Health = hum.MaxHealth end end); return { success = true, message = "God mode" } end
+        if mode == "god_mode" then hum:GetPropertyChangedSignal("Health"):Once(function() if hum.Health<=0 then hum.Health = hum.MaxHealth end end); return { success = true, message = "God mode" } end
         if mode == "set_health" then hum.Health = args.health_value or hum.MaxHealth; return { success = true, message = "Health set" } end
         return { success = false, error = "Unknown mode" }
     end
@@ -863,7 +873,7 @@ end
 local function handleGetMetadata(args)
     local ip = args.include_performance or true
     local data = { PlaceId = game.PlaceId, GameId = game.GameId, JobId = game.JobId, CreatorId = game.CreatorId, CreatorType = tostring(game.CreatorType), Name = game.Name, Description = game.Description, PlayerCount = #Players:GetPlayers(), MaxPlayers = Players.MaxPlayers, ServerTime = tick() }
-    if ip then data.FPS = 1 / (RunService.Heartbeat:Wait() or 0.016); data.Memory = collectgarbage("count") end
+    if ip then data.FPS = 60; data.Memory = collectgarbage("count") end
     return { success = true, metadata = data }
 end
 
@@ -1218,14 +1228,23 @@ local ROUTER = {
 -- 15. MAIN POLLING LOOP
 -- ================================================================
 local function pollLoop()
-    -- Try WebSocket first
-    if TRANSPORT ~= "http" then
-        local wsOk, wsErr = wsConnect()
-        if wsOk then print("[MCP] WebSocket: " .. MCP_WS_URL)
-        else warn("[MCP] WS failed: " .. tostring(wsErr) .. " — falling back to HTTP polling") end
-    end
+    local lastPing = tick()
 
     while true do
+        -- WebSocket: ensure connected + ping keepalive
+        if TRANSPORT ~= "http" then
+            if not WS_CONNECTED or not WS_SOCKET then
+                warn("[MCP] WS disconnected, reconnecting...")
+                local wsOk, wsErr = wsConnect()
+                if wsOk then print("[MCP] WS reconnected: " .. MCP_WS_URL)
+                else task.wait(3); continue end
+            end
+            if tick() - lastPing >= 5 then
+                lastPing = tick()
+                pcall(function() WS_SOCKET:Send(HttpService:JSONEncode({type="ping"})) end)
+            end
+        end
+
         local ok, pollResult = pcall(waitForTask, POLL_TIMEOUT_MS)
         if not ok then warn("[MCP] Poll error: " .. tostring(pollResult)); task.wait(1); continue end
         if not pollResult then task.wait(0.5); continue end

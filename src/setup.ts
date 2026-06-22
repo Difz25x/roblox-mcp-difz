@@ -2,13 +2,10 @@
  * setup.ts — Interactive MCP setup wizard for various AI platforms.
  *
  * Generates the correct MCP server config file for each AI tool
- * using the user's chosen transport type (stdio, http, or websocket).
+ * using the user's chosen transport type (http or websocket).
  *
  * Config files go to USER's home directory (not package dir) so they
  * work with globally installed packages.
- *
- * Claude Code uses the official CLI command `claude mcp add` instead of
- * writing config files directly.
  */
 const fs = require('fs');
 const path = require('path');
@@ -19,12 +16,11 @@ const HOME: string = process.env.USERPROFILE || process.env.HOME || '';
 const CWD: string = process.cwd();
 const MCP_PORT: number = parseInt(process.env.MCP_PORT as string, 10) || 28429;
 
-type TransportType = 'stdio' | 'http' | 'ws';
+type TransportType = 'http' | 'ws';
 
 const TRANSPORTS: Array<{ key: TransportType; icon: string; label: string; desc: string }> = [
-    { key: 'stdio', icon: '🔌', label: 'Stdio', desc: 'Run as subprocess (fastest, for Claude Code, Cursor, etc.)' },
-    { key: 'http', icon: '🌐', label: 'HTTP', desc: 'Connect via HTTP POST (requires server running, for Claude Desktop, etc.)' },
-    { key: 'ws', icon: '🔗', label: 'WebSocket', desc: 'Connect via WebSocket (requires server running, for custom clients)' },
+    { key: 'http', icon: '🌐', label: 'HTTP', desc: 'Connect via HTTP POST (requires server running)' },
+    { key: 'ws', icon: '🔗', label: 'WebSocket', desc: 'Connect via WebSocket (requires server running)' },
 ];
 
 interface PlatformEntry {
@@ -39,21 +35,15 @@ const PLATFORMS: Record<string, PlatformEntry> = {
         name: 'Claude Code',
         icon: '🤖',
         instructions: (t: TransportType): string => {
-            if (t === 'stdio') return 'Registered via claude mcp add (stdio).';
             if (t === 'http') return 'Registered via claude mcp add (HTTP transport). Start server first.';
-            return 'Claude Code supports stdio or HTTP — use stdio for best results.';
+            return 'Claude Code supports HTTP transport.';
         },
         setup: async (transport: TransportType): Promise<boolean> => {
             try {
                 let cmd: string;
-                if (transport === 'stdio') {
-                    const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-                    const cliPath = path.join(globalRoot, 'roblox-mcp-difz', 'dist', 'cli.js');
-                    cmd = `claude mcp add roblox-mcp-difz -s user -- node "${cliPath}" start:stdio`;
-                } else if (transport === 'http') {
+                if (transport === 'http') {
                     cmd = `claude mcp add roblox-mcp-difz -s user --transport http http://localhost:${MCP_PORT}/mcp`;
                 } else {
-                    // WS — Claude Code supports SSE transport with HTTP URL
                     cmd = `claude mcp add roblox-mcp-difz -s user --transport sse http://localhost:${MCP_PORT}/mcp`;
                 }
                 const result = execSync(cmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
@@ -136,27 +126,8 @@ const PLATFORMS: Record<string, PlatformEntry> = {
     },
 };
 
-function getNodeDirectCommand(): { command: string; args: string[] } {
-    const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-    const cliPath = path.join(globalRoot, 'roblox-mcp-difz', 'dist', 'cli.js');
-    return { command: 'node', args: [cliPath, 'start:stdio'] };
-}
-
 function generateConfigForPlatform(_platform: string, transport: TransportType): Record<string, any> {
-    if (transport === 'stdio') {
-        // For stdio, try direct node path first (faster startup), fallback to npx
-        let cmd: string;
-        let args: string[];
-        try {
-            const direct = getNodeDirectCommand();
-            cmd = direct.command;
-            args = direct.args;
-        } catch {
-            cmd = 'npx';
-            args = ['roblox-mcp-difz', 'start:stdio'];
-        }
-        return { mcpServers: { 'roblox-mcp-difz': { command: cmd, args, env: {} } } };
-    } else if (transport === 'http') {
+    if (transport === 'http') {
         return {
             mcpServers: {
                 'roblox-mcp-difz': {
@@ -166,7 +137,6 @@ function generateConfigForPlatform(_platform: string, transport: TransportType):
             },
         };
     } else {
-        // WebSocket
         return {
             mcpServers: {
                 'roblox-mcp-difz': {
@@ -224,10 +194,6 @@ async function runSetupWizard(targetAI?: string, transportArg?: string): Promise
     if (transportArg && TRANSPORTS.some(t => t.key === transportArg)) {
         transport = transportArg as TransportType;
         console.log(`  → Transport: ${TRANSPORTS.find(t => t.key === transport)?.icon} ${transport.toUpperCase()}`);
-    } else if (targetAI === 'claude-code') {
-        // Claude Code defaults to stdio if not specified
-        transport = 'stdio';
-        console.log(`  → Transport: 🔌 STDIO (default for Claude Code)`);
     } else {
         console.log('  Select transport type:');
         console.log('');
@@ -235,9 +201,9 @@ async function runSetupWizard(targetAI?: string, transportArg?: string): Promise
             console.log(`    ${i + 1}. ${TRANSPORTS[i].icon} ${TRANSPORTS[i].label} — ${TRANSPORTS[i].desc}`);
         }
         console.log('');
-        const tAnswer: string = await question(rl, '  Enter number (1-3) [default: 1]: ');
+        const tAnswer: string = await question(rl, '  Enter number (1-2) [default: 1]: ');
         const tIdx = parseInt(tAnswer.trim(), 10) - 1;
-        transport = (tIdx >= 0 && tIdx < TRANSPORTS.length) ? TRANSPORTS[tIdx].key : 'stdio';
+        transport = (tIdx >= 0 && tIdx < TRANSPORTS.length) ? TRANSPORTS[tIdx].key : 'http';
         console.log(`  → Selected: ${TRANSPORTS.find(t => t.key === transport)?.icon} ${transport.toUpperCase()}`);
         console.log('');
     }
@@ -314,16 +280,10 @@ async function runSetupWizard(targetAI?: string, transportArg?: string): Promise
     console.log(`  Done! ${successCount}/${selectedKeys.length} config(s) created.`);
     console.log('');
     console.log('  Next steps:');
-    if (transport === 'stdio') {
-        console.log('  1. Start the server in HTTP mode:  roblox-mcp-difz start');
-        console.log('  2. Or start in stdio-only mode:    roblox-mcp-difz start:stdio');
-        console.log('  3. For executor transport:         ws://localhost:28429/ws');
-    } else {
-        console.log(`  1. Start the server first:  roblox-mcp-difz start`);
-        console.log(`  2. Connect via ${transport.toUpperCase()}: ${transport === 'http' ? 'POST http://localhost:28429/mcp' : 'ws://localhost:28429/ws'}`);
-    }
+    console.log(`  1. Start the server:  roblox-mcp-difz start`);
+    console.log(`  2. For AI client:     ${transport === 'http' ? `POST http://localhost:${MCP_PORT}/mcp` : `ws://localhost:${MCP_PORT}/ws`}`);
     console.log('  3. Inject mcp.luau into your Roblox executor');
-    console.log('  4. Check server info:     http://localhost:28429/type');
+    console.log('  4. Check server info: http://localhost:28429/type');
     console.log('');
 
     rl.close();

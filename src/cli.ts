@@ -5,48 +5,30 @@
  *
  * Commands:
  *   roblox-mcp-difz              → show help
- *   roblox-mcp-difz start        → start HTTP server
- *   roblox-mcp-difz start:stdio  → start stdio MCP transport (official SDK)
+ *   roblox-mcp-difz start        → start HTTP+WS server
  *   roblox-mcp-difz setup        → interactive setup wizard
  *   roblox-mcp-difz setup --ai <name> → auto-setup for specific AI
  */
-const path = require('path');
-const readline = require('readline');
 
-function printBanner(port: number, toolsCount: number, mode: string, wsCount: number): void {
+function printBanner(port: number, toolsCount: number, wsCount: number): void {
     console.log(``);
-    console.log(`Roblox MCP Server v1.1.4`);
+    console.log(`Roblox MCP Server v1.3.2`);
     console.log(`  HTTP:  http://localhost:${port}/mcp`);
     console.log(`  WS:    ws://localhost:${port}/ws`);
     console.log(`  Info:  http://localhost:${port}/type`);
     console.log(`  Tools: ${toolsCount} registered`);
-    console.log(`  Mode:  ${mode}`);
+    console.log(`  Mode:  HTTP + WS`);
     console.log(``);
 }
 
-async function cmdStart(stdioMode: boolean): Promise<void> {
+async function cmdStart(): Promise<void> {
     const PORT: number = parseInt(process.env.MCP_PORT as string, 10) || 28429;
 
-    if (stdioMode) {
-        // In stdio mode, use the official MCP SDK StdioServerTransport
-        const { createMcpServerDeps } = require('./server-core');
-        const { initMcpServer, StdioServerTransport } = require('./mcp-server');
-        const { queue, tools, sessions, proc } = createMcpServerDeps();
-        const server = initMcpServer(queue, tools, sessions, proc);
-        const transport = new StdioServerTransport();
-        await server.connect(transport);
-        // Keep running
-        await new Promise(() => {});
-        return;
-    }
-
-    // HTTP mode: express + ws bridge + sse endpoint
     const { createApp } = require('./server-core');
-    const { app, server, tools, mcp, wss } = createApp({ stdio: false });
+    const { app, server, tools, mcp, wss } = createApp();
 
     server.listen(PORT, () => {
-        const mode: string = 'HTTP + WS';
-        printBanner(PORT, tools.count, mode, wss ? wss.connectedCount : 0);
+        printBanner(PORT, tools.count, wss ? wss.connectedCount : 0);
     });
 }
 
@@ -62,10 +44,9 @@ Usage: roblox-mcp-difz [command]
 Commands:
   roblox-mcp-difz                       Show this help text
   roblox-mcp-difz start                 Start HTTP + WebSocket server
-  roblox-mcp-difz start:stdio           Start stdio mode (for AI clients)
   roblox-mcp-difz setup                 Interactive setup wizard
   roblox-mcp-difz setup --ai <name>     Setup for a specific AI
-  roblox-mcp-difz setup --transport <t>  Transport: stdio, http, ws (default: stdio)
+  roblox-mcp-difz setup --transport <t>  Transport: http, ws (default: http)
   roblox-mcp-difz setup --ai-list       List supported AI platforms
   roblox-mcp-difz --help                Show this help text
 
@@ -83,14 +64,13 @@ async function main(): Promise<void> {
     const cmd: string | undefined = args[0];
 
     if (!cmd) {
-        // Bare "roblox-mcp-difz" → show help, don't start server
         console.log('\n  Roblox MCP — type "roblox-mcp-difz --help" to see available commands.\n');
         cmdHelp();
         return;
     }
 
-    if (cmd === 'start' || cmd === 'start:http') {
-        await cmdStart(false);
+    if (cmd === 'start') {
+        await cmdStart();
         return;
     }
 
@@ -105,7 +85,7 @@ async function main(): Promise<void> {
                 const plat = p as { icon: string; name: string };
                 console.log(`  ${key.padEnd(20)} ${plat.icon} ${plat.name}`);
             }
-            console.log('\nAvailable transports: stdio, http, ws');
+            console.log('\nAvailable transports: http, ws');
             console.log('Usage: roblox-mcp-difz setup --ai <name> [--transport <type>]\n');
             return;
         }
@@ -115,17 +95,11 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (cmd === 'start:stdio' || args.includes('--stdio')) {
-        await cmdStart(true);
-        return;
-    }
-
     if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
         cmdHelp();
         return;
     }
 
-    // Unknown command → show hint
     console.log(`\n  Unknown: "${cmd}". Use "roblox-mcp-difz --help".\n`);
 }
 
