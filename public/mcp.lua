@@ -100,10 +100,8 @@ end
 
 local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
 local WS_GOT_PONG = true
+local MCP_SPY_ACTIVE = false
 local MCP_SPY_LOG = {}
-local MCP_SPY_NAMEHOOK = nil
-local MCP_SPY_INCOMING = {}
-local MCP_SPY_WATCHER = nil
 local MCP_BLOCKED = {}
 local MCP_SPOOF = {}
 local RECONNECT_DELAY = 3
@@ -722,75 +720,48 @@ local function handleRemoteSpy(args)
     local includeBind = args.include_bindables or false
 
     if action == "install" or action == "install_outgoing" then
-        if MCP_SPY_NAMEHOOK then return {success=true, action="already_installed_outgoing"} end
+        if MCP_SPY_ACTIVE then return {success=true, action="already_installed"} end
         MCP_SPY_LOG = {}
         local cls = {RemoteEvent="FireServer", RemoteFunction="InvokeServer", UnreliableRemoteEvent="FireServer"}
         if includeBind then cls.BindableEvent="Fire"; cls.BindableFunction="Invoke" end
         local ok, orig = pcall(hookmetamethod, game, "__namecall", function(self, ...)
-            local ok2, m = pcall(getnamecallmethod)
-            if ok2 and typeof(self)=="Instance" and cls[self.ClassName] and cls[self.ClassName]==m then
+            local m = getnamecallmethod()
+            if m and typeof(self)=="Instance" and cls[self.ClassName] and cls[self.ClassName]==m then
                 local rName = self.Name
-                -- Check blocking
-                if MCP_BLOCKED[rName] then
-                    return nil
-                end
-                -- Check spoofing
+                if MCP_BLOCKED[rName] then return nil end
                 local spoof = MCP_SPOOF[rName]
-                if spoof then
-                    return orig(self, table.unpack(spoof))
-                end
-                -- Log spy
+                if spoof then return orig(self, table.unpack(spoof)) end
                 if #MCP_SPY_LOG < maxLog and (filter=="" or rName:find(filter,1,true)) then
                     table.insert(MCP_SPY_LOG, {remote=rName, remotePath=getFullPath(self), method=m, direction="outgoing", args={...}, timestamp=tick()})
                 end
             end
             return orig(self, ...)
         end)
-        if not ok then return {success=false, error="Cannot hook __namecall: "..tostring(orig)} end
-        MCP_SPY_NAMEHOOK = orig
+        if not ok then return {success=false, error="Hook failed: "..tostring(orig)} end
+        MCP_SPY_ACTIVE = true
         return {success=true, action="outgoing_installed"}
     end
 
     if action == "install_incoming" or action == "install" then
-        MCP_SPY_INCOMING = MCP_SPY_INCOMING or {}; MCP_SPY_INCOMING_CT = 0
+        local hooked = 0
         local function hookEvt(inst)
-            if MCP_SPY_INCOMING[inst] then return end
-            local conns = {}
             if inst:IsA("RemoteEvent") or inst:IsA("UnreliableRemoteEvent") then
                 local ok, c = pcall(function() return inst.OnClientEvent:Connect(function(...)
                     if #MCP_SPY_LOG < maxLog and (filter=="" or inst.Name:find(filter,1,true)) then
                         table.insert(MCP_SPY_LOG, {remote=inst.Name, remotePath=getFullPath(inst), method="OnClientEvent", direction="incoming", args={...}, timestamp=tick()})
                     end
                 end) end)
-                if ok then table.insert(conns, c) end
+                if ok then hooked = hooked + 1 end
             end
-            if includeBind and inst:IsA("BindableEvent") then
-                local ok, c = pcall(function() return inst.Event:Connect(function(...)
-                    if #MCP_SPY_LOG < maxLog and (filter=="" or inst.Name:find(filter,1,true)) then
-                        table.insert(MCP_SPY_LOG, {remote=inst.Name, remotePath=getFullPath(inst), method="Event", direction="incoming", args={...}, timestamp=tick()})
-                    end
-                end) end)
-                if ok then table.insert(conns, c) end
-            end
-            if inst:IsA("RemoteFunction") then
-                -- Note: Can't safely hook per-instance __newindex (shared class metatable)
-                -- RemoteFunction OnClientInvoke interception requires game-level hook
-            end
-            if #conns>0 then MCP_SPY_INCOMING[inst]=conns; MCP_SPY_INCOMING_CT=MCP_SPY_INCOMING_CT+1 end
         end
         local function scan(inst)
             pcall(hookEvt, inst)
             for _, c in ipairs(inst:GetChildren()) do scan(c) end
         end
-        for _, sv in ipairs({ReplicatedStorage, workspace, Players, ServerScriptService, ServerStorage, StarterGui}) do
+        for _, sv in ipairs({ReplicatedStorage, workspace, Players}) do
             if sv then pcall(scan, sv) end
         end
-        if not MCP_SPY_WATCHER then
-            MCP_SPY_WATCHER = game.DescendantAdded:Connect(function(inst)
-                if not MCP_SPY_INCOMING[inst] then pcall(hookEvt, inst) end
-            end)
-        end
-        return {success=true, action="incoming_installed", remotesHooked=MCP_SPY_INCOMING_CT}
+        return {success=true, action="incoming_installed", remotesHooked=hooked}
     end
 
     if action == "get_log" then
@@ -802,16 +773,8 @@ local function handleRemoteSpy(args)
     if action == "clear" then MCP_SPY_LOG = {}; return {success=true} end
 
     if action == "remove" then
-        if MCP_SPY_NAMEHOOK then pcall(hookmetamethod, game, "__namecall", MCP_SPY_NAMEHOOK); MCP_SPY_NAMEHOOK = nil end
-        if MCP_SPY_WATCHER then pcall(function() MCP_SPY_WATCHER:Disconnect() end); MCP_SPY_WATCHER = nil end
-        if MCP_SPY_INCOMING then
-            for _, conns in pairs(MCP_SPY_INCOMING) do
-                if type(conns)=="table" then for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end end
-            end
-            MCP_SPY_INCOMING = {}
-        end
-        MCP_SPY_INCOMING_CT = 0
-        return {success=true, action="removed"}
+        MCP_SPY_ACTIVE = false
+        return {success=true, action="removed", note="Restart to fully unhook __namecall"}
     end
     return {success=false, error="Unknown action: "..tostring(action)}
 end
