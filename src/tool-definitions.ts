@@ -6282,38 +6282,66 @@ class ToolDefinitions {
             },
             {
                 name: "spy_remote_traffic",
-                description: "Hook FireServer / InvokeServer on RemoteEvent / RemoteFunction instances to capture all network traffic in real-time. Each intercepted call is logged with timestamp, remote path, method, and serialized arguments. Use 'start' to begin, 'stop' to end and receive the captured log, and 'status' to check.",
+                description: "Master tool for network traffic interception, blocking, and argument spoofing. Hooks FireServer/InvokeServer on RemoteEvent/RemoteFunction instances via __namecall metatable hook.",
                 inputSchema: {
                       "type": "object",
                       "properties": {
                                 "action": {
                                           "type": "string",
                                           "enum": [
-                                                    "start",
-                                                    "stop",
-                                                    "status"
+                                                    "install",
+                                                    "install_outgoing",
+                                                    "install_incoming",
+                                                    "get_log",
+                                                    "clear",
+                                                    "block",
+                                                    "unblock",
+                                                    "spoof",
+                                                    "release",
+                                                    "block_all",
+                                                    "unblock_all",
+                                                    "remove"
                                           ],
-                                          "description": "Action to perform on the spy"
+                                          "description": "Action: 'install' hooks all traffic, 'get_log' returns captured data, 'block'/'unblock' manage remote blocking, 'spoof' modifies outgoing arguments, 'remove' unhooks."
                                 },
                                 "filter_remote_path": {
                                           "type": "string",
-                                          "description": "Only intercept calls for this specific remote path"
+                                          "description": "Only intercept calls for remotes whose Name matches this substring (applies to install/spy actions)"
                                 },
                                 "max_log_entries": {
                                           "type": "number",
-                                          "description": "Maximum log entries to retain",
-                                          "default": 500
+                                          "description": "Maximum log entries to retain during spying (default: 500)"
                                 },
-                                "include_class_names": {
+                                "max_results": {
+                                          "type": "number",
+                                          "description": "Maximum log entries to return for 'get_log' action (default: 500)"
+                                },
+                                "include_bindables": {
+                                          "type": "boolean",
+                                          "description": "Include BindableEvent/BindableFunction in spy (default: false)"
+                                },
+                                "remote_paths": {
                                           "type": "array",
+                                          "description": "Array of full hierarchical remote paths to block or unblock. Used with 'block'/'unblock'/'release' actions.",
                                           "items": {
                                                     "type": "string"
-                                          },
-                                          "description": "Class types to intercept",
-                                          "default": [
-                                                    "RemoteEvent",
-                                                    "RemoteFunction"
-                                          ]
+                                          }
+                                },
+                                "spoof_remote": {
+                                          "type": "string",
+                                          "description": "Full path to the remote whose arguments should be spoofed. Used with 'spoof' action."
+                                },
+                                "spoof_arguments": {
+                                          "type": "array",
+                                          "description": "Replacement arguments to send instead of the original ones. Used with 'spoof' action.",
+                                          "items": {}
+                                },
+                                "block_remotes": {
+                                          "type": "array",
+                                          "description": "Alias for remote_paths. Array of remote paths to block/unblock.",
+                                          "items": {
+                                                    "type": "string"
+                                          }
                                 }
                       },
                       "required": [

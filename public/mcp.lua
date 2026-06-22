@@ -103,7 +103,11 @@ local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
 local WS_GOT_PONG = true
 local MCP_SPY_ACTIVE = false
 local MCP_SPY_LOG = {}
+local MCP_SPY_ORIGINAL = nil  -- displaced original __namecall for unhooking
+local MCP_SPY_MT = nil        -- game metatable reference for restore
+local MCP_SPY_CONNECTIONS = {} -- connections for incoming spy
 local MCP_BLOCKED = {}
+local MCP_BLOCK_ALL = false
 local MCP_SPOOF = {}
 local RECONNECT_DELAY = 3
 
@@ -715,16 +719,67 @@ local function handleRemoteSpy(args)
     local maxLog = args.max_log_entries or args.max_logs or 500
     local includeBind = args.include_bindables or false
 
+    -- Extract block/spoof params for merged functionality
+    local blockPaths = args.block_remotes or args.remote_paths or {}
+    local spoofRemote = args.spoof_remote or ""
+    local spoofArgs = args.spoof_arguments or {}
+
+    -- Normalize action aliases from tool definition
+    if action == "start" then action = "install" end
+    if action == "stop" or action == "uninstall" then action = "remove" end
+    if action == "status" then action = "get_log" end
+
+    -- Block/unblock/spoof are inline actions merged from TrafficInterceptor + ArgSpoofer
+    if action == "block" then
+        for _, p in ipairs(type(blockPaths)=="table" and blockPaths or {blockPaths}) do
+            local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
+            MCP_BLOCKED[rName] = true
+        end
+        return {success=true, action="blocked", remotes=blockPaths}
+    end
+    if action == "unblock" then
+        for _, p in ipairs(type(blockPaths)=="table" and blockPaths or {blockPaths}) do
+            local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
+            MCP_BLOCKED[rName] = nil
+        end
+        return {success=true, action="unblocked", remotes=blockPaths}
+    end
+    if action == "spoof" or action == "spoof_remote" then
+        if spoofRemote == "" then return {success=false, error="spoof_remote (remote_path) required for spoof action"} end
+        if #spoofArgs == 0 then return {success=false, error="spoof_arguments required for spoof action"} end
+        local rName = (spoofRemote:match("([^%.]+)$") or spoofRemote):gsub("^.*[\\/]", "")
+        MCP_SPOOF[rName] = spoofArgs
+        return {success=true, remotePath=spoofRemote, spoofedArgs=spoofArgs}
+    end
+    if action == "release" then
+        for _, p in ipairs(type(blockPaths)=="table" and blockPaths or {blockPaths}) do
+            local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
+            MCP_BLOCKED[rName] = nil
+            MCP_SPOOF[rName] = nil
+        end
+        return {success=true, action="released", remotes=blockPaths}
+    end
+    if action == "block_all" then
+        MCP_BLOCK_ALL = true
+        return {success=true, action="block_all"}
+    end
+    if action == "unblock_all" then
+        MCP_BLOCK_ALL = false
+        MCP_BLOCKED = {}
+        return {success=true, action="unblock_all"}
+    end
+
     if action == "install" or action == "install_outgoing" then
         if MCP_SPY_ACTIVE then return {success=true, action="already_installed"} end
         MCP_SPY_LOG = {}
 
-        -- SimpleSpy pattern: hook raw metatable instead of using hookmetamethod
         local gameMt = getrawmetatable(game)
         if not gameMt then return {success=false, error="Cannot access game metatable"} end
 
-        local origNamecall = gameMt.__namecall
+        -- Capture original AFTER hookfunction (which displaces it)
+        local origNamecall
         local spyHook = clonefunction(newcclosure(function(...)
+            -- Always allow MCP's own calls through
             if checkcaller and checkcaller() then
                 return origNamecall(...)
             end
@@ -733,20 +788,29 @@ local function handleRemoteSpy(args)
             if m and (m == "FireServer" or m == "InvokeServer") then
                 if typeof(self)=="Instance" and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction") or self:IsA("UnreliableRemoteEvent")) then
                     local rName = self.Name
-                    if MCP_BLOCKED[rName] then return nil end
+                    -- Blocked remote: return nil silently
+                    if MCP_BLOCKED[rName] or MCP_BLOCK_ALL then return nil end
+                    -- Spoofed remote: send custom args instead
                     local spoof = MCP_SPOOF[rName]
                     if spoof then return origNamecall(self, table.unpack(spoof)) end
+                    -- Log if under max and matches filter
                     if #MCP_SPY_LOG < maxLog and (filter=="" or rName:find(filter,1,true)) then
-                        local args = {select(2, ...)}
-                        table.insert(MCP_SPY_LOG, {remote=rName, remotePath=getFullPath(self), method=m, direction="outgoing", args=args, timestamp=tick()})
+                        local callArgs = {select(2, ...)}
+                        pcall(function()
+                            table.insert(MCP_SPY_LOG, {remote=rName, remotePath=getFullPath(self), method=m, direction="outgoing", args=callArgs, timestamp=tick()})
+                        end)
                     end
                 end
             end
             return origNamecall(...)
         end))
-        local ok = pcall(hookfunction, gameMt.__namecall, spyHook)
-        if not ok then return {success=false, error="Hook failed"} end
+        -- Correct: hookfunction returns the displaced original as second return value
+        local ok, displaced = pcall(hookfunction, gameMt.__namecall, spyHook)
+        if not ok then return {success=false, error="Hook failed: "..tostring(displaced)} end
+        origNamecall = displaced or gameMt.__namecall  -- fallback if executor returns nil
         MCP_SPY_ACTIVE = true
+        MCP_SPY_ORIGINAL = displaced
+        MCP_SPY_MT = gameMt
         return {success=true, action="outgoing_installed"}
     end
 
@@ -754,68 +818,80 @@ local function handleRemoteSpy(args)
         local hooked = 0
         local function hookEvt(inst)
             if inst:IsA("RemoteEvent") or inst:IsA("UnreliableRemoteEvent") then
-                local ok, c = pcall(function() return inst.OnClientEvent:Connect(function(...)
-                    if #MCP_SPY_LOG < maxLog and (filter=="" or inst.Name:find(filter,1,true)) then
-                        table.insert(MCP_SPY_LOG, {remote=inst.Name, remotePath=getFullPath(inst), method="OnClientEvent", direction="incoming", args={...}, timestamp=tick()})
-                    end
-                end) end)
-                if ok then hooked = hooked + 1 end
+                -- Disconnect any previous spy connection to avoid duplicates
+                if MCP_SPY_CONNECTIONS[inst] then
+                    pcall(MCP_SPY_CONNECTIONS[inst].Disconnect, MCP_SPY_CONNECTIONS[inst])
+                    MCP_SPY_CONNECTIONS[inst] = nil
+                end
+                local ok, conn = pcall(function()
+                    return inst.OnClientEvent:Connect(function(...)
+                        if #MCP_SPY_LOG < maxLog and (filter=="" or inst.Name:find(filter,1,true)) then
+                            pcall(function()
+                                table.insert(MCP_SPY_LOG, {remote=inst.Name, remotePath=getFullPath(inst), method="OnClientEvent", direction="incoming", args={...}, timestamp=tick()})
+                            end)
+                        end
+                    end)
+                end)
+                if ok and conn then
+                    MCP_SPY_CONNECTIONS[inst] = conn
+                    hooked = hooked + 1
+                end
             end
         end
         local function scan(inst)
             pcall(hookEvt, inst)
             for _, c in ipairs(inst:GetChildren()) do scan(c) end
         end
-        for _, sv in ipairs({ReplicatedStorage, workspace, Players}) do
-            if sv then pcall(scan, sv) end
-        end
+        -- Scan entire game data model for maximum coverage
+        pcall(scan, game)
         return {success=true, action="incoming_installed", remotesHooked=hooked}
     end
 
     if action == "get_log" then
         local max = args.max_results or 500; local entries = {}
-        for i = 1, math.min(#(MCP_SPY_LOG or {}), max) do entries[i] = MCP_SPY_LOG[i] end
-        return {success=true, entries=entries, total=#(MCP_SPY_LOG or {})}
+        local total = #(MCP_SPY_LOG or {})
+        for i = math.max(1, total - max + 1), total do
+            entries[#entries + 1] = MCP_SPY_LOG[i]
+        end
+        return {success=true, entries=entries, total=total}
     end
 
     if action == "clear" then MCP_SPY_LOG = {}; return {success=true} end
 
-    if action == "remove" then
+    if action == "remove" or action == "uninstall" then
+        -- Restore original __namecall to fully unhook
+        if MCP_SPY_MT and MCP_SPY_ORIGINAL then
+            pcall(function()
+                -- Try hookfunction again to restore original
+                pcall(hookfunction, MCP_SPY_MT.__namecall, MCP_SPY_ORIGINAL)
+                -- Alternative: set directly
+                MCP_SPY_MT.__namecall = MCP_SPY_ORIGINAL
+            end)
+        end
+        -- Disconnect all incoming spy connections
+        if MCP_SPY_CONNECTIONS then
+            for inst, conn in pairs(MCP_SPY_CONNECTIONS) do
+                pcall(conn.Disconnect, conn)
+            end
+            MCP_SPY_CONNECTIONS = {}
+        end
         MCP_SPY_ACTIVE = false
-        return {success=true, action="removed", note="Restart to fully unhook __namecall"}
+        return {success=true, action="removed"}
     end
     return {success=false, error="Unknown action: "..tostring(action)}
 end
 
 local function handleTrafficInterceptor(args)
-    local action = args.action or "install"
-    local path = args.remote_path or ""
-    if path == "" then return {success=false, error="remote_path required"} end
-    local rName = (path:match("([^%.]+)$") or path):gsub("^.*[\\/]", "")
-    
-    if action == "block" then
-        MCP_BLOCKED[rName] = true
-        return {success=true, action="blocked", remotePath=path}
-    end
-    if action == "unblock" then
-        MCP_BLOCKED[rName] = false
-        return {success=true, action="unblocked", remotePath=path}
-    end
-    if action == "remove" then
-        MCP_BLOCKED[rName] = nil; MCP_SPOOF[rName] = nil
-        return {success=true, action="released", remotePath=path}
-    end
-    return {success=true, action=action or "check", remotePath=path}
+    -- Merged into handleRemoteSpy — redirect with correct action key
+    local action = args.action or ""
+    if action == "block" then return handleRemoteSpy({action="block", block_remotes={args.remote_path}}) end
+    if action == "unblock" then return handleRemoteSpy({action="unblock", block_remotes={args.remote_path}}) end
+    if action == "remove" then return handleRemoteSpy({action="release", block_remotes={args.remote_path}}) end
+    return handleRemoteSpy({action="install", filter_remote_path=args.remote_path})
 end
 
 local function handleArgSpoofer(args)
-    local path = args.remote_path or ""
-    if path == "" then return {success=false, error="remote_path required"} end
-    local rName = (path:match("([^%.]+)$") or path):gsub("^.*[\\/]", "")
-    local spoofArgs = args.spoof_arguments or {}
-    if #spoofArgs == 0 then return {success=false, error="spoof_arguments required"} end
-    MCP_SPOOF[rName] = spoofArgs
-    return {success=true, remotePath=path, spoofedArgs=spoofArgs}
+    return handleRemoteSpy({action="spoof", spoof_remote=args.remote_path, spoof_arguments=args.spoof_arguments or {}})
 end
 
 local function handleInstanceComparer(args)
@@ -1334,12 +1410,11 @@ local HANDLERS = {
 
     spy_remote_traffic=handleRemoteSpy,
     traffic_interceptor_installer=handleTrafficInterceptor, traffic_interceptor_remover=handleTrafficInterceptor,
-    remote_blocker_installer=function(a)a.action="block";return handleTrafficInterceptor(a)end,
-    remote_killswitch_toggler=function(a)a.action="block";return handleTrafficInterceptor(a)end,
+    remote_blocker_installer=function(a)a.action="block";return handleRemoteSpy(a)end,
+    remote_killswitch_toggler=function(a)return handleRemoteSpy({action=(a.enabled and "block_all" or "unblock_all")})end,
     argument_spoofer=handleArgSpoofer,
-    argument_type_analyzer=handleTrafficInterceptor,
-    replication_filter_checker=handleNetworkOwnership,
     traffic_filter_setter=handleTrafficInterceptor,
+    replication_filter_checker=handleNetworkOwnership,
 
     instance_comparer=handleInstanceComparer,
     sibling_enumerator=handleSiblingEnum,
