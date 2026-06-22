@@ -9,16 +9,18 @@ const { v4: uuidv4 } = require('uuid');
 
 interface SessionInfo {
     workerId: string;
-    pid?: number;
+    pid?: string | number;
     name?: string;
     firstSeen: number;
     lastSeen: number;
     status: string;
+    capabilities?: Record<string, any>;
 }
 
 interface RegisterInfo {
-    pid?: number;
+    pid?: string | number;
     name?: string;
+    capabilities?: Record<string, any>;
 }
 
 interface RegisterResult {
@@ -53,6 +55,7 @@ class SessionManager {
             firstSeen: existing ? existing.firstSeen : Date.now(),
             lastSeen: Date.now(),
             status: 'active',
+            capabilities: info && info.capabilities,
         });
         return { workerId, isNew };
     }

@@ -50,12 +50,11 @@ interface ProcessManager {
             experienceId?: string;
         }
     ): { success: boolean; launchUrl?: string; error?: string };
-    captureRobloxWindow(pid: string | number | null): {
-        success: boolean;
-        pid?: number;
-        image?: string;
-        sizeBytes?: number;
+    performScreenshot(pid?: number): {
         error?: string;
+        needsDisambiguation?: boolean;
+        windows?: Array<{ pid: number; hwnd: string; title: string }>;
+        imageBase64?: string;
     };
 }
 
@@ -115,35 +114,42 @@ class McpHandler {
     }
 
     async handleMessage(message: McpMessage): Promise<McpResult> {
-        const { method, params } = message;
+        try {
+            const { method, params } = message;
 
-        if (!method) {
-            return { error: { code: -32600, message: 'Invalid Request: method is required' } };
-        }
+            if (!method) {
+                return { error: { code: -32600, message: 'Invalid Request: method is required' } };
+            }
 
-        switch (method) {
-            case 'initialize':
-                return this._handleInitialize(params);
-            case 'shutdown':
-                return this._handleShutdown();
-            case 'notifications/initialized':
-                return { result: { acknowledged: true } };
-            case 'tools/list':
-                return this._handleToolsList();
-            case 'tools/call':
-                return await this._handleToolsCall(params);
-            case 'resources/list':
-                return this._handleResourcesList();
-            case 'resources/read':
-                return await this._handleResourcesRead(params);
-            case 'prompts/list':
-                return this._handlePromptsList();
-            case 'ping':
-                return { result: { status: 'pong', timestamp: Date.now(), stats: this.queue.getStats() } };
-            case 'mcp/setup':
-                return this._handleSetup();
-            default:
-                return { error: { code: -32601, message: `Method not found: ${method}` } };
+            switch (method) {
+                case 'initialize':
+                    return this._handleInitialize(params);
+                case 'shutdown':
+                    return this._handleShutdown();
+                case 'notifications/initialized':
+                    return { result: { acknowledged: true } };
+                case 'tools/list':
+                    return this._handleToolsList();
+                case 'tools/call':
+                    return await this._handleToolsCall(params);
+                case 'resources/list':
+                    return this._handleResourcesList();
+                case 'resources/read':
+                    return await this._handleResourcesRead(params);
+                case 'prompts/list':
+                    return this._handlePromptsList();
+                case 'prompts/get':
+                    return await this._handlePromptsGet(params);
+                case 'ping':
+                    return { result: { status: 'pong', timestamp: Date.now(), stats: this.queue.getStats() } };
+                case 'mcp/setup':
+                    return this._handleSetup();
+                default:
+                    return { error: { code: -32601, message: `Method not found: ${method}` } };
+            }
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            return { error: { code: -32603, message: `Internal handler error: ${errorMessage}` } };
         }
     }
 
@@ -155,7 +161,7 @@ class McpHandler {
                 capabilities: {
                     tools: { listChanged: false },
                     resources: { listChanged: false, subscribe: false },
-                    prompts: {},
+                    prompts: { listChanged: false },
                 },
                 serverInfo: this.serverInfo,
             },
@@ -195,10 +201,30 @@ class McpHandler {
                 };
             }
 
-            // Executor tools — queue for executor, with optional workerId targeting
+            // Executor tools — queue for executor, with optional PID targeting
+            // If no executor is connected, fail fast instead of waiting for timeout
+            if (this.sessions.activeCount === 0) {
+                return {
+                    result: {
+                        content: [{
+                            type: 'text',
+                            text: JSON.stringify({
+                                success: false,
+                                error: 'No Roblox executor is connected. Launch or inject Roblox first.',
+                            }, null, 2),
+                        }],
+                        isError: true,
+                        meta: { tool: name },
+                    },
+                };
+            }
+
             const startTime = Date.now();
-            const workerId = (args && args.pid) ? String(args.pid) : undefined;
-            const result = await this.queue.submitTask(name, args || {}, { workerId });
+            const opts: any = {};
+            if (args && args.pid) {
+                opts.targetPid = Number(args.pid);
+            }
+            const result = await this.queue.submitTask(name, args || {}, opts);
             const elapsed = Date.now() - startTime;
 
             return {
@@ -241,8 +267,14 @@ class McpHandler {
                     experienceId: args.experience_id as string | undefined,
                 });
 
-            case 'capture_roblox_screenshot':
-                return this.proc.captureRobloxWindow((args.pid as string | number) || null);
+            case 'capture_roblox_screenshot': {
+                const ssResult = this.proc.performScreenshot(args.pid ? Number(args.pid) : undefined);
+                if (ssResult.error) return { success: false, error: ssResult.error };
+                if (ssResult.needsDisambiguation) {
+                    return { success: true, needsDisambiguation: true, windows: ssResult.windows };
+                }
+                return { success: true, image: `data:image/png;base64,${ssResult.imageBase64}`, pid: args.pid || null };
+            }
 
             case 'get_roblox_versions':
                 return this._getRobloxVersions();
@@ -337,6 +369,34 @@ class McpHandler {
                 ],
             },
         };
+    }
+
+    async _handlePromptsGet(params?: Record<string, unknown>): Promise<McpResult> {
+        const name = (params && params.name) as string | undefined;
+        if (!name) {
+            return { error: { code: -32602, message: 'Prompt name is required' } };
+        }
+        if (name === 'analyze_game') {
+            return {
+                result: {
+                    description: 'Dumps game metadata, remotes, and player data in one shot.',
+                    messages: [
+                        { role: 'user', content: { type: 'text', text: 'Run get_game_metadata, dump_remote_events, and dump_workspace_players. Return all results in a single structured report.' } },
+                    ],
+                },
+            };
+        }
+        if (name === 'find_exploit_vector') {
+            return {
+                result: {
+                    description: 'Scan remotes and workspace to find exploit entry points.',
+                    messages: [
+                        { role: 'user', content: { type: 'text', text: 'Scan all RemoteEvents/RemoteFunctions for connections and ownership. Check workspace for exploitable parts. Look for vulnerable clickdetectors and proximity prompts. Return a prioritized list of exploit vectors.' } },
+                    ],
+                },
+            };
+        }
+        return { error: { code: -32602, message: `Unknown prompt: ${name}` } };
     }
 
     _handleSetup(): McpResult {

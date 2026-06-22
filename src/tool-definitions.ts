@@ -1462,56 +1462,12 @@ class ToolDefinitions {
                                           "default": "CoreGui"
                                 },
                                 "properties": {
-                                          "type": "object",
-                                          "description": "Dictionary of Roblox property name-value pairs to set on the GUI container (e.g. DisplayOrder, ResetOnSpawn, Enabled, IgnoreGuiInset)",
-                                          "default": {},
-                                          "additionalProperties": true
+                                          "type": "string",
+                                          "description": "JSON string of property name-value pairs (e.g. '{\"DisplayOrder\":2,\"Enabled\":true}'). Empty string or null means no custom properties."
                                 },
                                 "children": {
-                                          "type": "array",
-                                          "description": "List of child GUI element definitions to create inside the injected container",
-                                          "items": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                              "class_name": {
-                                                                        "type": "string",
-                                                                        "description": "Roblox GUI class name (e.g. Frame, TextLabel, ImageLabel, TextButton, ScrollingFrame)",
-                                                                        "enum": [
-                                                                                  "Frame",
-                                                                                  "TextLabel",
-                                                                                  "TextButton",
-                                                                                  "ImageLabel",
-                                                                                  "ImageButton",
-                                                                                  "TextBox",
-                                                                                  "ScrollingFrame",
-                                                                                  "ViewportFrame",
-                                                                                  "UIListLayout",
-                                                                                  "UIGridLayout",
-                                                                                  "UICorner",
-                                                                                  "UIStroke",
-                                                                                  "UIPadding"
-                                                                        ]
-                                                              },
-                                                              "name": {
-                                                                        "type": "string",
-                                                                        "description": "Name for this child element",
-                                                                        "minLength": 1,
-                                                                        "maxLength": 64
-                                                              },
-                                                              "properties": {
-                                                                        "type": "object",
-                                                                        "description": "Property values for this child element (e.g. Size, Position, BackgroundColor3, Text, Font, TextSize, Visible)",
-                                                                        "default": {},
-                                                                        "additionalProperties": true
-                                                              }
-                                                    },
-                                                    "required": [
-                                                              "class_name",
-                                                              "name",
-                                                              "properties"
-                                                    ],
-                                                    "additionalProperties": false
-                                          }
+                                          "type": "string",
+                                          "description": "JSON string of child GUI element definitions (e.g. '[{\"class_name\":\"TextLabel\",\"name\":\"Title\",\"properties\":{\"Text\":\"Hello\",\"Size\":\"UDim2.new(0,200,0,50)\"}}]'). Empty string or null means no children."
                                 },
                                 "auto_destroy_after": {
                                           "type": "number",
@@ -2620,9 +2576,8 @@ class ToolDefinitions {
                                           "default": "CoreGui"
                                 },
                                 "properties": {
-                                          "type": "object",
-                                          "description": "Additional properties to set on the GUI",
-                                          "additionalProperties": true
+                                          "type": "string",
+                                          "description": "JSON string of additional properties to set on the GUI (e.g. '{\"BackgroundColor3\":[0.1,0.1,0.2],\"BorderSizePixel\":0}'). Empty/null = none."
                                 }
                       },
                       "required": []
@@ -3425,9 +3380,12 @@ class ToolDefinitions {
                                           ]
                                 },
                                 "properties": {
-                                          "type": "object",
-                                          "description": "Key-value map of property names to desired values. Supports primitives, Color3 (e.g. \"Color3.fromRGB(255,0,0)\"), Vector3 (e.g. \"Vector3.new(0,10,0)\"), CFrame (e.g. \"CFrame.new(0,5,0)\"), and UDim2 as Luau expression strings, or direct numbers/strings/booleans.",
-                                          "additionalProperties": true
+                                          "type": "array",
+                                          "description": "Array of property names to read from the target instance (e.g. '[\"WalkSpeed\",\"JumpPower\",\"Health\"]' or omitted for Name+ClassName only).",
+                                          "items": {
+                                                    "type": "string"
+                                          },
+                                          "default": []
                                 },
                                 "auto_serialize": {
                                           "type": "boolean",
@@ -3469,9 +3427,8 @@ class ToolDefinitions {
                                           ]
                                 },
                                 "properties": {
-                                          "type": "object",
-                                          "description": "Optional initial property values to set on the new instance. Same serialization rules as property_mutator_generic.",
-                                          "additionalProperties": true
+                                          "type": "string",
+                                          "description": "JSON string of initial property values for the new instance (e.g. '{\"Size\":[0,2,0,2],\"Position\":[0.5,0,0.5,0],\"Color\":[1,0,0]}'). Empty/null = defaults."
                                 },
                                 "instance_name": {
                                           "type": "string",
@@ -4545,9 +4502,8 @@ class ToolDefinitions {
                                           "maxLength": 500
                                 },
                                 "extra_data": {
-                                          "type": "object",
-                                          "description": "Additional data for chat message manipulation (e.g. FromSpeaker, ChannelName, Tags).",
-                                          "additionalProperties": true
+                                          "type": "string",
+                                          "description": "JSON string of additional data for chat message manipulation (e.g. '{\"FromSpeaker\":\"System\",\"ChannelName\":\"All\"}'). Empty/null = no extra data."
                                 },
                                 "disable_text_filter": {
                                           "type": "boolean",
@@ -4777,9 +4733,8 @@ class ToolDefinitions {
                       "type": "object",
                       "properties": {
                                 "properties": {
-                                          "type": "object",
-                                          "description": "Properties to modify (WalkSpeed, JumpPower, HipHeight, Health, MaxHealth, Noclip, InfiniteJump, Gravity)",
-                                          "additionalProperties": true
+                                          "type": "string",
+                                          "description": "JSON string of properties to modify (e.g. '{\"WalkSpeed\":50,\"JumpPower\":100,\"Noclip\":true,\"InfiniteJump\":true}'). Empty/null = no changes."
                                 },
                                 "duration": {
                                           "type": "number",
@@ -5407,15 +5362,8 @@ class ToolDefinitions {
                                           "default": false
                                 },
                                 "environment_overrides": {
-                                          "type": "object",
-                                          "description": "Optional table of key-value pairs to merge into the execution environment's global table (_G), allowing injection of custom dependencies, mocks, or controlled references. Keys are strings, values are Luau expression strings evaluated at execution time.",
-                                          "additionalProperties": {
-                                                    "type": "string"
-                                          },
-                                          "examples": {
-                                                    "myVar": "\"injected string\"",
-                                                    "myFunc": "function(...) return ... end"
-                                          }
+                                          "type": "string",
+                                          "description": "Optional JSON string of key-value pairs to merge into global _G. Example: '{\"myVar\":\"injected string\",\"myFunc\":\"function(...) return ... end\"}'. Empty/null = no overrides."
                                 }
                       },
                       "required": [
@@ -5656,6 +5604,15 @@ class ToolDefinitions {
             },
             },
             {
+                name: "check_unc_capabilities",
+                description: "Test which UNC functions are available in the executor and return the capability report. Useful for debugging why certain tools fail — the executor may not support all required UNC functions.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            {
                 name: "get_console_logs",
                 description: "Fetch LogService output (Messages / Errors / Warnings). Lets the AI detect when anti-cheat fires, observe server print statements, and debug exploit scripts in real-time. Each log entry includes the message text, type, timestamp, and (if available) script source line.",
                 inputSchema: {
@@ -5746,13 +5703,8 @@ class ToolDefinitions {
                                           "description": "Full hierarchical path to the RemoteEvent instance, e.g. 'game.ReplicatedStorage.MyRemote'. Must point to an existing RemoteEvent."
                                 },
                                 "arguments": {
-                                          "type": "array",
-                                          "description": "Array of arguments to pass to FireServer. Each element can be a string, number, boolean, table, or nested structure. Complex Roblox types (CFrame, Vector3, etc.) should be passed as serialized tables with a '__type' key indicating the Roblox type.",
-                                          "items": {
-                                                    "type": "object",
-                                                    "description": "An argument value, optionally typed for Roblox-specific types."
-                                          },
-                                          "default": []
+                                          "type": "string",
+                                          "description": "JSON string of arguments to pass to FireServer (e.g. '[\"hello\", 42, true, {\"__type\":\"Vector3\",\"x\":1,\"y\":2,\"z\":3}]'). Empty string or null = no arguments."
                                 },
                                 "timeout": {
                                           "type": "number",
@@ -5779,13 +5731,8 @@ class ToolDefinitions {
                                           "description": "Full hierarchical path to the RemoteFunction instance, e.g. 'game.ReplicatedStorage.MyFunction'. Must point to an existing RemoteFunction, not a RemoteEvent."
                                 },
                                 "arguments": {
-                                          "type": "array",
-                                          "description": "Array of arguments to pass to InvokeServer. Each element can be a string, number, boolean, table, or nested structure. Supports serialized Roblox types via '__type' keys.",
-                                          "items": {
-                                                    "type": "object",
-                                                    "description": "An argument value, optionally typed for Roblox-specific types."
-                                          },
-                                          "default": []
+                                          "type": "string",
+                                          "description": "JSON string of arguments to pass to InvokeServer (e.g. '[\"player_id\", 12345]'). Empty string or null = no arguments."
                                 },
                                 "timeout": {
                                           "type": "number",

@@ -22,6 +22,7 @@ interface Task {
     args: Record<string, any>;
     timestamp: number;
     targetWorkerId?: string;
+    targetPid?: number;
 }
 
 interface PendingResult {
@@ -40,6 +41,7 @@ interface WaitingPoller {
 interface SubmitTaskOpts {
     timeoutMs?: number;
     workerId?: string;
+    targetPid?: number;
 }
 
 class QueueManager extends EventEmitter {
@@ -78,6 +80,7 @@ class QueueManager extends EventEmitter {
             const id = uuidv4();
             const task: Task = { id, type, args, timestamp: Date.now() };
             if (opts.workerId) task.targetWorkerId = opts.workerId;
+            if (opts.targetPid) task.targetPid = opts.targetPid;
             this.totalSubmitted++;
 
             // Safety timeout — if the executor never responds, reject the promise
@@ -107,6 +110,8 @@ class QueueManager extends EventEmitter {
             }
             // No matching poller — queue the task
             this.taskQueue.push(task);
+            this.emit('task', task);
+            return;
         });
     }
 
@@ -184,7 +189,7 @@ class QueueManager extends EventEmitter {
             }
 
             // Clean up orphaned pending results that have exceeded max age
-            const maxPendingAge = 180_000; // 3 minutes
+            const maxPendingAge = 180_000;
             for (const [id, pending] of this.pendingResults.entries()) {
                 if (Date.now() - pending.submittedAt > maxPendingAge) {
                     clearTimeout(pending.timer);
@@ -192,17 +197,6 @@ class QueueManager extends EventEmitter {
                 }
             }
         }, 60_000);
-    }
-
-    /** Clean up — clear the cleanup interval */
-    destroy(): void {
-        if (this._cleanupInterval) {
-            clearInterval(this._cleanupInterval);
-            this._cleanupInterval = undefined;
-        }
-        this.taskQueue = [];
-        this.pendingResults.clear();
-        this.waitingPollers = [];
     }
 
     /** Get current queue stats for monitoring */

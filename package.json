@@ -1,19 +1,20 @@
 {
   "name": "roblox-mcp-difz",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Universal MCP server for Roblox game control, reverse engineering, and exploitation — supports Claude Code, Claude Desktop, Cursor, Windsurf, and any MCP-compatible AI.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "roblox-mcp-difz": "bin/roblox-mcp"
+    "roblox-mcp-difz": "bin/roblox-mcp",
+    "rblx-mcp": "bin/roblox-mcp"
   },
   "scripts": {
-    "start": "node bin/roblox-mcp",
-    "start:stdio": "node bin/roblox-mcp start:stdio",
+    "start": "node bin/roblox-mcp start",
     "setup": "node bin/roblox-mcp setup",
-    "dev": "node bin/roblox-mcp --verbose",
     "build": "tsc",
     "publish": "node publish.mjs",
+    "publish:force": "node publish.mjs --force",
+    "publish:dry": "node publish.mjs --dry-run",
     "prepublishOnly": "npm run build"
   },
   "files": [
@@ -32,12 +33,10 @@
     "model-context-protocol",
     "reverse-engineering",
     "game-hacking",
-    "claude-code",
     "exploit"
   ],
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "express": "^4.21.0",
     "uuid": "^11.0.0",
     "ws": "^8.16.0"
