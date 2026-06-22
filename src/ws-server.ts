@@ -72,10 +72,6 @@ class WsServer {
                         workerId = msg.worker_id;
                         if (!workerId) return;
 
-                        // Remove old
-                        const old = this.workers.get(workerId);
-                        if (old && old.ws !== ws) { try { old.ws.close(); } catch {} }
-
                         // Try to match window title -> real OS PID
                         const gameName = (msg.placeName || '').toLowerCase();
                         const windows = enumWindows();
@@ -87,6 +83,28 @@ class WsServer {
                                 return t.includes(gameName) && t.includes('roblox');
                             });
                             if (match) matchedPid = match.pid;
+                        }
+
+                        // If matched PID belongs to a DIFFERENT workerId, that worker is stale
+                        // (same Roblox process re-injected with new workerId) — clean it up
+                        if (matchedPid) {
+                            const oldWid = this.pidMap.get(matchedPid);
+                            if (oldWid && oldWid !== workerId) {
+                                const oldInfo = this.workers.get(oldWid);
+                                if (oldInfo) {
+                                    console.log(`[WS] Same PID ${matchedPid} re-registered as ${workerId}, cleaning up stale ${oldWid}`);
+                                    try { oldInfo.ws.close(); } catch {}
+                                    this.workers.delete(oldWid);
+                                    this.sessions.unregister(oldWid);
+                                }
+                            }
+                        }
+
+                        // Remove old entry by workerId (same workerId, new WS connection)
+                        const old = this.workers.get(workerId);
+                        if (old) {
+                            if (old.pid && old.pid !== matchedPid) this.pidMap.delete(old.pid);
+                            if (old.ws !== ws) { try { old.ws.close(); } catch {} }
                         }
 
                         const info = {
@@ -135,21 +153,27 @@ class WsServer {
             ws.on('close', () => {
                 this.allConnections.delete(ws);
                 if (workerId) {
-                    const info = this.workers.get(workerId);
-                    if (info && info.pid) this.pidMap.delete(info.pid);
-                    this.workers.delete(workerId);
-                    this.sessions.unregister(workerId);
-                    console.log(`[WS] Disconnected: ${workerId}`);
+                    // Only clean up if THIS ws is still the registered worker
+                    const current = this.workers.get(workerId);
+                    if (current && current.ws === ws) {
+                        if (current.pid) this.pidMap.delete(current.pid);
+                        this.workers.delete(workerId);
+                        this.sessions.unregister(workerId);
+                        console.log(`[WS] Disconnected: ${workerId}`);
+                    }
                 }
             });
             ws.on('error', (err: any) => {
                 console.error('[WS] Connection error:', err?.message || err);
                 this.allConnections.delete(ws);
                 if (workerId) {
-                    const info = this.workers.get(workerId);
-                    if (info && info.pid) this.pidMap.delete(info.pid);
-                    this.workers.delete(workerId);
-                    this.sessions.unregister(workerId);
+                    // Only clean up if THIS ws is still the registered worker
+                    const current = this.workers.get(workerId);
+                    if (current && current.ws === ws) {
+                        if (current.pid) this.pidMap.delete(current.pid);
+                        this.workers.delete(workerId);
+                        this.sessions.unregister(workerId);
+                    }
                 }
             });
         });
@@ -214,8 +238,11 @@ class WsServer {
                 }
                 for (const [wid, info] of Array.from(this.workers.entries())) {
                     if (info.ws.readyState !== WebSocket.OPEN) {
-                        if (info.pid) this.pidMap.delete(info.pid);
-                        this.workers.delete(wid);
+                        // Only clean up if we're still the current worker for this ID
+                        if (this.workers.get(wid)?.ws === info.ws) {
+                            if (info.pid) this.pidMap.delete(info.pid);
+                            this.workers.delete(wid);
+                        }
                     }
                 }
             } catch (err: any) {

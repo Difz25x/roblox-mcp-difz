@@ -118,26 +118,30 @@ local function testUncCapabilities()
     cap.total = 0; cap.supported = 0; cap.missing = {}
     for name, _ in pairs(uncs) do
         cap.total = cap.total + 1
-        local ok = pcall(function()
+        local ok, found = pcall(function()
             local v = _G[name]
-            if type(v) == "function" then
-                if name == "identifyexecutor" then
-                    local r = {v()}
-                    if type(r[1]) == "string" then cap.executorName = r[1] end
-                elseif name == "getgenv" then
-                    cap.hasGenv = (v() ~= nil)
-                end
-                return true
+            if type(v) ~= "function" then
+                local lsOk, lsFn = pcall(loadstring, "return " .. name)
+                if lsOk then v = lsFn() end
             end
-            return false
+            return type(v) == "function"
         end)
-        if ok then cap.supported = cap.supported + 1
-        else table.insert(cap.missing, name) end
+        if ok and found then
+            cap.supported = cap.supported + 1
+            if name == "identifyexecutor" then
+                pcall(function() local r = {_G[name]()}; if type(r[1])=="string" then cap.executorName=r[1] end end)
+            elseif name == "getgenv" then
+                pcall(function() cap.hasGenv = (_G[name]() ~= nil) end)
+            end
+        else
+            table.insert(cap.missing, name)
+        end
     end
     cap.hasVirtualInput = (VirtualInputManager ~= nil)
     cap.missingCount = #cap.missing
     return cap
 end
+MCP_CAPABILITIES = testUncCapabilities()
 
 local function wsConnect()
     local connectFn = (typeof(WebSocket)=="table" and WebSocket.connect) or nil
