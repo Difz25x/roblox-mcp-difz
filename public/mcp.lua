@@ -1483,14 +1483,8 @@ end
 print("[MCP] Starting: " .. WS_URL)
 local lastPing = tick()
 local lastPong = tick()
-local PONG_TIMEOUT = 3
+local PONG_TIMEOUT = 8
 while true do
-    if WS_CONNECTED and WS then
-        if tick() - lastPong >= PONG_TIMEOUT then
-            print("[MCP] No pong for " .. PONG_TIMEOUT .. "s, WebSocket dead")
-            WS = nil; WS_CONNECTED = false
-        end
-    end
     if not WS_CONNECTED or not WS then
         print("[MCP] Connecting...")
         local ok, err = pcall(wsReconnect)
@@ -1519,5 +1513,9 @@ while true do
             if ok2 then resultData = res else resultData = {success=false,error="Handler: "..tostring(res)} end
         end
         pcall(wsSend, tsk.id, resultData, nil, tsk.pid)
+    end
+    if WS_CONNECTED and WS and tick() - lastPong >= PONG_TIMEOUT then
+        print("[MCP] No pong for " .. PONG_TIMEOUT .. "s, WebSocket dead")
+        WS = nil; WS_CONNECTED = false
     end
 end
