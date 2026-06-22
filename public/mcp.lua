@@ -99,10 +99,13 @@ local function serialize(v,d)
 end
 
 local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
+local WS_GOT_PONG = true
 local MCP_SPY_LOG = {}
 local MCP_SPY_NAMEHOOK = nil
 local MCP_SPY_INCOMING = {}
 local MCP_SPY_WATCHER = nil
+local MCP_BLOCKED = {}
+local MCP_SPOOF = {}
 local RECONNECT_DELAY = 3
 
 local MCP_CAPABILITIES = {}
@@ -172,7 +175,7 @@ local function wsReconnect()
         print("[MCP] >> " .. msg)
         local ok, d = pcall(function() return HttpService:JSONDecode(msg) end)
         if ok and d then
-            if d.type == "pong" then lastPong = tick() end
+            if d.type == "pong" then WS_GOT_PONG = true end
             if d.type == "task" then
                 if d.workerId and d.workerId ~= WORKER_ID then return end
                 table.insert(WS_BUFFER, d)
@@ -512,24 +515,9 @@ local function handleSandboxAnalysis(args)
 end
 
 local function handleNamecallSpy(args)
-    local target = args.target_path or ""
-    if target == "" then return {success=false, error="target_path required"} end
-    local inst, err = resolvePath(target)
-    if not inst then return {success=false, error=err} end
-    local maxCalls = args.max_calls or 50
-    local methodFilter = args.method_filter or ""
-    local capturedLog = {}
-    local ok, original = pcall(hookmetamethod, inst, "__namecall", function(...)
-        if #capturedLog >= maxCalls then return original(...) end
-        local method = getnamecallmethod()
-        if methodFilter == "" or method == methodFilter then
-            local self = ...
-            table.insert(capturedLog, {method=method, self=tostring(self), timestamp=tick()})
-        end
-        return original(...)
-    end)
-    if not ok then return {success=false, error="hookmetamethod not supported: "..tostring(original)} end
-    return {success=true, hookActive=true, maxCalls=maxCalls, methodFilter=methodFilter, captured=#capturedLog}
+    -- Per-instance __namecall hooking corrupts shared class metatables.
+    -- Use handleRemoteSpy with action="install" instead (hooks game.__namecall, which is safe).
+    return {success=false, error="Per-instance __namecall hooking corrupts shared class metatables (all instances of same class break). Use handleRemoteSpy instead."}
 end
 
 local function handleMetatableSeer(args)
@@ -739,10 +727,21 @@ local function handleRemoteSpy(args)
         local cls = {RemoteEvent="FireServer", RemoteFunction="InvokeServer", UnreliableRemoteEvent="FireServer"}
         if includeBind then cls.BindableEvent="Fire"; cls.BindableFunction="Invoke" end
         local ok, orig = pcall(hookmetamethod, game, "__namecall", function(self, ...)
-            local m = getnamecallmethod()
-            if typeof(self)=="Instance" and cls[self.ClassName] and cls[self.ClassName]==m then
-                if #MCP_SPY_LOG < maxLog and (filter=="" or self.Name:find(filter,1,true)) then
-                    table.insert(MCP_SPY_LOG, {remote=self.Name, remotePath=getFullPath(self), method=m, direction="outgoing", args={...}, timestamp=tick()})
+            local ok2, m = pcall(getnamecallmethod)
+            if ok2 and typeof(self)=="Instance" and cls[self.ClassName] and cls[self.ClassName]==m then
+                local rName = self.Name
+                -- Check blocking
+                if MCP_BLOCKED[rName] then
+                    return nil
+                end
+                -- Check spoofing
+                local spoof = MCP_SPOOF[rName]
+                if spoof then
+                    return orig(self, table.unpack(spoof))
+                end
+                -- Log spy
+                if #MCP_SPY_LOG < maxLog and (filter=="" or rName:find(filter,1,true)) then
+                    table.insert(MCP_SPY_LOG, {remote=rName, remotePath=getFullPath(self), method=m, direction="outgoing", args={...}, timestamp=tick()})
                 end
             end
             return orig(self, ...)
@@ -774,26 +773,8 @@ local function handleRemoteSpy(args)
                 if ok then table.insert(conns, c) end
             end
             if inst:IsA("RemoteFunction") then
-                local mt = getrawmetatable(inst)
-                if mt then
-                    local origNewIdx = mt.__newindex
-                    if origNewIdx then
-                        pcall(hookmetamethod, inst, "__newindex", function(self2, k, v)
-                            if k=="OnClientInvoke" and type(v)=="function" then
-                                local wrapped = function(...)
-                                    if #MCP_SPY_LOG < maxLog and (filter=="" or inst.Name:find(filter,1,true)) then
-                                        table.insert(MCP_SPY_LOG, {remote=inst.Name, remotePath=getFullPath(inst), method="OnClientInvoke", direction="incoming", args={...}, timestamp=tick()})
-                                    end
-                                    local r = {v(...)}
-                                    if #r>0 then table.insert(MCP_SPY_LOG, {remote=inst.Name, method="OnClientInvokeResult", direction="incoming", args=r, timestamp=tick()}) end
-                                    return table.unpack(r,1,#r)
-                                end
-                                return origNewIdx(self2, k, wrapped)
-                            end
-                            return origNewIdx(self2, k, v)
-                        end)
-                    end
-                end
+                -- Note: Can't safely hook per-instance __newindex (shared class metatable)
+                -- RemoteFunction OnClientInvoke interception requires game-level hook
             end
             if #conns>0 then MCP_SPY_INCOMING[inst]=conns; MCP_SPY_INCOMING_CT=MCP_SPY_INCOMING_CT+1 end
         end
@@ -838,47 +819,30 @@ end
 local function handleTrafficInterceptor(args)
     local action = args.action or "install"
     local path = args.remote_path or ""
-    local inst, err = resolvePath(path)
-    if not inst then return {success=false, error=err} end
-    if action == "install" then
-        local ok, orig = pcall(hookmetamethod, inst, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            if method == "FireServer" or method == "InvokeServer" then return nil end
-            return orig(self, ...)
-        end)
-        if not ok then return {success=false, error="Cannot hook remote"} end
-        return {success=true, action="intercepted", remotePath=path}
-    end
-    if action == "remove" then
-        return {success=true, action="released", remotePath=path}
-    end
+    if path == "" then return {success=false, error="remote_path required"} end
+    local rName = (path:match("([^%.]+)$") or path):gsub("^.*[\\/]", "")
     if action == "block" then
-        local ok, orig = pcall(hookmetamethod, inst, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            if method == "FireServer" then return nil end
-            if method == "InvokeServer" then return nil end
-            return orig(self, ...)
-        end)
-        if not ok then return {success=false, error="Cannot block remote"} end
+        MCP_BLOCKED[rName] = true
         return {success=true, action="blocked", remotePath=path}
     end
-    return {success=false, error="Unknown action"}
+    if action == "unblock" then
+        MCP_BLOCKED[rName] = nil
+        return {success=true, action="unblocked", remotePath=path}
+    end
+    if action == "remove" then
+        MCP_BLOCKED[rName] = nil; MCP_SPOOF[rName] = nil
+        return {success=true, action="released", remotePath=path}
+    end
+    return {success=true, action=action or "check", remotePath=path}
 end
 
 local function handleArgSpoofer(args)
     local path = args.remote_path or ""
     if path == "" then return {success=false, error="remote_path required"} end
-    local inst, err = resolvePath(path)
-    if not inst then return {success=false, error=err} end
+    local rName = (path:match("([^%.]+)$") or path):gsub("^.*[\\/]", "")
     local spoofArgs = args.spoof_arguments or {}
-    local ok, orig = pcall(hookmetamethod, inst, "__namecall", function(self, ...)
-        local method = getnamecallmethod()
-        if method == "FireServer" then
-            return orig(self, table.unpack(spoofArgs))
-        end
-        return orig(self, ...)
-    end)
-    if not ok then return {success=false, error="Cannot hook remote"} end
+    if #spoofArgs == 0 then return {success=false, error="spoof_arguments required"} end
+    MCP_SPOOF[rName] = spoofArgs
     return {success=true, remotePath=path, spoofedArgs=spoofArgs}
 end
 
@@ -1481,24 +1445,30 @@ proxyToServer = function(toolName, args)
 end
 
 print("[MCP] Starting: " .. WS_URL)
-local lastPing = tick()
-local lastPong = tick()
-local PONG_TIMEOUT = 8
+local PING_INTERVAL = 1
+local PONG_TIMEOUT = 10
+local lastSentPing = tick()
+WS_GOT_PONG = true
 while true do
     if not WS_CONNECTED or not WS then
         print("[MCP] Connecting...")
         local ok, err = pcall(wsReconnect)
         if ok then
             print("[MCP] Connected | Worker: " .. WORKER_ID)
-            lastPong = tick()
+            WS_GOT_PONG = true
         else
             print("[MCP] Connect failed: " .. tostring(err) .. " (retry in " .. RECONNECT_DELAY .. "s)")
             task.wait(RECONNECT_DELAY)
         end
     end
-    if WS_CONNECTED and WS and tick() - lastPing >= 1 then
-        lastPing = tick()
+    if WS_CONNECTED and WS and tick() - lastSentPing >= PING_INTERVAL then
+        lastSentPing = tick()
+        WS_GOT_PONG = false
         pcall(function() WS:Send(HttpService:JSONEncode({type="ping"})) end)
+    end
+    if WS_CONNECTED and WS and not WS_GOT_PONG and tick() - lastSentPing >= PONG_TIMEOUT then
+        print("[MCP] No pong for " .. PONG_TIMEOUT .. "s, WebSocket dead")
+        WS = nil; WS_CONNECTED = false
     end
     local tsk = wsPoll()
     if not tsk then
@@ -1513,9 +1483,5 @@ while true do
             if ok2 then resultData = res else resultData = {success=false,error="Handler: "..tostring(res)} end
         end
         pcall(wsSend, tsk.id, resultData, nil, tsk.pid)
-    end
-    if WS_CONNECTED and WS and tick() - lastPong >= PONG_TIMEOUT then
-        print("[MCP] No pong for " .. PONG_TIMEOUT .. "s, WebSocket dead")
-        WS = nil; WS_CONNECTED = false
     end
 end
