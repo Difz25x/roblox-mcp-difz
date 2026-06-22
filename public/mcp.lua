@@ -102,8 +102,6 @@ local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
 local WS_GOT_PONG = true
 local MCP_SPY_ACTIVE = false
 local MCP_SPY_LOG = {}
-local MCP_BLOCKED = {}
-local MCP_SPOOF = {}
 local RECONNECT_DELAY = 3
 
 local MCP_CAPABILITIES = {}
@@ -512,11 +510,6 @@ local function handleSandboxAnalysis(args)
     return {success=true, threadIdentity=identity, isExecutorContext=isExecutor, capabilities=caps}
 end
 
-local function handleNamecallSpy(args)
-    -- Per-instance __namecall hooking corrupts shared class metatables.
-    -- Use handleRemoteSpy with action="install" instead (hooks game.__namecall, which is safe).
-    return {success=false, error="Per-instance __namecall hooking corrupts shared class metatables (all instances of same class break). Use handleRemoteSpy instead."}
-end
 
 local function handleMetatableSeer(args)
     local target = args.target_path or ""
@@ -724,15 +717,31 @@ local function handleRemoteSpy(args)
         MCP_SPY_LOG = {}
         local cls = {RemoteEvent="FireServer", RemoteFunction="InvokeServer", UnreliableRemoteEvent="FireServer"}
         if includeBind then cls.BindableEvent="Fire"; cls.BindableFunction="Invoke" end
+        
         local ok, orig = pcall(hookmetamethod, game, "__namecall", function(self, ...)
             local m = getnamecallmethod()
+            
             if m and typeof(self)=="Instance" and cls[self.ClassName] and cls[self.ClassName]==m then
                 local rName = self.Name
-                if MCP_BLOCKED[rName] then return nil end
+                
+                if MCP_BLOCKED[rName] == true then 
+                    return nil 
+                end
+                
                 local spoof = MCP_SPOOF[rName]
-                if spoof then return orig(self, table.unpack(spoof)) end
+                if spoof then 
+                    return orig(self, table.unpack(spoof)) 
+                end
+                
                 if #MCP_SPY_LOG < maxLog and (filter=="" or rName:find(filter,1,true)) then
-                    table.insert(MCP_SPY_LOG, {remote=rName, remotePath=getFullPath(self), method=m, direction="outgoing", args={...}, timestamp=tick()})
+                    table.insert(MCP_SPY_LOG, {
+                        remote=rName, 
+                        remotePath=getFullPath(self), 
+                        method=m, 
+                        direction="outgoing", 
+                        args={...}, 
+                        timestamp=tick()
+                    })
                 end
             end
             return orig(self, ...)
@@ -784,12 +793,13 @@ local function handleTrafficInterceptor(args)
     local path = args.remote_path or ""
     if path == "" then return {success=false, error="remote_path required"} end
     local rName = (path:match("([^%.]+)$") or path):gsub("^.*[\\/]", "")
+    
     if action == "block" then
         MCP_BLOCKED[rName] = true
         return {success=true, action="blocked", remotePath=path}
     end
     if action == "unblock" then
-        MCP_BLOCKED[rName] = nil
+        MCP_BLOCKED[rName] = false
         return {success=true, action="unblocked", remotePath=path}
     end
     if action == "remove" then
@@ -1308,7 +1318,6 @@ local HANDLERS = {
     roblox_environment_viewer=handleRobloxEnv,
     sandbox_analyzer=handleSandboxAnalysis,
 
-    namecall_spy=handleNamecallSpy,
     metatable_seer=handleMetatableSeer, metatable_modifier=handleMetatableModifier,
     raw_metatable_setter=function(a)a.action="set_raw";a.new_metatable=a.metatable;return handleMetatableModifier(a)end,
     readonly_toggler=function(a)a.action="set_readonly";a.state=a.state;return handleMetatableModifier(a)end,

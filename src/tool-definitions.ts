@@ -6770,20 +6770,6 @@ class ToolDefinitions {
                     "required": ["target_path", "state"]
                 }
             },
-            {
-                name: "namecall_spy",
-                description: "Monitors namecall method invocations (obj:MethodName(...)) using getnamecallmethod UNC. Hooks the namecall metamethod to log every method call on the target object. Returns a log of all intercepted calls with arguments.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "target_path": { "type": "string", "description": "Path to the instance or table to monitor." },
-                        "method_filter": { "type": "string", "description": "Only log calls to this specific method name." },
-                        "max_calls": { "type": "number", "default": 50, "description": "Maximum calls to log before stopping." }
-                    },
-                    "required": ["target_path"]
-                }
-            },
-
             // ================================================================
             // INSTANCE & SIGNAL UTILITIES (UNC: compareinstances, replicatesignal)
             // ================================================================
