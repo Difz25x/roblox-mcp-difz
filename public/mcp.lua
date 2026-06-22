@@ -39,8 +39,13 @@ if G.MCP_WORKER_ID then WORKER_ID = G.MCP_WORKER_ID else
     local ok,guid = pcall(function() return HttpService:GenerateGuid(false) end)
     WORKER_ID = ok and guid or (tostring(tick()) .. tostring(math.random(1,999999)))
 end
-local PROCESS_PID = nil; pcall(function() PROCESS_PID = getpid() end)
-local function getPid() return PROCESS_PID end
+local PROCESS_PID = nil
+local function getPid()
+    if not PROCESS_PID then
+        PROCESS_PID = tostring(game.PlaceId) .. "_" .. tostring(game.JobId)
+    end
+    return PROCESS_PID
+end
 local function jsonDecode(str)
     if type(str) ~= "string" or str == "" then return nil end
     local ok,v = pcall(function() return HttpService:JSONDecode(str) end)
@@ -107,7 +112,7 @@ local function testUncCapabilities()
         getnamecallmethod="function", gethui="function", writefile="function",
         readfile="function", isfile="function", delfile="function",
         makefolder="function", listfiles="function", getcustomasset="function",
-        getpid="function", getloadedmodules="function", getrunningscripts="function",
+        getloadedmodules="function", getrunningscripts="function",
         getscriptbytecode="function", getscriptclosure="function", getscripthash="function",
         getcallingscript="function", getsenv="function", getrenv="function",
         hookmetamethod="function", iscclosure="function", islclosure="function",

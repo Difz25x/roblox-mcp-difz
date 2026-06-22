@@ -222,8 +222,7 @@ class McpHandler {
             const startTime = Date.now();
             const opts: any = {};
             if (args && args.pid) {
-                const parsedPid = typeof args.pid === 'number' ? args.pid : Number(args.pid);
-                if (!isNaN(parsedPid)) opts.targetPid = parsedPid;
+                opts.targetPid = Number(args.pid);
             }
             const result = await this.queue.submitTask(name, args || {}, opts);
             const elapsed = Date.now() - startTime;

@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 
 interface SessionInfo {
     workerId: string;
-    pid?: number;
+    pid?: string | number;
     name?: string;
     firstSeen: number;
     lastSeen: number;
@@ -18,7 +18,7 @@ interface SessionInfo {
 }
 
 interface RegisterInfo {
-    pid?: number;
+    pid?: string | number;
     name?: string;
     capabilities?: Record<string, any>;
 }
