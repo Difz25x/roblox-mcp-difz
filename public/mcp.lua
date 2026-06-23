@@ -30,6 +30,8 @@ local setrawmetatable = setrawmetatable or function() end
 local setreadonly = setreadonly or function() end
 local isreadonly = isreadonly or function() return false end
 local getnamecallmethod = getnamecallmethod or function() return "" end
+local hookmetamethod = hookmetamethod or nil
+local restorefunction = restorefunction or nil
 local gethui = gethui or function() return CoreGui end
 local writefile = writefile or function() end
 local readfile = readfile or function() return "" end
@@ -104,6 +106,7 @@ local WS_GOT_PONG = true
 local MCP_SPY_ACTIVE = false
 local MCP_SPY_LOG = {}
 local MCP_SPY_ORIGINAL = nil  -- displaced original __namecall for unhooking
+local MCP_SPY_HOOKED_REF = nil -- hooked function reference (for restorefunction)
 local MCP_SPY_MT = nil        -- game metatable reference for restore
 local MCP_SPY_CONNECTIONS = {} -- connections for incoming spy
 local MCP_BLOCKED = {}
@@ -719,17 +722,14 @@ local function handleRemoteSpy(args)
     local maxLog = args.max_log_entries or args.max_logs or 500
     local includeBind = args.include_bindables or false
 
-    -- Extract block/spoof params for merged functionality
     local blockPaths = args.block_remotes or args.remote_paths or {}
     local spoofRemote = args.spoof_remote or ""
     local spoofArgs = args.spoof_arguments or {}
 
-    -- Normalize action aliases from tool definition
     if action == "start" then action = "install" end
     if action == "stop" or action == "uninstall" then action = "remove" end
     if action == "status" then action = "get_log" end
 
-    -- Block/unblock/spoof are inline actions merged from TrafficInterceptor + ArgSpoofer
     if action == "block" then
         for _, p in ipairs(type(blockPaths)=="table" and blockPaths or {blockPaths}) do
             local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
@@ -773,52 +773,84 @@ local function handleRemoteSpy(args)
         if MCP_SPY_ACTIVE then return {success=true, action="already_installed"} end
         MCP_SPY_LOG = {}
 
+        if type(newcclosure) ~= "function" then return {success=false, error="newcclosure not supported"} end
+        if type(getrawmetatable) ~= "function" then return {success=false, error="getrawmetatable not supported"} end
+
+        local hasHookMeta = (type(hookmetamethod) == "function")
+        local hasHookFunc = (type(hookfunction) == "function")
+        if not hasHookMeta and not hasHookFunc then
+            return {success=false, error="Neither hookmetamethod nor hookfunction available"}
+        end
+
         local gameMt = getrawmetatable(game)
         if not gameMt then return {success=false, error="Cannot access game metatable"} end
+        if not gameMt.__namecall then return {success=false, error="__namecall not found in game metatable"} end
 
-        -- Capture original AFTER hookfunction (which displaces it)
+        local preHookNamecall = gameMt.__namecall
         local origNamecall
-        local spyHook = clonefunction(newcclosure(function(...)
-            -- Always allow MCP's own calls through
-            if checkcaller and checkcaller() then
+
+        local spyHook = newcclosure(function(...)
+            if type(checkcaller) == 'function' and checkcaller() then
                 return origNamecall(...)
             end
-            local self = ...
-            local m = getnamecallmethod()
-            if m and (m == "FireServer" or m == "InvokeServer") then
-                if typeof(self)=="Instance" and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction") or self:IsA("UnreliableRemoteEvent")) then
-                    local rName = self.Name
-                    -- Blocked remote: return nil silently
-                    if MCP_BLOCKED[rName] or MCP_BLOCK_ALL then return nil end
-                    -- Spoofed remote: send custom args instead
-                    local spoof = MCP_SPOOF[rName]
-                    if spoof then return origNamecall(self, table.unpack(spoof)) end
-                    -- Log if under max and matches filter
-                    if #MCP_SPY_LOG < maxLog and (filter=="" or rName:find(filter,1,true)) then
-                        local callArgs = {select(2, ...)}
-                        pcall(function()
-                            table.insert(MCP_SPY_LOG, {remote=rName, remotePath=getFullPath(self), method=m, direction="outgoing", args=callArgs, timestamp=tick()})
-                        end)
-                    end
+
+            local self, m = ..., getnamecallmethod()
+            local isRemote = typeof(self)=="Instance" and
+                (self:IsA("RemoteEvent") or self:IsA("RemoteFunction") or self:IsA("UnreliableRemoteEvent"))
+
+            if isRemote and (m == "FireServer" or m == "InvokeServer") then
+                local rName = self.Name
+
+                if m == "FireServer" and (MCP_BLOCKED[rName] or MCP_BLOCK_ALL) then
+                    return nil
+                end
+                local spoof = MCP_SPOOF[rName]
+                if spoof then
+                    return origNamecall(self, table.unpack(spoof))
+                end
+
+                if #MCP_SPY_LOG < maxLog and (filter=="" or rName:find(filter,1,true)) then
+                    local callArgs = {select(2, ...)}
+                    local logEntry = {remote=rName, remotePath=getFullPath(self), method=m, direction="outgoing", args=callArgs, timestamp=tick()}
+                    pcall(table.insert, MCP_SPY_LOG, logEntry)
                 end
             end
+
             return origNamecall(...)
-        end))
-        -- Correct: hookfunction returns the displaced original as second return value
-        local ok, displaced = pcall(hookfunction, gameMt.__namecall, spyHook)
-        if not ok then return {success=false, error="Hook failed: "..tostring(displaced)} end
-        origNamecall = displaced or gameMt.__namecall  -- fallback if executor returns nil
-        MCP_SPY_ACTIVE = true
-        MCP_SPY_ORIGINAL = displaced
-        MCP_SPY_MT = gameMt
-        return {success=true, action="outgoing_installed"}
+        end)
+
+        if hasHookMeta then
+            local ok, displaced = pcall(hookmetamethod, game, "__namecall", spyHook)
+            if ok then
+                origNamecall = displaced or preHookNamecall
+                if not origNamecall then return {success=false, error="hookmetamethod returned nil original"} end
+                MCP_SPY_ACTIVE = true
+                MCP_SPY_ORIGINAL = origNamecall
+                MCP_SPY_HOOKED_REF = nil
+                MCP_SPY_MT = nil
+                return {success=true, action="outgoing_installed", method="hookmetamethod"}
+            end
+        end
+
+        if hasHookFunc then
+            local ok, displaced = pcall(hookfunction, gameMt.__namecall, spyHook)
+            if not ok then return {success=false, error="hookfunction failed: "..tostring(displaced)} end
+            origNamecall = displaced or preHookNamecall
+            if not origNamecall then return {success=false, error="Cannot resolve original __namecall"} end
+            MCP_SPY_ACTIVE = true
+            MCP_SPY_ORIGINAL = origNamecall
+            MCP_SPY_HOOKED_REF = gameMt.__namecall
+            MCP_SPY_MT = gameMt
+            return {success=true, action="outgoing_installed", method="hookfunction"}
+        end
+
+        return {success=false, error="No hooking method available"}
     end
 
     if action == "install_incoming" or action == "install" then
         local hooked = 0
         local function hookEvt(inst)
             if inst:IsA("RemoteEvent") or inst:IsA("UnreliableRemoteEvent") then
-                -- Disconnect any previous spy connection to avoid duplicates
                 if MCP_SPY_CONNECTIONS[inst] then
                     pcall(MCP_SPY_CONNECTIONS[inst].Disconnect, MCP_SPY_CONNECTIONS[inst])
                     MCP_SPY_CONNECTIONS[inst] = nil
@@ -842,7 +874,6 @@ local function handleRemoteSpy(args)
             pcall(hookEvt, inst)
             for _, c in ipairs(inst:GetChildren()) do scan(c) end
         end
-        -- Scan entire game data model for maximum coverage
         pcall(scan, game)
         return {success=true, action="incoming_installed", remotesHooked=hooked}
     end
@@ -859,16 +890,19 @@ local function handleRemoteSpy(args)
     if action == "clear" then MCP_SPY_LOG = {}; return {success=true} end
 
     if action == "remove" or action == "uninstall" then
-        -- Restore original __namecall to fully unhook
-        if MCP_SPY_MT and MCP_SPY_ORIGINAL then
-            pcall(function()
-                -- Try hookfunction again to restore original
-                pcall(hookfunction, MCP_SPY_MT.__namecall, MCP_SPY_ORIGINAL)
-                -- Alternative: set directly
+        if MCP_SPY_ORIGINAL then
+            if type(restorefunction) == "function" and MCP_SPY_HOOKED_REF then
+                pcall(restorefunction, MCP_SPY_HOOKED_REF)
+            end
+            if type(hookmetamethod) == "function" then
+                pcall(hookmetamethod, game, "__namecall", MCP_SPY_ORIGINAL)
+            end
+            if MCP_SPY_MT and type(setreadonly) == "function" then
+                pcall(setreadonly, MCP_SPY_MT, false)
                 MCP_SPY_MT.__namecall = MCP_SPY_ORIGINAL
-            end)
+                pcall(setreadonly, MCP_SPY_MT, true)
+            end
         end
-        -- Disconnect all incoming spy connections
         if MCP_SPY_CONNECTIONS then
             for inst, conn in pairs(MCP_SPY_CONNECTIONS) do
                 pcall(conn.Disconnect, conn)
@@ -882,7 +916,6 @@ local function handleRemoteSpy(args)
 end
 
 local function handleTrafficInterceptor(args)
-    -- Merged into handleRemoteSpy — redirect with correct action key
     local action = args.action or ""
     if action == "block" then return handleRemoteSpy({action="block", block_remotes={args.remote_path}}) end
     if action == "unblock" then return handleRemoteSpy({action="unblock", block_remotes={args.remote_path}}) end
