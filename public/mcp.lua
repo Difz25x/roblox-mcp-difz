@@ -905,22 +905,16 @@ local function handleRemoteSpy(args)
             end
 
             if self.ClassName == "RemoteFunction" and key == classesToHook[self.ClassName] and typeof(value) == "function" then
-                local ok, _ = pcall(function()
-                    local detour = function(...)
-                        local callArgs = table.pack(...)
-                        LogIncoming(self, callArgs)
-                        local old2 = getthreadidentity()
-                        setthreadidentity(2)
-                        local result = table.pack(value(table.unpack(callArgs, 1, callArgs.n)))
-                        setthreadidentity(old2)
-                        return table.unpack(result, 1, result.n)
-                    end
-                    rawset(self, key, detour)
-                end)
-                if ok then
-                    MCP_SPY_CONNECTIONS[self] = true
-                    return
+                local detour = function(...)
+                    local callArgs = table.pack(...)
+                    LogIncoming(self, callArgs)
+                    local old2 = getthreadidentity()
+                    setthreadidentity(2)
+                    local result = table.pack(value(table.unpack(callArgs, 1, callArgs.n)))
+                    setthreadidentity(old2)
+                    return table.unpack(result, 1, result.n)
                 end
+                return MCP_SPY_NEWINDEX(self, key, detour)
             end
 
             return MCP_SPY_NEWINDEX(...)
@@ -928,10 +922,10 @@ local function handleRemoteSpy(args)
 
         local gameMt2 = getrawmetatable(game)
         if gameMt2 and type(hookmetamethod) == "function" then
-            local ok2, displaced2 = pcall(hookmetamethod, game, "__newindex", newIndexHook)
-            if ok2 and displaced2 then
-                MCP_SPY_NEWINDEX_ORIG = displaced2
-                MCP_SPY_NEWINDEX = newIndexHook
+            local ok2, origNewIndex = pcall(hookmetamethod, game, "__newindex", newIndexHook)
+            if ok2 and origNewIndex then
+                MCP_SPY_NEWINDEX_ORIG = origNewIndex
+                MCP_SPY_NEWINDEX = origNewIndex
             end
         end
 
