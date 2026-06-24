@@ -6290,19 +6290,15 @@ class ToolDefinitions {
                                           "type": "string",
                                           "enum": [
                                                     "install",
-                                                    "install_outgoing",
-                                                    "install_incoming",
                                                     "get_log",
                                                     "clear",
                                                     "block",
                                                     "unblock",
-                                                    "spoof",
-                                                    "release",
-                                                    "block_all",
-                                                    "unblock_all",
+                                                    "ignore",
+                                                    "unignore",
                                                     "remove"
                                           ],
-                                          "description": "Action: 'install' hooks all traffic, 'get_log' returns captured data, 'block'/'unblock' manage remote blocking, 'spoof' modifies outgoing arguments, 'remove' unhooks."
+                                          "description": "Action: 'install' hooks traffic, 'get_log' returns captured data, 'block' stops remotes, 'ignore' skips logging for remotes, 'remove' unhooks."
                                 },
                                 "filter_remote_path": {
                                           "type": "string",
