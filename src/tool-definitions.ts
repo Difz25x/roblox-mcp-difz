@@ -1,15 +1,4 @@
-/**
- * tool-definitions.ts
- *
- * Central registry of all tools exposed via MCP.
- * Each tool has:
- *   - name:         Unique identifier used in tools/call
- *   - description:  Prompt for the AI explaining what the tool does
- *   - inputSchema:  JSON Schema for validating arguments
- *
- * Every tool here MUST have a matching handler in the Luau client script
- * (public/mcp.luau) under the tools router table.
- */
+
 
 interface ToolDefinition {
     name: string;
@@ -27,9 +16,9 @@ class ToolDefinitions {
     private _defineTools(): ToolDefinition[] {
         return [
 
-            // ================================================================
-            // INSTANCE TREE EXPLORATION & SEARCH
-            // ================================================================
+            
+            
+            
 
             {
                 name: "recursive_tree_walker",
@@ -798,9 +787,9 @@ class ToolDefinitions {
             },
             },
 
-            // ================================================================
-            // PROPERTY INSPECTION & METADATA EXTRACTION
-            // ================================================================
+            
+            
+            
 
             {
                 name: "property_bulk_reader",
@@ -1266,9 +1255,9 @@ class ToolDefinitions {
             },
             },
 
-            // ================================================================
-            // FULL VISUAL & SCREEN TRACKING
-            // ================================================================
+            
+            
+            
 
             {
                 name: "viewport_capture_handler",
@@ -2584,9 +2573,9 @@ class ToolDefinitions {
             },
             },
 
-            // ================================================================
-            // ADVANCED INPUT & MACRO SIMULATION
-            // ================================================================
+            
+            
+            
 
             {
                 name: "mouse_move_absolute",
@@ -3360,9 +3349,9 @@ class ToolDefinitions {
             },
             },
 
-            // ================================================================
-            // ENVIRONMENT & INSTANCE MANIPULATION
-            // ================================================================
+            
+            
+            
 
             {
                 name: "property_mutator_generic",
@@ -4748,9 +4737,9 @@ class ToolDefinitions {
             },
             },
 
-            // ================================================================
-            // MEMORY & CORE FUNCTION HOOKING
-            // ================================================================
+            
+            
+            
 
             {
                 name: "script_source_ripper",
@@ -5646,9 +5635,9 @@ class ToolDefinitions {
             },
             },
 
-            // ================================================================
-            // NETWORK TRAFFIC & PACKET MANIPULATION
-            // ================================================================
+            
+            
+            
 
             {
                 name: "remote_surface_scanner",
@@ -6475,9 +6464,9 @@ class ToolDefinitions {
             },
             },
 
-            // ================================================================
-            // UNC HIDDEN PROPERTY TOOLS (uses sethiddenproperty / firesignal)
-            // ================================================================
+            
+            
+            
 
             {
                 name: "gui_button_clicker",
@@ -6561,9 +6550,9 @@ class ToolDefinitions {
                 }
             },
 
-            // ================================================================
-            // CLOSURE & FUNCTION HOOKING (uses UNC: hookfunction, checkcaller, clonefunction)
-            // ================================================================
+            
+            
+            
 
             {
                 name: "function_hook_installer",
@@ -6591,9 +6580,9 @@ class ToolDefinitions {
                 }
             },
 
-            // ================================================================
-            // ENVIRONMENT EXPLORATION (uses UNC: getgc, getreg, getrenv)
-            // ================================================================
+            
+            
+            
 
             {
                 name: "gc_scanner",
@@ -6642,9 +6631,9 @@ class ToolDefinitions {
                 }
             },
 
-            // ================================================================
-            // FILESYSTEM OPERATIONS (uses UNC: readfile, writefile, delfile, listfiles)
-            // ================================================================
+            
+            
+            
 
             {
                 name: "file_reader",
@@ -6716,9 +6705,9 @@ class ToolDefinitions {
                 }
             },
 
-            // ================================================================
-            // SCRIPT INTROSPECTION (uses UNC: getrunningscripts, getcallingscript, getscripthash)
-            // ================================================================
+            
+            
+            
 
             {
                 name: "running_scripts_lister",
@@ -6766,9 +6755,9 @@ class ToolDefinitions {
                 }
             },
 
-            // ================================================================
-            // METATABLE & MEMORY MANIPULATION (UNC: setrawmetatable, setreadonly, namecall)
-            // ================================================================
+            
+            
+            
 
             {
                 name: "raw_metatable_setter",
@@ -6794,9 +6783,9 @@ class ToolDefinitions {
                     "required": ["target_path", "state"]
                 }
             },
-            // ================================================================
-            // INSTANCE & SIGNAL UTILITIES (UNC: compareinstances, replicatesignal)
-            // ================================================================
+            
+            
+            
 
             {
                 name: "instance_comparer",
@@ -6825,9 +6814,9 @@ class ToolDefinitions {
                 }
             },
 
-            // ================================================================
-            // SERVER-SIDE TOOLS (runs on Node, not executor)
-            // ================================================================
+            
+            
+            
 
             {
                 name: "get_roblox_processes",

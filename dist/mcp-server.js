@@ -1,11 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-/**
- * mcp-server.ts — Official MCP SDK wrapper
- *
- * Uses @modelcontextprotocol/sdk for proper MCP compliance.
- * Handles ESM/CJS interop via absolute path.
- */
 const path = require('path');
 const SDK_DIR = path.resolve(__dirname, '..', 'node_modules', '@modelcontextprotocol', 'sdk', 'dist', 'cjs');
 function loadSdk() {

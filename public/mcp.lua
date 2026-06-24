@@ -1,5 +1,12 @@
 pcall(function() if not game:IsLoaded() then game.Loaded:Wait() end end)
 local G = {}; pcall(function() G = getgenv and getgenv() or _G end)
+if G.MCP_RUNNING then
+    pcall(function() if G.MCP_WS then G.MCP_WS:Close() end end)
+    if G.MCP_SPY_ON and type(hookmetamethod)=="function" then
+        if G.MCP_SPY_ORIG then pcall(hookmetamethod,game,"__namecall",G.MCP_SPY_ORIG) end
+        if G.MCP_SPY_NI_ORIG then pcall(hookmetamethod,game,"__newindex",G.MCP_SPY_NI_ORIG) end
+    end
+end
 local HOST = G.MCP_HOST or "127.0.0.1"
 local PORT = G.MCP_PORT or 28429
 local WS_URL = "ws://" .. HOST .. ":" .. PORT .. "/ws"
@@ -165,7 +172,7 @@ local function wsReconnect()
     if not connectFn then return false, "No WebSocket support" end
     local ok, s = pcall(connectFn, WS_URL)
     if not ok or not s then return false, tostring(s) end
-    WS = s; WS_CONNECTED = true
+    WS = s; WS_CONNECTED = true; G.MCP_WS = s
     local placeName = ""
     pcall(function()
         local pi = MarketplaceService:GetProductInfo(game.PlaceId)
@@ -206,7 +213,13 @@ end
 local function wsSend(id, data, err, taskPid)
     if not WS_CONNECTED or not WS then return false end
     local pid = taskPid or getPid()
-    return pcall(function() WS:Send(HttpService:JSONEncode({type="result", id=id, data=data, error=err, pid=pid})) end)
+    local ok, encoded = pcall(function() return HttpService:JSONEncode({type="result", id=id, data=data, error=err, pid=pid}) end)
+    if ok then
+        return pcall(function() WS:Send(encoded) end)
+    else
+        local errResponse = HttpService:JSONEncode({type="result", id=id, data={success=false}, error="Failed to serialize result: " .. tostring(encoded), pid=pid})
+        return pcall(function() WS:Send(errResponse) end)
+    end
 end
 
 local function handleGetMetadata(args)
@@ -299,7 +312,7 @@ local function handleTreeExplore(args)
     local action=args.action or "walk"
     if action=="walk" then
         local root,err=resolvePath(args.start_path or "game"); if not root then return{success=false,error=err} end
-        local md=args.max_depth or 10; local mr=args.max_results or 200; local fc=args.class_filter or ""; local np=args.name_pattern or ""
+        local md=args.max_depth or 10; local mr=args.max_results or 100; local fc=args.class_filter or ""; local np=args.name_pattern or ""
         local results={}
         local function walk(inst,d) if mr>0 and #results>=mr then return end; if md>=0 and d>md then return end
             if d>0 then local match=true; if fc~="" then local cls={}; for c in fc:gmatch("[^,]+") do cls[c:match("^%s*(.-)%s*$") or ""]=true end; if next(cls) and not cls[inst.ClassName] then match=false end end; if match and np~="" then match=inst.Name:lower():find(np:lower())~=nil end; if match then table.insert(results,{Name=inst.Name,ClassName=inst.ClassName,Path=getFullPath(inst)}) end end
@@ -724,7 +737,7 @@ local function handleRemoteSpy(args)
     local filter = args.filter_remote_path or ""
     local maxLog = args.max_log_entries or args.max_logs or 500
 
-    local blockPaths = args.remote_paths or {}
+    local blockPaths = args.remote_paths or args.block_remotes or {}
     if type(blockPaths) == "string" then blockPaths = {blockPaths} end
 
     local remoteClassNames = {["RemoteEvent"]=true, ["RemoteFunction"]=true, ["UnreliableRemoteEvent"]=true}
@@ -735,6 +748,7 @@ local function handleRemoteSpy(args)
         for _, p in ipairs(blockPaths) do
             local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
             MCP_BLOCKED[rName] = true
+            MCP_BLOCKED[p] = true
         end
         return {success=true, action="blocked", blockPaths=blockPaths}
     end
@@ -742,6 +756,7 @@ local function handleRemoteSpy(args)
         for _, p in ipairs(blockPaths) do
             local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
             MCP_BLOCKED[rName] = nil
+            MCP_BLOCKED[p] = nil
         end
         return {success=true, action="unblocked", blockPaths=blockPaths}
     end
@@ -749,6 +764,7 @@ local function handleRemoteSpy(args)
         for _, p in ipairs(blockPaths) do
             local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
             MCP_IGNORED[rName] = true
+            MCP_IGNORED[p] = true
         end
         return {success=true, action="ignored", blockPaths=blockPaths}
     end
@@ -756,6 +772,7 @@ local function handleRemoteSpy(args)
         for _, p in ipairs(blockPaths) do
             local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
             MCP_IGNORED[rName] = nil
+            MCP_IGNORED[p] = nil
         end
         return {success=true, action="unignored", blockPaths=blockPaths}
     end
@@ -798,6 +815,9 @@ local function handleRemoteSpy(args)
             if m == "FireServer" and (MCP_BLOCKED[rName] or MCP_BLOCK_ALL) then
                 return
             end
+            if m == "InvokeServer" and MCP_BLOCKED[rName] then
+                return nil
+            end
             if MCP_IGNORED[rName] then
                 return origNamecall(...)
             end
@@ -830,16 +850,19 @@ local function handleRemoteSpy(args)
         if not origNamecall then return {success=false, error="hookmetamethod returned nil original"} end
         MCP_SPY_ACTIVE = true
         MCP_SPY_ORIGINAL = origNamecall
+        G.MCP_SPY_ON = true; G.MCP_SPY_ORIG = origNamecall
 
         local incomingHooked = 0
 
         local function LogIncoming(inst, args)
-            if #MCP_SPY_LOG < maxLog and (filter == "" or inst.Name:find(filter, 1, true)) then
+            local rName = inst.Name
+            if MCP_IGNORED[rName] then return end
+            if MCP_BLOCKED[rName] then return end
+            if #MCP_SPY_LOG < maxLog and (filter == "" or rName:find(filter, 1, true)) then
                 pcall(table.insert, MCP_SPY_LOG, {
-                    remote=inst.Name, remotePath=getFullPath(inst), method=classesToHook[inst.ClassName] or "OnClientEvent",
+                    remote=rName, remotePath=getFullPath(inst), method=classesToHook[inst.ClassName] or "OnClientEvent",
                     direction="incoming", args=args, timestamp=tick()
                 })
-                incomingHooked = incomingHooked + 1
             end
         end
 
@@ -905,22 +928,16 @@ local function handleRemoteSpy(args)
             end
 
             if self.ClassName == "RemoteFunction" and key == classesToHook[self.ClassName] and typeof(value) == "function" then
-                local ok, _ = pcall(function()
-                    local detour = function(...)
-                        local callArgs = table.pack(...)
-                        LogIncoming(self, callArgs)
-                        local old2 = getthreadidentity()
-                        setthreadidentity(2)
-                        local result = table.pack(value(table.unpack(callArgs, 1, callArgs.n)))
-                        setthreadidentity(old2)
-                        return table.unpack(result, 1, result.n)
-                    end
-                    rawset(self, key, detour)
-                end)
-                if ok then
-                    MCP_SPY_CONNECTIONS[self] = true
-                    return
+                local detour = function(...)
+                    local callArgs = table.pack(...)
+                    LogIncoming(self, callArgs)
+                    local old2 = getthreadidentity()
+                    setthreadidentity(2)
+                    local result = table.pack(value(table.unpack(callArgs, 1, callArgs.n)))
+                    setthreadidentity(old2)
+                    return table.unpack(result, 1, result.n)
                 end
+                return MCP_SPY_NEWINDEX(self, key, detour)
             end
 
             return MCP_SPY_NEWINDEX(...)
@@ -928,10 +945,11 @@ local function handleRemoteSpy(args)
 
         local gameMt2 = getrawmetatable(game)
         if gameMt2 and type(hookmetamethod) == "function" then
-            local ok2, displaced2 = pcall(hookmetamethod, game, "__newindex", newIndexHook)
-            if ok2 and displaced2 then
-                MCP_SPY_NEWINDEX_ORIG = displaced2
-                MCP_SPY_NEWINDEX = newIndexHook
+            local ok2, origNewIndex = pcall(hookmetamethod, game, "__newindex", newIndexHook)
+            if ok2 and origNewIndex then
+                MCP_SPY_NEWINDEX_ORIG = origNewIndex
+                MCP_SPY_NEWINDEX = origNewIndex
+                G.MCP_SPY_NI_ORIG = origNewIndex
             end
         end
 
@@ -955,6 +973,7 @@ local function handleRemoteSpy(args)
         MCP_SPY_ORIGINAL = nil
         MCP_SPY_NEWINDEX_ORIG = nil
         MCP_SPY_NEWINDEX = nil
+        G.MCP_SPY_ON = nil; G.MCP_SPY_ORIG = nil; G.MCP_SPY_NI_ORIG = nil
         return {success=true, action="removed"}
     end
 
@@ -1408,14 +1427,208 @@ local function handleUiChangeWatcher(args)
     while watching do
         if #changes >= maxChanges then break end
         if tick() - startTime >= timeout then break end
-        task.wait(0.1)
+        task.wait(0.01)
     end
     watching = false
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     return {success=true, changes=changes, changeCount=#changes, watchedSeconds=tick()-startTime, reachedMax=(#changes >= maxChanges), timedOut=(#changes < maxChanges)}
 end
 
+
+local function handleDisableAntiCheat(args)
+    local hookKick = args.hook_kick
+    if hookKick == nil then hookKick = true end
+    local disableScripts = args.disable_ac_scripts
+    if disableScripts == nil then disableScripts = false end
+    local blockTeleport = args.block_teleport
+    if blockTeleport == nil then blockTeleport = true end
+    local antiAFK = args.anti_afk
+    if antiAFK == nil then antiAFK = false end
+    local afkInterval = args.afk_interval
+    if afkInterval == nil or afkInterval < 5 then afkInterval = 30 end
+
+    local results = {kicks_hooked = false, scripts_disabled = 0, scripts_restored = 0, teleport_blocked = false, anti_afk_active = false, detection_attempts = 0}
+
+    if hookKick and LocalPlayer and type(hookfunction) == "function" and type(newcclosure) == "function" then
+        pcall(function()
+            local originalKick = LocalPlayer.Kick
+            hookfunction(LocalPlayer.Kick, newcclosure(function(self, ...)
+                return nil
+            end))
+            results.kicks_hooked = true
+        end)
+        pcall(function()
+            if LocalPlayer.Character then
+                local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+                if humanoid then
+                    hookfunction(humanoid.Die, newcclosure(function(self, ...)
+                        return nil
+                    end))
+                end
+            end
+        end)
+    end
+
+    if hookKick and type(hookmetamethod) == "function" and type(newcclosure) == "function" then
+        local oldNamecall
+        pcall(function()
+            oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+                if method == "Kick" or method == "kick" then
+                    return nil
+                end
+                if (method == "Destroy" or method == "destroy") and self ~= nil then
+                    if self == LocalPlayer or (LocalPlayer and self:IsDescendantOf(LocalPlayer)) then
+                        return nil
+                    end
+                end
+                if method == "Disconnect" and self ~= nil then
+                    if type(self) == "userdata" and tostring(self):find("Connection") then
+                        return nil
+                    end
+                end
+                return oldNamecall(self, ...)
+            end))
+            results.kicks_hooked = true
+        end)
+    end
+
+    if blockTeleport and type(hookfunction) == "function" and type(newcclosure) == "function" then
+        pcall(function()
+            local TeleportService = cloneref(game:GetService("TeleportService"))
+            if TeleportService then
+                local teleportMethods = {"Teleport", "TeleportToPlaceInstance", "TeleportToPlaceEndpointAsync", "TeleportAsync"}
+                for _, methodName in ipairs(teleportMethods) do
+                    local method = TeleportService[methodName]
+                    if type(method) == "function" then
+                        pcall(function()
+                            hookfunction(method, newcclosure(function(...)
+                                return nil
+                            end))
+                        end)
+                    end
+                end
+                results.teleport_blocked = true
+            end
+        end)
+        pcall(function()
+            local Players = cloneref(game:GetService("Players"))
+            if Players and type(Players.LocalPlayer.LoadCharacter) == "function" then
+                hookfunction(Players.LocalPlayer.LoadCharacter, newcclosure(function(...)
+                    return nil
+                end))
+            end
+        end)
+    end
+
+    if not disableScripts and G.MCP_DISABLED_SCRIPTS and #G.MCP_DISABLED_SCRIPTS > 0 then
+        for _, scriptRef in ipairs(G.MCP_DISABLED_SCRIPTS) do
+            pcall(function()
+                if type(setscriptable) == "function" then
+                    setscriptable(scriptRef, "Disabled", true)
+                end
+                scriptRef.Disabled = false
+            end)
+            results.scripts_restored = results.scripts_restored + 1
+        end
+        G.MCP_DISABLED_SCRIPTS = {}
+        results.scripts_disabled = 0
+    end
+
+    if disableScripts then
+        if not G.MCP_DISABLED_SCRIPTS then
+            G.MCP_DISABLED_SCRIPTS = {}
+        end
+
+        local acPatterns = {"anticheat", "ac", "adonis", "anti-cheat", "cheat", "checker", "guardian", "watchdog", "sentinel", "monitor", "validator"}
+        local function scan(inst, depth)
+            depth = depth or 0
+            if depth > 15 then return end
+            
+            if inst:IsA("LocalScript") or inst:IsA("ModuleScript") then
+                local ln = inst.Name:lower()
+                for _, pattern in ipairs(acPatterns) do
+                    if ln:find(pattern, 1, true) then
+                        pcall(function()
+                            if type(setscriptable) == "function" then
+                                setscriptable(inst, "Disabled", true)
+                            end
+                            inst.Disabled = true
+                            table.insert(G.MCP_DISABLED_SCRIPTS, inst)
+                            results.detection_attempts = results.detection_attempts + 1
+                        end)
+                        results.scripts_disabled = results.scripts_disabled + 1
+                        break
+                    end
+                end
+            end
+            for _, c in ipairs(inst:GetChildren()) do scan(c, depth + 1) end
+        end
+
+        if LocalPlayer then
+            pcall(function() scan(LocalPlayer) end)
+            if LocalPlayer.Character then scan(LocalPlayer.Character) end
+            if LocalPlayer:FindFirstChild("PlayerScripts") then scan(LocalPlayer.PlayerScripts) end
+            if LocalPlayer:FindFirstChild("PlayerGui") then scan(LocalPlayer.PlayerGui) end
+        end
+        pcall(function() scan(CoreGui) end)
+        pcall(function()
+            local ServerScriptService = cloneref(game:GetService("ServerScriptService"))
+            if ServerScriptService then scan(ServerScriptService) end
+        end)
+        pcall(function()
+            local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+            if ReplicatedStorage then scan(ReplicatedStorage) end
+        end)
+        pcall(function()
+            local StarterPlayer = cloneref(game:GetService("StarterPlayer"))
+            if StarterPlayer then scan(StarterPlayer) end
+        end)
+    end
+
+    if antiAFK then
+        if G.MCP_AFK_ACTIVE then
+            G.MCP_AFK_INTERVAL = afkInterval
+        else
+            G.MCP_AFK_ACTIVE = true
+            G.MCP_AFK_INTERVAL = afkInterval
+            task.spawn(function()
+                while G.MCP_AFK_ACTIVE do
+                    local interval = G.MCP_AFK_INTERVAL or 30
+                    task.wait(interval)
+                    if not G.MCP_AFK_ACTIVE then break end
+                    pcall(function()
+                        if VirtualInputManager then
+                            VirtualInputManager:SendKeyEvent(true, "W", false, nil)
+                            task.wait(0.1)
+                            VirtualInputManager:SendKeyEvent(false, "W", false, nil)
+                        end
+                    end)
+                    pcall(function()
+                        if LocalPlayer and LocalPlayer.Character then
+                            local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(1.5), 0)
+                                task.wait(0.05)
+                                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(-1.5), 0)
+                            end
+                        end
+                    end)
+                end
+                G.MCP_AFK_ACTIVE = false
+            end)
+        end
+        results.anti_afk_active = true
+    else
+        G.MCP_AFK_ACTIVE = false
+        results.anti_afk_active = false
+    end
+
+    return {success=true, results=results}
+end
+
 local HANDLERS = {
+    disable_client_anticheat=handleDisableAntiCheat,
     get_game_metadata=handleGetMetadata, game_metadata_collector=handleGetMetadata,
     dump_workspace_players=handleDumpPlayers, local_player_state_dumper=handleDumpPlayers,
     get_local_player_data=handlePlayerState,
@@ -1541,8 +1754,8 @@ local HANDLERS = {
     string_value_reader=handlePropertyRead, tag_reader=handleTreeExplore,
     security_metadata_analyzer=handlePropertyRead,
     check_unc_capabilities=function()return{success=true,capabilities=MCP_CAPABILITIES}end,
-    macro_recorder=function()return{success=true,message="Macro recorder not implemented in executor"}end,
-    macro_replayer=function()return{success=true,message="Macro replayer not implemented in executor"}end,
+    message="Macro recorder not implemented in executor"}end,
+    message="Macro replayer not implemented in executor"}end,
 
     get_instance_from_path=function(a)a.action="path_resolve";return handleTreeExplore(a)end,
     network_ownership_mapper=handleNetworkOwnership,
@@ -1557,6 +1770,7 @@ proxyToServer = function(toolName, args)
     return {success=false, error="Feature '"..tostring(toolName).."' is not handled by this executor. The executor's HttpService:PostAsync is blocked and no local handler was registered.", tool=toolName}
 end
 
+G.MCP_RUNNING = true
 print("[MCP] Starting: " .. WS_URL)
 local PING_INTERVAL = 1
 local PONG_TIMEOUT = 10

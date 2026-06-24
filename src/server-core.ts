@@ -1,19 +1,4 @@
-/**
- * server-core.ts
- *
- * Roblox MCP Server — core module.
- *
- * Standard MCP HTTP endpoints:
- *   POST /              MCP JSON-RPC 2.0
- *   POST /mcp           MCP JSON-RPC 2.0 (alias)
- *   GET  /health        Health check
- *
- * WebSocket:
- *   ws://host:port/ws   Executor transport (register/task/result) — WS ONLY
- *
- * Static:
- *   GET /mcp.lua        Executor client script
- */
+
 
 import type { Request, Response, Application, RequestHandler, NextFunction } from 'express';
 import type { Server } from 'http';
@@ -95,7 +80,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     app.use(express.json({ limit: '10mb' }));
     const publicDir: string = path.join(PKG_DIR, 'public');
 
-    // Serve executor client script
+    
     app.get('/mcp.lua', (_req: Request, res: Response): void => {
         const f = path.join(PKG_DIR, 'public', 'mcp.lua');
         if (fs.existsSync(f)) {
@@ -112,7 +97,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
     if (fs.existsSync(publicDir)) app.use(express.static(publicDir));
 
-    // CORS
+    
     app.use((_req: Request, res: Response, next: NextFunction): void => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -121,14 +106,14 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         next();
     });
 
-    // HTTP + WS server
+    
     const server: Server = http.createServer(app);
     const wss = new WsServerCls(queue, sessions);
     wss.mount(server);
 
     const mcpHandler: RequestHandler = handleMcpMessage(mcp);
 
-    // Dashboard at root
+    
     app.get('/', (_req: Request, res: Response): void => {
         const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
         const dashboardPath: string = path.join(PKG_DIR, 'public', 'dashboard.html');
@@ -142,11 +127,11 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         }
     });
 
-    // MCP JSON-RPC via HTTP (for Claude Code etc.)
+    
     app.post('/', mcpHandler);
     app.post('/mcp', mcpHandler);
 
-    // Server info
+    
     app.get('/type', (_req: Request, res: Response): void => {
         const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
         const host = _req.hostname || 'localhost';
@@ -161,7 +146,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         });
     });
 
-    // Health
+    
     app.get('/health', (_req: Request, res: Response): void => {
         res.json({
             status: 'ok',

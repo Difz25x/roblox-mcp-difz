@@ -1,20 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-/**
- * queue-manager.ts
- *
- * UUID-based async task queue with long-polling support.
- *
- * Architecture:
- *   - taskQueue[]: FIFO queue of tasks waiting to be picked up by the executor
- *   - pendingResults Map<UUID, {resolve, reject, timer}>: tasks waiting for executor result
- *   - waitingPollers[]: Array of long-poll HTTP connections waiting for tasks
- *
- * Flow:
- *   AI (via MCP)  ->  submitTask(type, args)  ->  Promise<result>
- *   Executor       ->  waitForTask(timeout)     ->  task | null
- *   Executor       ->  resolveTask(id, data)    ->  resolves AI's promise
- */
 const { v4: uuidv4 } = require('uuid');
 const EventEmitter = require('events');
 class QueueManager extends EventEmitter {
@@ -27,19 +12,9 @@ class QueueManager extends EventEmitter {
         this.totalSubmitted = 0;
         this._startCleanupInterval();
     }
-    /**
-     * Submit a task to the queue and return a promise that resolves with the
-     * executor's result (or rejects on timeout / error).
-     *
-     * @param type      - The tool name
-     * @param args      - Arguments for the tool
-     * @param [opts]    - Options
-     * @param [opts.timeoutMs=60000] - Max time to wait
-     * @param [opts.workerId]   - Target specific executor (optional)
-     */
     submitTask(type, args = {}, opts) {
         if (typeof opts === 'number')
-            opts = { timeoutMs: opts }; // backward compat
+            opts = { timeoutMs: opts };
         opts = opts || {};
         const timeoutMs = opts.timeoutMs || 60000;
         return new Promise((resolve, reject) => {
@@ -50,16 +25,13 @@ class QueueManager extends EventEmitter {
             if (opts.targetPid)
                 task.targetPid = opts.targetPid;
             this.totalSubmitted++;
-            // Safety timeout — if the executor never responds, reject the promise
             const timer = setTimeout(() => {
                 this.pendingResults.delete(id);
-                // Also remove from queue if still there
                 this.taskQueue = this.taskQueue.filter(t => t.id !== id);
                 reject(new Error(`[MCP Queue] Task '${type}' (${id.slice(0, 8)}…) timed out after ${timeoutMs}ms. ` +
                     `Is the executor running?`));
             }, timeoutMs);
             this.pendingResults.set(id, { resolve, reject, timer, submittedAt: Date.now() });
-            // If a poller with matching workerId is waiting, hand the task to it
             if (this.waitingPollers.length > 0) {
                 const pollerIdx = task.targetWorkerId
                     ? this.waitingPollers.findIndex(p => p.workerId === task.targetWorkerId)
@@ -71,23 +43,13 @@ class QueueManager extends EventEmitter {
                     return;
                 }
             }
-            // No matching poller — queue the task
             this.taskQueue.push(task);
             this.emit('task', task);
             return;
         });
     }
-    /**
-     * Wait for a task to become available (long-polling).
-     * If a task is immediately available, returns it.
-     * Otherwise, holds the connection until a task arrives or timeout.
-     *
-     * @param timeout - Max wait time in milliseconds
-     * @param [workerId] - Only return tasks for this worker (or unassigned)
-     */
     waitForTask(timeout = 25000, workerId) {
         return new Promise((resolve) => {
-            // Try to find a matching task immediately
             if (this.taskQueue.length > 0) {
                 const idx = workerId
                     ? this.taskQueue.findIndex(t => !t.targetWorkerId || t.targetWorkerId === workerId)
@@ -101,19 +63,11 @@ class QueueManager extends EventEmitter {
                 const idx = this.waitingPollers.findIndex(p => p.resolve === resolve);
                 if (idx >= 0)
                     this.waitingPollers.splice(idx, 1);
-                resolve(null); // timeout — no task available
+                resolve(null);
             }, timeout);
             this.waitingPollers.push({ resolve, timer, workerId });
         });
     }
-    /**
-     * Resolve a pending task with the result from executor.
-     *
-     * @param id     - The UUID of the task
-     * @param data   - Result data from executor
-     * @param [error] - Optional error message
-     * @returns Whether a matching pending task was found
-     */
     resolveTask(id, data, error) {
         const pending = this.pendingResults.get(id);
         if (!pending)
@@ -129,33 +83,26 @@ class QueueManager extends EventEmitter {
         }
         return true;
     }
-    /**
-     * Clean up stale tasks every 60 seconds.
-     * If a task has been in the queue for > 120 seconds with no poller taking it,
-     * remove it so it doesn't accumulate.
-     */
     _startCleanupInterval() {
         this._cleanupInterval = setInterval(() => {
             const now = Date.now();
             const staleCutoff = now - 120000;
-            // Clean up tasks that sat in queue too long
             const before = this.taskQueue.length;
             this.taskQueue = this.taskQueue.filter(t => t.timestamp >= staleCutoff);
             const cleaned = before - this.taskQueue.length;
             if (cleaned > 0) {
                 console.log(`[Queue] Cleaned up ${cleaned} stale task(s)`);
             }
-            // Clean up orphaned pending results that have exceeded max age
             const maxPendingAge = 180000;
             for (const [id, pending] of this.pendingResults.entries()) {
                 if (Date.now() - pending.submittedAt > maxPendingAge) {
                     clearTimeout(pending.timer);
+                    pending.reject(new Error(`[MCP Queue] Task (${id.slice(0, 8)}…) exceeded maximum pending age (${maxPendingAge}ms)`));
                     this.pendingResults.delete(id);
                 }
             }
         }, 60000);
     }
-    /** Get current queue stats for monitoring */
     getStats() {
         return {
             pendingQueue: this.taskQueue.length,

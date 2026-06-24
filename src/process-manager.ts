@@ -1,14 +1,4 @@
-/**
- * process-manager.ts
- *
- * Roblox process management — runs on Node side, not via executor queue.
- *
- * Provides:
- *   listRobloxProcesses()   — scan OS for RobloxPlayerBeta processes
- *   launchRoblox(path)      — spawn RobloxPlayerLauncher.exe
- *   openGame(placeId, opts) — open game via roblox-player protocol with full join URL
- *   performScreenshot(pid)  — capture screenshot of a Roblox process window (anticheat-safe)
- */
+
 
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
@@ -19,9 +9,9 @@ const IS_WIN: boolean = process.platform === 'win32';
 const ROBLOX_PROCESS: string = 'RobloxPlayerBeta';
 const BROWSER_TRACKER_ID = (): string => `tracker_${Date.now()}`;
 
-// ================================================================
-// Process listing — cached to avoid spam
-// ================================================================
+
+
+
 
 interface RobloxProcessInfo {
     pid: number;
@@ -31,7 +21,7 @@ interface RobloxProcessInfo {
 }
 
 let _procCache: { data: RobloxProcessInfo[]; time: number } | null = null;
-const PROC_CACHE_TTL = 3000; // 3 seconds
+const PROC_CACHE_TTL = 3000; 
 
 function listRobloxProcesses(): RobloxProcessInfo[] {
     const now = Date.now();
@@ -43,7 +33,7 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
     try {
         let output: string;
         if (IS_WIN) {
-            // WMIC is significantly faster than tasklist /V
+            
             output = execSync(
                 `wmic process where "name='${ROBLOX_PROCESS}.exe'" get ProcessId,CommandLine,WorkingSetSize /format:csv 2>nul`,
                 { encoding: 'utf-8' as BufferEncoding, timeout: 3000, windowsHide: true }
@@ -54,7 +44,7 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
         const lines: string[] = output.split('\n').filter(l => l.trim());
         for (const line of lines) {
             if (IS_WIN) {
-                // CSV format: Node,CommandLine,ProcessId,WorkingSetSize
+                
                 const parts: string[] = line.split(',');
                 if (parts.length < 4) continue;
                 const name = ROBLOX_PROCESS;
@@ -75,7 +65,7 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
             }
         }
     } catch (e: any) {
-        // Silent fail for cache misses — don't spam console
+        
         if (_procCache) return _procCache.data;
     }
 
@@ -83,12 +73,12 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
     return results;
 }
 
-// ================================================================
-// Roblox install path detection
-// ================================================================
+
+
+
 
 function findRobloxPath(): string | null {
-    // 1. Registry
+    
     try {
         const regOutput: string = execSync(
             'reg query "HKLM\\SOFTWARE\\Roblox\\RobloxStudio" /v Location 2>nul || ' +
@@ -102,7 +92,7 @@ function findRobloxPath(): string | null {
         }
     } catch (e: any) { console.error('[PM] registry error:', e?.message || e); }
 
-    // 2. Common version directories
+    
     const candidates: string[] = [
         process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
         'C:\\Program Files (x86)\\Roblox\\Versions',
@@ -121,9 +111,9 @@ function findRobloxPath(): string | null {
     return null;
 }
 
-// ================================================================
-// Launch Roblox
-// ================================================================
+
+
+
 
 interface LaunchResult {
     success: boolean;
@@ -149,9 +139,9 @@ function launchRoblox(customPath?: string): LaunchResult {
     }
 }
 
-// ================================================================
-// Open game via roblox-player protocol (full join URL format)
-// ================================================================
+
+
+
 
 interface OpenGameOptions {
     launchMode?: string;
@@ -226,9 +216,9 @@ function openGame(placeId: string, opts?: OpenGameOptions): OpenGameResult {
     }
 }
 
-// ================================================================
-// Screenshot capture (Windows only) — PrintWindow-based
-// ================================================================
+
+
+
 
 interface RobloxWindowInfo {
     pid: number;

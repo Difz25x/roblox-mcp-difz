@@ -1,15 +1,4 @@
 "use strict";
-/**
- * process-manager.ts
- *
- * Roblox process management — runs on Node side, not via executor queue.
- *
- * Provides:
- *   listRobloxProcesses()   — scan OS for RobloxPlayerBeta processes
- *   launchRoblox(path)      — spawn RobloxPlayerLauncher.exe
- *   openGame(placeId, opts) — open game via roblox-player protocol with full join URL
- *   performScreenshot(pid)  — capture screenshot of a Roblox process window (anticheat-safe)
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
@@ -19,7 +8,7 @@ const IS_WIN = process.platform === 'win32';
 const ROBLOX_PROCESS = 'RobloxPlayerBeta';
 const BROWSER_TRACKER_ID = () => `tracker_${Date.now()}`;
 let _procCache = null;
-const PROC_CACHE_TTL = 3000; // 3 seconds
+const PROC_CACHE_TTL = 3000;
 function listRobloxProcesses() {
     const now = Date.now();
     if (_procCache && now - _procCache.time < PROC_CACHE_TTL) {
@@ -29,7 +18,6 @@ function listRobloxProcesses() {
     try {
         let output;
         if (IS_WIN) {
-            // WMIC is significantly faster than tasklist /V
             output = execSync(`wmic process where "name='${ROBLOX_PROCESS}.exe'" get ProcessId,CommandLine,WorkingSetSize /format:csv 2>nul`, { encoding: 'utf-8', timeout: 3000, windowsHide: true });
         }
         else {
@@ -38,7 +26,6 @@ function listRobloxProcesses() {
         const lines = output.split('\n').filter(l => l.trim());
         for (const line of lines) {
             if (IS_WIN) {
-                // CSV format: Node,CommandLine,ProcessId,WorkingSetSize
                 const parts = line.split(',');
                 if (parts.length < 4)
                     continue;
@@ -65,18 +52,13 @@ function listRobloxProcesses() {
         }
     }
     catch (e) {
-        // Silent fail for cache misses — don't spam console
         if (_procCache)
             return _procCache.data;
     }
     _procCache = { data: results, time: Date.now() };
     return results;
 }
-// ================================================================
-// Roblox install path detection
-// ================================================================
 function findRobloxPath() {
-    // 1. Registry
     try {
         const regOutput = execSync('reg query "HKLM\\SOFTWARE\\Roblox\\RobloxStudio" /v Location 2>nul || ' +
             'reg query "HKLM\\SOFTWARE\\WOW6432Node\\Roblox\\RobloxStudio" /v Location 2>nul', { encoding: 'utf-8', timeout: 3000 });
@@ -90,7 +72,6 @@ function findRobloxPath() {
     catch (e) {
         console.error('[PM] registry error:', e?.message || e);
     }
-    // 2. Common version directories
     const candidates = [
         process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
         'C:\\Program Files (x86)\\Roblox\\Versions',

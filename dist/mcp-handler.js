@@ -1,14 +1,5 @@
 "use strict";
-/**
- * mcp-handler.ts
- *
- * MCP (Model Context Protocol) JSON-RPC 2.0 message handler.
- *
- * Server-side tools (get_roblox_processes, launch_roblox, open_game, etc.)
- * are executed directly on Node — not sent to the executor queue.
- */
 Object.defineProperty(exports, "__esModule", { value: true });
-/** Tools that run on the Node server directly, not via executor */
 const SERVER_SIDE_TOOLS = new Set([
     'get_roblox_processes',
     'launch_roblox',
@@ -17,12 +8,6 @@ const SERVER_SIDE_TOOLS = new Set([
     'get_roblox_versions',
 ]);
 class McpHandler {
-    /**
-     * @param queue - The task queue manager
-     * @param tools - Tool definitions registry
-     * @param sessions - Session manager
-     * @param processManager - Process manager module
-     */
     constructor(queue, tools, sessions, processManager) {
         this.queue = queue;
         this.tools = tools;
@@ -105,7 +90,6 @@ class McpHandler {
             return { error: { code: -32602, message: `Unknown tool: ${name}` } };
         }
         try {
-            // Server-side tools run on Node directly
             if (SERVER_SIDE_TOOLS.has(name)) {
                 const result = this._runServerTool(name, args || {});
                 return {
@@ -115,8 +99,6 @@ class McpHandler {
                     },
                 };
             }
-            // Executor tools — queue for executor, with optional PID targeting
-            // If no executor is connected, fail fast instead of waiting for timeout
             if (this.sessions.activeCount === 0) {
                 return {
                     result: {
@@ -217,7 +199,6 @@ class McpHandler {
                 }
             }
             catch {
-                // ignore inaccessible directories
             }
         }
         return { success: true, versions };

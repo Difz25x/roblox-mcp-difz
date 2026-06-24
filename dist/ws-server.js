@@ -1,11 +1,4 @@
 "use strict";
-/**
- * ws-server.ts — WebSocket transport for executor communication.
- *
- * Registration: client sends register → server sends get_game_metadata → client replies
- * with metadata → server matches OS PID from window titles → promotes to full registration.
- * Reconnect: same OS PID + new workerId → old worker cleaned up.
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 const WebSocket = require('ws');
 const HEARTBEAT_MS = 30000;
@@ -26,14 +19,13 @@ function matchRobloxPid(placeName, placeId) {
     const idStr = placeId ? String(placeId) : '';
     for (const w of wins) {
         const t = (w.title || '').toLowerCase();
-        // Prefer PlaceId match, then name match, then any Roblox window
         if (!t.includes('roblox'))
             continue;
         if (idStr && t.includes(idStr))
             return w.pid;
         if (name && t.includes(name))
             return w.pid;
-        return w.pid; // first Roblox window
+        return w.pid;
     }
 }
 class WsServer {
@@ -160,7 +152,6 @@ class WsServer {
             ws.on('close', () => cleanup());
             ws.on('error', (err) => cleanup(err?.message || 'Connection error'));
         });
-        // Task dispatch
         try {
             this._taskHandler = (task) => {
                 if (task.targetPid) {

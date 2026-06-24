@@ -1,7 +1,4 @@
-/**
- * setup.ts — MCP setup wizard.
- * Configures AI platforms to connect via HTTP to the running server.
- */
+
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');

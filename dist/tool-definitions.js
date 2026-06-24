@@ -1,16 +1,4 @@
 "use strict";
-/**
- * tool-definitions.ts
- *
- * Central registry of all tools exposed via MCP.
- * Each tool has:
- *   - name:         Unique identifier used in tools/call
- *   - description:  Prompt for the AI explaining what the tool does
- *   - inputSchema:  JSON Schema for validating arguments
- *
- * Every tool here MUST have a matching handler in the Luau client script
- * (public/mcp.luau) under the tools router table.
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 class ToolDefinitions {
     constructor() {
@@ -18,9 +6,6 @@ class ToolDefinitions {
     }
     _defineTools() {
         return [
-            // ================================================================
-            // INSTANCE TREE EXPLORATION & SEARCH
-            // ================================================================
             {
                 name: "recursive_tree_walker",
                 description: "Walks the Roblox instance tree recursively starting from a given root, returning instances that match the specified filters. Supports configurable maximum depth to prevent runaway traversal, class-name filtering (e.g. only 'Part' or 'Model'), and name-based filtering with wildcard or regex patterns. Results include the full hierarchy path for each matched instance and the total count of nodes visited.",
@@ -787,9 +772,6 @@ class ToolDefinitions {
                     ]
                 },
             },
-            // ================================================================
-            // PROPERTY INSPECTION & METADATA EXTRACTION
-            // ================================================================
             {
                 name: "property_bulk_reader",
                 description: "Reads one or more named properties from any Roblox Instance in a single operation. Accepts an array of property names and returns a map of property names to their current values. Supports nested property paths using dot notation (e.g., 'Humanoid.WalkSpeed'). Optimized for batch reads to minimize round-trips and bypass Lua-level getter overhead when possible.",
@@ -1253,9 +1235,6 @@ class ToolDefinitions {
                     "required": []
                 },
             },
-            // ================================================================
-            // FULL VISUAL & SCREEN TRACKING
-            // ================================================================
             {
                 name: "viewport_capture_handler",
                 description: "Captures the current game viewport as a screenshot using render-stepped injection for frame-accurate timing. Supports configurable image format, compression quality, and optional region cropping. Returns the screenshot as a base64-encoded PNG or JPEG image buffer for downstream processing or display.",
@@ -2569,9 +2548,6 @@ class ToolDefinitions {
                     "required": []
                 },
             },
-            // ================================================================
-            // ADVANCED INPUT & MACRO SIMULATION
-            // ================================================================
             {
                 name: "mouse_move_absolute",
                 description: "Moves the mouse cursor to absolute screen coordinates (X, Y pixel position). Uses the primary monitor's coordinate system where (0,0) is the top-left corner. Supports optional smoothing and movement interpolation for more human-like cursor behavior.",
@@ -3343,9 +3319,6 @@ class ToolDefinitions {
                     "additionalProperties": false
                 },
             },
-            // ================================================================
-            // ENVIRONMENT & INSTANCE MANIPULATION
-            // ================================================================
             {
                 name: "property_mutator_generic",
                 description: "Set any writable property on any game instance resolved by path or reference. Accepts a map of property names to values supporting strings, numbers, booleans, Color3, Vector3, CFrame, UDim2, and other Roblox types via serialized notation. Validates that the target instance exists and that the property is writable before applying changes. Returns the previous values of all modified properties for easy rollback.",
@@ -4729,9 +4702,6 @@ class ToolDefinitions {
                     ]
                 },
             },
-            // ================================================================
-            // MEMORY & CORE FUNCTION HOOKING
-            // ================================================================
             {
                 name: "script_source_ripper",
                 description: "Extracts the raw source code of any Roblox script object (Script, ModuleScript, LocalScript) at runtime by reading the compiled bytecode and decompiling it back to human-readable Luau source. This tool circumvents the 'Source is not available' restriction by leveraging internal VM methods such as debug.info and decompilation of loaded closure prototypes. Handles both scripts embedded in instances and scripts loaded into the Lua VM module cache. Returns the full source as a string along with metadata including the script container path, identity level, and whether the source was reconstructed from bytecode or read directly.",
@@ -5625,9 +5595,6 @@ class ToolDefinitions {
                     "required": []
                 },
             },
-            // ================================================================
-            // NETWORK TRAFFIC & PACKET MANIPULATION
-            // ================================================================
             {
                 name: "remote_surface_scanner",
                 description: "Enumerates all RemoteEvent and RemoteFunction instances across the entire Roblox data model, including those nested within services, PlayerGui, StarterGui, ReplicatedStorage, ServerScriptService, and any other containers. Returns the full hierarchical path, instance class type, and a unique identifier for each discovered remote. This is the foundational reconnaissance tool used before any interception or manipulation of network traffic.",
@@ -6260,38 +6227,62 @@ class ToolDefinitions {
             },
             {
                 name: "spy_remote_traffic",
-                description: "Hook FireServer / InvokeServer on RemoteEvent / RemoteFunction instances to capture all network traffic in real-time. Each intercepted call is logged with timestamp, remote path, method, and serialized arguments. Use 'start' to begin, 'stop' to end and receive the captured log, and 'status' to check.",
+                description: "Master tool for network traffic interception, blocking, and argument spoofing. Hooks FireServer/InvokeServer on RemoteEvent/RemoteFunction instances via __namecall metatable hook.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
                         "action": {
                             "type": "string",
                             "enum": [
-                                "start",
-                                "stop",
-                                "status"
+                                "install",
+                                "get_log",
+                                "clear",
+                                "block",
+                                "unblock",
+                                "ignore",
+                                "unignore",
+                                "remove"
                             ],
-                            "description": "Action to perform on the spy"
+                            "description": "Action: 'install' hooks traffic, 'get_log' returns captured data, 'block' stops remotes, 'ignore' skips logging for remotes, 'remove' unhooks."
                         },
                         "filter_remote_path": {
                             "type": "string",
-                            "description": "Only intercept calls for this specific remote path"
+                            "description": "Only intercept calls for remotes whose Name matches this substring (applies to install/spy actions)"
                         },
                         "max_log_entries": {
                             "type": "number",
-                            "description": "Maximum log entries to retain",
-                            "default": 500
+                            "description": "Maximum log entries to retain during spying (default: 500)"
                         },
-                        "include_class_names": {
+                        "max_results": {
+                            "type": "number",
+                            "description": "Maximum log entries to return for 'get_log' action (default: 500)"
+                        },
+                        "include_bindables": {
+                            "type": "boolean",
+                            "description": "Include BindableEvent/BindableFunction in spy (default: false)"
+                        },
+                        "remote_paths": {
                             "type": "array",
+                            "description": "Array of full hierarchical remote paths to block or unblock. Used with 'block'/'unblock'/'release' actions.",
                             "items": {
                                 "type": "string"
-                            },
-                            "description": "Class types to intercept",
-                            "default": [
-                                "RemoteEvent",
-                                "RemoteFunction"
-                            ]
+                            }
+                        },
+                        "spoof_remote": {
+                            "type": "string",
+                            "description": "Full path to the remote whose arguments should be spoofed. Used with 'spoof' action."
+                        },
+                        "spoof_arguments": {
+                            "type": "array",
+                            "description": "Replacement arguments to send instead of the original ones. Used with 'spoof' action.",
+                            "items": {}
+                        },
+                        "block_remotes": {
+                            "type": "array",
+                            "description": "Alias for remote_paths. Array of remote paths to block/unblock.",
+                            "items": {
+                                "type": "string"
+                            }
                         }
                     },
                     "required": [
@@ -6428,9 +6419,6 @@ class ToolDefinitions {
                     "required": []
                 },
             },
-            // ================================================================
-            // UNC HIDDEN PROPERTY TOOLS (uses sethiddenproperty / firesignal)
-            // ================================================================
             {
                 name: "gui_button_clicker",
                 description: "Fires click signals on a GUI button using UNC firesignal. Sends Activated, MouseButton1Down, MouseButton2Down, MouseButton1Click, and MouseButton2Click signals. Requires firesignal UNC support.",
@@ -6512,9 +6500,6 @@ class ToolDefinitions {
                     "required": ["instance_path", "property"]
                 }
             },
-            // ================================================================
-            // CLOSURE & FUNCTION HOOKING (uses UNC: hookfunction, checkcaller, clonefunction)
-            // ================================================================
             {
                 name: "function_hook_installer",
                 description: "Hooks/intercepts any Lua function using UNC hookfunction. Replaces the target function with a custom implementation while preserving the original. The original function can be called from within the hook. Supports instance methods (found by path and method name) and global functions.",
@@ -6540,9 +6525,6 @@ class ToolDefinitions {
                     "required": ["function_path"]
                 }
             },
-            // ================================================================
-            // ENVIRONMENT EXPLORATION (uses UNC: getgc, getreg, getrenv)
-            // ================================================================
             {
                 name: "gc_scanner",
                 description: "Scans the Lua garbage collector table using UNC getgc. Returns all objects in the GC filtered by type (function, table, thread, userdata). Can search for specific function names or table patterns. Use this to find hidden functions, detect cheats, or discover undocumented APIs.",
@@ -6589,9 +6571,6 @@ class ToolDefinitions {
                     "required": ["script_path"]
                 }
             },
-            // ================================================================
-            // FILESYSTEM OPERATIONS (uses UNC: readfile, writefile, delfile, listfiles)
-            // ================================================================
             {
                 name: "file_reader",
                 description: "Reads a file from the executor's filesystem using UNC readfile. The base path is the executor's working directory. Returns the file contents as a string. Supports text files and base64-encoded binary data.",
@@ -6661,9 +6640,6 @@ class ToolDefinitions {
                     "required": ["file_path"]
                 }
             },
-            // ================================================================
-            // SCRIPT INTROSPECTION (uses UNC: getrunningscripts, getcallingscript, getscripthash)
-            // ================================================================
             {
                 name: "running_scripts_lister",
                 description: "Lists all currently running Lua scripts in the game using UNC getrunningscripts. Returns each script's name, class, path, thread ID, and execution status. Different from get_loaded_modules which returns ModuleScripts — this returns actively executing scripts.",
@@ -6709,9 +6685,6 @@ class ToolDefinitions {
                     "required": ["script_path"]
                 }
             },
-            // ================================================================
-            // METATABLE & MEMORY MANIPULATION (UNC: setrawmetatable, setreadonly, namecall)
-            // ================================================================
             {
                 name: "raw_metatable_setter",
                 description: "Sets a raw metatable on a table or instance using UNC setrawmetatable, bypassing the __metatable field. Can wrap objects with custom __index, __newindex, __call, and other metamethods for interception and monitoring.",
@@ -6736,9 +6709,6 @@ class ToolDefinitions {
                     "required": ["target_path", "state"]
                 }
             },
-            // ================================================================
-            // INSTANCE & SIGNAL UTILITIES (UNC: compareinstances, replicatesignal)
-            // ================================================================
             {
                 name: "instance_comparer",
                 description: "Compares two Roblox instances for equality using UNC compareinstances. Handles cases where instances may have been cloned or have different references to the same object. Returns whether they refer to the same underlying instance.",
@@ -6765,9 +6735,6 @@ class ToolDefinitions {
                     "required": ["remote_path"]
                 }
             },
-            // ================================================================
-            // SERVER-SIDE TOOLS (runs on Node, not executor)
-            // ================================================================
             {
                 name: "get_roblox_processes",
                 description: "List all running RobloxPlayerBeta processes on this machine. Returns PID, process name, window title, and memory usage for each detected process. Use the PID with other tools to target a specific Roblox instance. Also returns the number of active executor sessions currently connected to this server.",

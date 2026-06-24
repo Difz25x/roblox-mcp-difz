@@ -1,19 +1,12 @@
-/**
- * mcp-handler.ts
- *
- * MCP (Model Context Protocol) JSON-RPC 2.0 message handler.
- *
- * Server-side tools (get_roblox_processes, launch_roblox, open_game, etc.)
- * are executed directly on Node — not sent to the executor queue.
- */
 
-// ToolDefinitions — used only as a type for the constructor parameter
+
+
 interface ToolDefInstance {
     getTools(): unknown[];
     getTool(name: string): unknown | undefined;
 }
 
-// ---- Type definitions for constructor parameters ----
+
 
 interface QueueManager {
     submitTask(type: string, args: Record<string, unknown>, opts?: { workerId?: string; timeoutMs?: number }): Promise<unknown>;
@@ -58,7 +51,7 @@ interface ProcessManager {
     };
 }
 
-// ---- Internal types ----
+
 
 interface McpMessage {
     method?: string;
@@ -75,7 +68,7 @@ interface McpResult {
     error?: McpError;
 }
 
-/** Tools that run on the Node server directly, not via executor */
+
 const SERVER_SIDE_TOOLS = new Set<string>([
     'get_roblox_processes',
     'launch_roblox',
@@ -92,12 +85,7 @@ class McpHandler {
     private serverInfo: { name: string; version: string; description: string };
     private initialized: boolean;
 
-    /**
-     * @param queue - The task queue manager
-     * @param tools - Tool definitions registry
-     * @param sessions - Session manager
-     * @param processManager - Process manager module
-     */
+    
     constructor(queue: QueueManager, tools: ToolDefInstance, sessions: SessionManager, processManager: ProcessManager) {
         this.queue = queue;
         this.tools = tools;
@@ -190,7 +178,7 @@ class McpHandler {
         }
 
         try {
-            // Server-side tools run on Node directly
+            
             if (SERVER_SIDE_TOOLS.has(name)) {
                 const result = this._runServerTool(name, args || {});
                 return {
@@ -201,8 +189,8 @@ class McpHandler {
                 };
             }
 
-            // Executor tools — queue for executor, with optional PID targeting
-            // If no executor is connected, fail fast instead of waiting for timeout
+            
+            
             if (this.sessions.activeCount === 0) {
                 return {
                     result: {
@@ -308,7 +296,7 @@ class McpHandler {
                     });
                 }
             } catch {
-                // ignore inaccessible directories
+                
             }
         }
         return { success: true, versions };

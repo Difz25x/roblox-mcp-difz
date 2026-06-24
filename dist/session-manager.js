@@ -1,12 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-/**
- * session-manager.ts
- *
- * Manages multiple Roblox executor sessions (worker IDs).
- * Each executor registers on first /req poll with a unique workerId.
- * Tasks can target a specific workerId or be unassigned (any worker).
- */
 const { v4: uuidv4 } = require('uuid');
 class SessionManager {
     constructor() {
