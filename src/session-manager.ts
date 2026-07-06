@@ -1,5 +1,5 @@
 
-const { v4: uuidv4 } = require('uuid');
+
 
 interface SessionInfo {
     workerId: string;
@@ -44,12 +44,12 @@ class SessionManager {
         const isNew = !existing;
         this.sessions.set(workerId, {
             workerId,
-            pid: (info && info.pid) || (existing && existing.pid),
-            name: (info && info.name) || (existing && existing.name) || '',
+            pid: info?.pid ?? existing?.pid,
+            name: info?.name ?? existing?.name ?? '',
             firstSeen: existing ? existing.firstSeen : Date.now(),
             lastSeen: Date.now(),
             status: 'active',
-            capabilities: info && info.capabilities,
+            capabilities: info?.capabilities ?? existing?.capabilities,
         });
         return { workerId, isNew };
     }
@@ -86,13 +86,19 @@ class SessionManager {
         return count;
     }
 
-    _startCleanup(): void {
+    private _startCleanup(): void {
         this._cleanupTimer = setInterval(() => {
-            const cutoff = Date.now() - 300_000;
-            for (const [id, session] of this.sessions.entries()) {
-                if (session.lastSeen < cutoff) session.status = 'disconnected';
+            const now = Date.now();
+            const disconnectCutoff = now - 300_000;
+            const purgeCutoff = now - 3600_000; // 1 hour
+
+            for (const [id, session] of Array.from(this.sessions.entries())) {
+                if (session.lastSeen < purgeCutoff) {
+                    this.sessions.delete(id);
+                }
             }
         }, 120_000);
+        if (this._cleanupTimer.unref) this._cleanupTimer.unref();
     }
 }
 

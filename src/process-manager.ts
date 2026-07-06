@@ -1,5 +1,6 @@
 
 
+
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -7,11 +8,6 @@ const os = require('os');
 
 const IS_WIN: boolean = process.platform === 'win32';
 const ROBLOX_PROCESS: string = 'RobloxPlayerBeta';
-const BROWSER_TRACKER_ID = (): string => `tracker_${Date.now()}`;
-
-
-
-
 
 interface RobloxProcessInfo {
     pid: number;
@@ -21,7 +17,7 @@ interface RobloxProcessInfo {
 }
 
 let _procCache: { data: RobloxProcessInfo[]; time: number } | null = null;
-const PROC_CACHE_TTL = 3000; 
+const PROC_CACHE_TTL = 3000;
 
 function listRobloxProcesses(): RobloxProcessInfo[] {
     const now = Date.now();
@@ -33,27 +29,29 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
     try {
         let output: string;
         if (IS_WIN) {
-            
             output = execSync(
-                `wmic process where "name='${ROBLOX_PROCESS}.exe'" get ProcessId,CommandLine,WorkingSetSize /format:csv 2>nul`,
+                `powershell -NoProfile -NonInteractive -Command "Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Select-Object Id, MainWindowTitle, WorkingSet64 | ConvertTo-Json -Compress"`,
                 { encoding: 'utf-8' as BufferEncoding, timeout: 3000, windowsHide: true }
             ) as string;
+
+            if (output && output.trim()) {
+                const parsed = JSON.parse(output);
+                const procs = Array.isArray(parsed) ? parsed : [parsed];
+                for (const p of procs) {
+                    if (p.Id) {
+                        results.push({
+                            pid: p.Id,
+                            name: ROBLOX_PROCESS,
+                            windowTitle: p.MainWindowTitle || '',
+                            memoryMB: Math.round((p.WorkingSet64 || 0) / 1048576)
+                        });
+                    }
+                }
+            }
         } else {
             output = execSync("ps aux | grep -i roblox || true", { encoding: 'utf-8' as BufferEncoding, timeout: 3000 }) as string;
-        }
-        const lines: string[] = output.split('\n').filter(l => l.trim());
-        for (const line of lines) {
-            if (IS_WIN) {
-                
-                const parts: string[] = line.split(',');
-                if (parts.length < 4) continue;
-                const name = ROBLOX_PROCESS;
-                const pid = parseInt(parts[2], 10);
-                const memStr = parts[3] || '0';
-                const cmdLine = (parts[1] || '').toLowerCase();
-                if (!pid || isNaN(pid)) continue;
-                results.push({ pid, name, windowTitle: '', memoryMB: Math.round(parseInt(memStr, 10) / 1048576) || 0 });
-            } else {
+            const lines: string[] = output.split('\n').filter(l => l.trim());
+            for (const line of lines) {
                 const parts: string[] = line.split(/\s+/);
                 if (parts.length < 11) continue;
                 const name = parts[10] || '';
@@ -65,20 +63,21 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
             }
         }
     } catch (e: any) {
-        
-        if (_procCache) return _procCache.data;
+        if (_procCache) {
+            _procCache.time = Date.now(); // bump TTL so we don't spam errors
+            return _procCache.data;
+        }
     }
 
     _procCache = { data: results, time: Date.now() };
     return results;
 }
 
-
-
-
-
 function findRobloxPath(): string | null {
-    
+    if (!IS_WIN) {
+        return null;
+    }
+
     try {
         const regOutput: string = execSync(
             'reg query "HKLM\\SOFTWARE\\Roblox\\RobloxStudio" /v Location 2>nul || ' +
@@ -92,7 +91,6 @@ function findRobloxPath(): string | null {
         }
     } catch (e: any) { console.error('[PM] registry error:', e?.message || e); }
 
-    
     const candidates: string[] = [
         process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
         'C:\\Program Files (x86)\\Roblox\\Versions',
@@ -111,10 +109,6 @@ function findRobloxPath(): string | null {
     return null;
 }
 
-
-
-
-
 interface LaunchResult {
     success: boolean;
     pid?: number;
@@ -132,16 +126,14 @@ function launchRoblox(customPath?: string): LaunchResult {
     }
     try {
         const child = spawn(exePath, [], { detached: true, stdio: 'ignore', windowsHide: false });
+        child.on('error', () => {}); // Catch spawn errors silently
         child.unref();
-        return { success: true, pid: child.pid as number, path: exePath };
+        if (child.pid === undefined) return { success: false, error: 'Failed to spawn process' };
+        return { success: true, pid: child.pid, path: exePath };
     } catch (err: any) {
         return { success: false, error: `Failed to launch Roblox: ${err.message}` };
     }
 }
-
-
-
-
 
 interface OpenGameOptions {
     launchMode?: string;
@@ -158,7 +150,7 @@ interface OpenGameResult {
     error?: string;
 }
 
-function openGame(placeId: string, opts?: OpenGameOptions): OpenGameResult {
+function openGame(placeId: string | number, opts?: OpenGameOptions): OpenGameResult {
     opts = opts || {};
     const launchMode: string = opts.launchMode || 'play';
     const jobId: string = opts.jobId || '';
@@ -169,6 +161,15 @@ function openGame(placeId: string, opts?: OpenGameOptions): OpenGameResult {
 
     if (!placeId) {
         return { success: false, error: 'placeId is required' };
+    }
+    if (!/^\d+$/.test(String(placeId))) {
+        return { success: false, error: 'placeId must be numeric' };
+    }
+    if (jobId && !/^[a-zA-Z0-9\-]+$/.test(jobId) && !jobId.startsWith('http')) {
+        return { success: false, error: 'Invalid jobId format' };
+    }
+    if (privateServerLinkCode && !/^[a-zA-Z0-9\-_]+$/.test(privateServerLinkCode)) {
+        return { success: false, error: 'Invalid privateServerLinkCode format' };
     }
 
     let launchUrl: string;
@@ -203,11 +204,13 @@ function openGame(placeId: string, opts?: OpenGameOptions): OpenGameResult {
             const start = spawn('cmd', ['/c', 'start', '', launchUrl], {
                 detached: true, stdio: 'ignore', windowsHide: true,
             });
+            start.on('error', () => {});
             start.unref();
         } else {
             const open = spawn('open', [launchUrl], {
                 detached: true, stdio: 'ignore',
             });
+            open.on('error', () => {});
             open.unref();
         }
         return { success: true, launchUrl };
@@ -215,10 +218,6 @@ function openGame(placeId: string, opts?: OpenGameOptions): OpenGameResult {
         return { success: false, error: `Failed to open game: ${err.message}` };
     }
 }
-
-
-
-
 
 interface RobloxWindowInfo {
     pid: number;
@@ -231,6 +230,7 @@ interface ScreenshotResult {
     needsDisambiguation?: boolean;
     windows?: RobloxWindowInfo[];
     imageBase64?: string;
+    pid?: number;
 }
 
 function isSupported(): boolean {
@@ -293,8 +293,8 @@ if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Co
 }
 
 function captureWindowPNG(hwnd: string): string {
+    if (!/^\d+$/.test(hwnd)) throw new Error("Invalid hwnd");
     const outFile = path.join(os.tmpdir(), `roblox_ss_${Date.now()}.b64`);
-    const escapedOut = outFile.replace(/\\/g, '\\\\');
     const ps = `
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
@@ -324,7 +324,7 @@ $ms = New-Object System.IO.MemoryStream
 $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
 $bytes = $ms.ToArray(); $ms.Dispose()
 $b64 = [Convert]::ToBase64String($bytes)
-[System.IO.File]::WriteAllText('${escapedOut}', $b64)
+[System.IO.File]::WriteAllText('${outFile}', $b64)
 Write-Output 'OK'
 `;
     const tmpFile = path.join(os.tmpdir(), `roblox_cap_${Date.now()}.ps1`);
@@ -344,7 +344,7 @@ Write-Output 'OK'
     }
 }
 
-function performScreenshot(pid?: number): ScreenshotResult {
+async function performScreenshot(pid?: number): Promise<ScreenshotResult> {
     const windows = enumRobloxWindows();
     if (windows.length === 0) {
         return { error: "No visible Roblox windows found." };
@@ -356,11 +356,15 @@ function performScreenshot(pid?: number): ScreenshotResult {
             return { error: `No Roblox window for PID ${pid}. Available:\n` + windows.map((w) => `  PID ${w.pid} - "${w.title}"`).join("\n") };
         }
     }
-    if (targets.length > 1 && pid === undefined) {
+    if (targets.length > 1) {
         return { needsDisambiguation: true, windows: targets };
     }
-    const imageBase64 = captureWindowPNG(targets[0].hwnd);
-    return { imageBase64 };
+    try {
+        const imageBase64 = captureWindowPNG(targets[0].hwnd);
+        return { imageBase64, pid: targets[0].pid };
+    } catch (err: any) {
+        return { error: `Failed to capture window: ${err.message}` };
+    }
 }
 
 module.exports = {

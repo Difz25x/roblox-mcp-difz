@@ -1,15 +1,15 @@
 
 
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface ToolDefInstance {
     getTools(): unknown[];
     getTool(name: string): unknown | undefined;
 }
 
-
-
 interface QueueManager {
-    submitTask(type: string, args: Record<string, unknown>, opts?: { workerId?: string; timeoutMs?: number }): Promise<unknown>;
+    submitTask(type: string, args: Record<string, unknown>, opts?: { workerId?: string; timeoutMs?: number; targetPid?: number }): Promise<unknown>;
     getStats(): {
         pendingQueue: number;
         pendingResults: number;
@@ -43,15 +43,14 @@ interface ProcessManager {
             experienceId?: string;
         }
     ): { success: boolean; launchUrl?: string; error?: string };
-    performScreenshot(pid?: number): {
+    performScreenshot(pid?: number): Promise<{
         error?: string;
         needsDisambiguation?: boolean;
         windows?: Array<{ pid: number; hwnd: string; title: string }>;
         imageBase64?: string;
-    };
+        pid?: number;
+    }>;
 }
-
-
 
 interface McpMessage {
     method?: string;
@@ -67,7 +66,6 @@ interface McpResult {
     result?: unknown;
     error?: McpError;
 }
-
 
 const SERVER_SIDE_TOOLS = new Set<string>([
     'get_roblox_processes',
@@ -85,7 +83,6 @@ class McpHandler {
     private serverInfo: { name: string; version: string; description: string };
     private initialized: boolean;
 
-    
     constructor(queue: QueueManager, tools: ToolDefInstance, sessions: SessionManager, processManager: ProcessManager) {
         this.queue = queue;
         this.tools = tools;
@@ -107,6 +104,10 @@ class McpHandler {
 
             if (!method) {
                 return { error: { code: -32600, message: 'Invalid Request: method is required' } };
+            }
+
+            if (!this.initialized && method !== 'initialize' && method !== 'ping') {
+                return { error: { code: -32002, message: 'Server not initialized' } };
             }
 
             switch (method) {
@@ -141,7 +142,7 @@ class McpHandler {
         }
     }
 
-    _handleInitialize(_params?: Record<string, unknown>): McpResult {
+    private _handleInitialize(_params?: Record<string, unknown>): McpResult {
         this.initialized = true;
         return {
             result: {
@@ -156,16 +157,16 @@ class McpHandler {
         };
     }
 
-    _handleShutdown(): McpResult {
+    private _handleShutdown(): McpResult {
         this.initialized = false;
         return { result: { success: true, message: 'Server shutting down' } };
     }
 
-    _handleToolsList(): McpResult {
+    private _handleToolsList(): McpResult {
         return { result: { tools: this.tools.getTools() } };
     }
 
-    async _handleToolsCall(params?: Record<string, unknown>): Promise<McpResult> {
+    private async _handleToolsCall(params?: Record<string, unknown>): Promise<McpResult> {
         const { name, arguments: args } = (params || {}) as { name?: string; arguments?: Record<string, unknown> };
 
         if (!name) {
@@ -178,9 +179,8 @@ class McpHandler {
         }
 
         try {
-            
             if (SERVER_SIDE_TOOLS.has(name)) {
-                const result = this._runServerTool(name, args || {});
+                const result = await this._runServerTool(name, args || {});
                 return {
                     result: {
                         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -189,8 +189,6 @@ class McpHandler {
                 };
             }
 
-            
-            
             if (this.sessions.activeCount === 0) {
                 return {
                     result: {
@@ -236,7 +234,7 @@ class McpHandler {
         }
     }
 
-    _runServerTool(name: string, args: Record<string, unknown>): Record<string, unknown> {
+    private async _runServerTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
         switch (name) {
             case 'get_roblox_processes':
                 return { success: true, processes: this.proc.listRobloxProcesses(), count: this.sessions.activeCount };
@@ -245,6 +243,7 @@ class McpHandler {
                 return this.proc.launchRoblox((args.path as string) || null);
 
             case 'open_game':
+                if (!args.place_id) return { success: false, error: "place_id is required" };
                 return this.proc.openGame(args.place_id as string | number, {
                     jobId: args.job_id as string | undefined,
                     privateServerLinkCode: args.private_server_link_code as string | undefined,
@@ -256,12 +255,12 @@ class McpHandler {
                 });
 
             case 'capture_roblox_screenshot': {
-                const ssResult = this.proc.performScreenshot(args.pid ? Number(args.pid) : undefined);
+                const ssResult = await this.proc.performScreenshot(args.pid ? Number(args.pid) : undefined);
                 if (ssResult.error) return { success: false, error: ssResult.error };
                 if (ssResult.needsDisambiguation) {
                     return { success: true, needsDisambiguation: true, windows: ssResult.windows };
                 }
-                return { success: true, image: `data:image/png;base64,${ssResult.imageBase64}`, pid: args.pid || null };
+                return { success: true, image: `data:image/png;base64,${ssResult.imageBase64}`, pid: ssResult.pid ?? args.pid ?? null };
             }
 
             case 'get_roblox_versions':
@@ -272,10 +271,9 @@ class McpHandler {
         }
     }
 
-    _getRobloxVersions(): { success: boolean; versions: Array<Record<string, unknown>> } {
-        const fs = require('fs') as typeof import('fs');
-        const path = require('path') as typeof import('path');
+    private _getRobloxVersions(): { success: boolean; versions: Array<Record<string, unknown>>; warnings?: string[] } {
         const versions: Array<Record<string, unknown>> = [];
+        const warnings: string[] = [];
         const candidates: string[] = [
             process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA as string, 'Roblox', 'Versions') : '',
             'C:\\Program Files (x86)\\Roblox\\Versions',
@@ -290,37 +288,35 @@ class McpHandler {
                     const player = path.join(dir, ver, 'RobloxPlayerBeta.exe');
                     versions.push({
                         version: ver.replace('version-', ''),
-                        path: dir + '/' + ver,
+                        path: path.join(dir, ver),
                         hasPlayerLauncher: fs.existsSync(launcher),
                         hasPlayerBeta: fs.existsSync(player),
                     });
                 }
-            } catch {
-                
+            } catch (err: any) {
+                warnings.push(err.message || String(err));
             }
         }
-        return { success: true, versions };
+        return { success: true, versions, warnings: warnings.length > 0 ? warnings : undefined };
     }
 
-    _handleResourcesList(): McpResult {
+    private _handleResourcesList(): McpResult {
         return {
             result: {
                 resources: [
-                    { uri: 'mcp://roblox/game/metadata', name: 'Game Metadata', description: 'Current game session metadata', mimeType: 'application/json' },
-                    { uri: 'mcp://roblox/game/players', name: 'Active Players', description: 'Real-time player data', mimeType: 'application/json' },
-                    { uri: 'mcp://roblox/game/remotes', name: 'Remote Events & Functions', description: 'All detected remotes', mimeType: 'application/json' },
-                    { uri: 'mcp://roblox/game/workspace', name: 'Workspace Objects', description: '3D object tree', mimeType: 'application/json' },
-                    { uri: 'mcp://roblox/game/console', name: 'Console Logs', description: 'Recent LogService output', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/metadata', name: 'Game Metadata', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/players', name: 'Active Players', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/remotes', name: 'Remote Events & Functions', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/workspace', name: 'Workspace Objects', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/console', name: 'Console Logs', mimeType: 'application/json' },
                 ],
             },
         };
     }
 
-    async _handleResourcesRead(params?: Record<string, unknown>): Promise<McpResult> {
-        const { uri } = (params || {}) as { uri?: string };
-        if (!uri) return { error: { code: -32602, message: 'Resource URI is required' } };
-
-        const resourceMap: Record<string, string> = {
+    private async _handleResourcesRead(params?: Record<string, unknown>): Promise<McpResult> {
+        const uri = (params?.uri as string) || '';
+        const RESOURCE_MAP: Record<string, string> = {
             'mcp://roblox/game/metadata': 'get_game_metadata',
             'mcp://roblox/game/players': 'dump_workspace_players',
             'mcp://roblox/game/remotes': 'dump_remote_events',
@@ -328,8 +324,22 @@ class McpHandler {
             'mcp://roblox/game/console': 'get_console_logs',
         };
 
-        const toolName = resourceMap[uri];
-        if (!toolName) return { error: { code: -32602, message: `Unknown resource: ${uri}` } };
+        const toolName = RESOURCE_MAP[uri];
+        if (!toolName) {
+            return { error: { code: -32602, message: `Unknown resource URI: ${uri}` } };
+        }
+
+        if (this.sessions.activeCount === 0) {
+            return {
+                result: {
+                    contents: [{
+                        uri,
+                        mimeType: 'application/json',
+                        text: JSON.stringify({ success: false, error: 'No Roblox executor connected' })
+                    }]
+                }
+            };
+        }
 
         try {
             const result = await this.queue.submitTask(toolName, {});
@@ -348,7 +358,7 @@ class McpHandler {
         }
     }
 
-    _handlePromptsList(): McpResult {
+    private _handlePromptsList(): McpResult {
         return {
             result: {
                 prompts: [
@@ -359,19 +369,16 @@ class McpHandler {
         };
     }
 
-    async _handlePromptsGet(params?: Record<string, unknown>): Promise<McpResult> {
-        const name = (params && params.name) as string | undefined;
-        if (!name) {
-            return { error: { code: -32602, message: 'Prompt name is required' } };
-        }
+    private async _handlePromptsGet(params?: Record<string, unknown>): Promise<McpResult> {
+        const name = params?.name as string;
         if (name === 'analyze_game') {
             return {
                 result: {
                     description: 'Dumps game metadata, remotes, and player data in one shot.',
                     messages: [
-                        { role: 'user', content: { type: 'text', text: 'Run get_game_metadata, dump_remote_events, and dump_workspace_players. Return all results in a single structured report.' } },
-                    ],
-                },
+                        { role: 'user', content: { type: 'text', text: 'Call the tools: get_game_metadata, dump_workspace_players, and dump_remote_events. Synthesize a report on the current game state and active players.' } }
+                    ]
+                }
             };
         }
         if (name === 'find_exploit_vector') {
@@ -379,23 +386,21 @@ class McpHandler {
                 result: {
                     description: 'Scan remotes and workspace to find exploit entry points.',
                     messages: [
-                        { role: 'user', content: { type: 'text', text: 'Scan all RemoteEvents/RemoteFunctions for connections and ownership. Check workspace for exploitable parts. Look for vulnerable clickdetectors and proximity prompts. Return a prioritized list of exploit vectors.' } },
-                    ],
-                },
+                        { role: 'user', content: { type: 'text', text: 'First call dump_remote_events. Review the names and paths of the remotes. Identify any that look like they handle sensitive actions (e.g. AddMoney, Ban, Admin, GiveItem). Then call get_workspace_objects with class_filter="Script" to find any exposed client scripts that might interact with these remotes.' } }
+                    ]
+                }
             };
         }
         return { error: { code: -32602, message: `Unknown prompt: ${name}` } };
     }
 
-    _handleSetup(): McpResult {
+    private _handleSetup(): McpResult {
+        const port = process.env.MCP_PORT || 28429;
         return {
             result: {
-                config: {
-                    type: 'url',
-                    url: 'http://localhost:28429/mcp',
-                    name: 'Roblox MCP Difz',
-                    description: 'Full game control & exploitation framework',
-                },
+                success: true,
+                message: 'To install to Claude Desktop/Code, use the CLI wizard (`roblox-mcp-difz setup`).',
+                url: `http://localhost:${port}/mcp`,
             },
         };
     }

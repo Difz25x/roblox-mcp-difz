@@ -19,11 +19,11 @@ function matchRobloxPid(placeName: string, placeId?: string|number): number|unde
     const idStr = placeId ? String(placeId) : '';
     for (const w of wins) {
         const t = (w.title || '').toLowerCase();
-        
+
         if (!t.includes('roblox')) continue;
         if (idStr && t.includes(idStr)) return w.pid;
         if (name && t.includes(name)) return w.pid;
-        return w.pid; 
+        return w.pid;
     }
 }
 
@@ -50,7 +50,7 @@ class WsServer {
             let workerId: string|null = null;
             let regTimer: any = null;
             let regCaps: any;
-            let lastPingAt = Date.now();
+            let registered = false;
 
             const cleanup = (isError?: string) => {
                 if (isError) console.error('[WS]', isError);
@@ -68,8 +68,10 @@ class WsServer {
             };
 
             const finalizeReg = (pid?: number, name?: string, jobId?: string, placeId?: number) => {
+                if (registered) return;
                 const info = this.workers.get(workerId!);
-                if (!info || info.pid !== undefined) return;
+                if (!info || info.ws !== ws || info.pid !== undefined) return;
+                registered = true;
                 info.pid = pid;
                 info.placeName = name || '';
                 info.jobId = jobId || '';
@@ -78,7 +80,13 @@ class WsServer {
                     const stale = this.pidMap.get(pid);
                     if (stale && stale !== workerId) {
                         const s = this.workers.get(stale);
-                        if (s) { try { s.ws.close(); } catch {} this.workers.delete(stale); this.sessions.unregister(stale); }
+                        if (s) {
+                            this.workers.delete(stale);
+                            this.sessions.unregister(stale);
+                            if (s.ws !== ws) {
+                                try { s.ws.close(); } catch {}
+                            }
+                        }
                     }
                     this.pidMap.set(pid, workerId!);
                 }
@@ -96,9 +104,13 @@ class WsServer {
                         workerId = msg.worker_id;
                         if (!workerId) return;
                         regCaps = msg.capabilities;
+                        registered = false;
 
                         const old = this.workers.get(workerId);
-                        if (old) { if (old.pid) this.pidMap.delete(old.pid); if (old.ws !== ws) try { old.ws.close(); } catch {} }
+                        if (old && old.ws !== ws) {
+                            if (old.pid) this.pidMap.delete(old.pid);
+                            try { old.ws.close(); } catch {}
+                        }
 
                         this.workers.set(workerId, { workerId, pid: undefined, placeName: '', jobId: '', placeId: 0, ws });
 
@@ -116,7 +128,7 @@ class WsServer {
                     case 'result': {
                         if (regTimer && msg.data?.metadata && workerId) {
                             const info = this.workers.get(workerId);
-                            if (info && info.pid === undefined) {
+                            if (info && info.ws === ws && info.pid === undefined) {
                                 clearTimeout(regTimer);
                                 regTimer = null;
                                 const m = msg.data.metadata;
@@ -129,7 +141,6 @@ class WsServer {
                     }
 
                     case 'ping':
-                        lastPingAt = Date.now();
                         this._safeSend(ws, { type: 'pong' });
                         break;
                 }
@@ -139,7 +150,7 @@ class WsServer {
             ws.on('error', (err: any) => cleanup(err?.message || 'Connection error'));
         });
 
-        
+
         try {
             this._taskHandler = (task: any) => {
                 if (task.targetPid) {
@@ -169,7 +180,6 @@ class WsServer {
     _startHeartbeat() {
         setInterval(() => {
             try {
-                const now = Date.now();
                 for (const ws of Array.from(this.allConnections)) {
                     if (ws.readyState !== WebSocket.OPEN) { this.allConnections.delete(ws); continue; }
                 }

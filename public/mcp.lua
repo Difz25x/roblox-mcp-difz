@@ -145,7 +145,7 @@ local function testUncCapabilities()
     }
     for _, name in ipairs(uncs) do
         cap.total = cap.total + 1
-        local ok = pcall(function()
+        local ok, found = pcall(function()
             local v = _G[name]
             if type(v) ~= "function" then
                 local lsOk, lsFn = pcall(loadstring, "return " .. name)
@@ -153,7 +153,7 @@ local function testUncCapabilities()
             end
             return v ~= nil
         end)
-        if ok then cap.supported = cap.supported + 1 else table.insert(cap.missing, name) end
+        if ok and found then cap.supported = cap.supported + 1 else table.insert(cap.missing, name) end
     end
     pcall(function() local r={_G.identifyexecutor()}; if type(r[1])=="string" then cap.executorName=r[1] end end)
     pcall(function() cap.hasGenv = (_G.getgenv() ~= nil) end)
@@ -224,6 +224,8 @@ end
 
 local function handleGetMetadata(args)
     local data={PlaceId=game.PlaceId,GameId=game.GameId,JobId=game.JobId,CreatorId=game.CreatorId,CreatorType=tostring(game.CreatorType),Name=game.Name,PlayerCount=#Players:GetPlayers(),MaxPlayers=Players.MaxPlayers,ServerTime=tick()}
+    local success, productInfo = pcall(function() return MarketplaceService:GetProductInfo(game.PlaceId) end)
+    if success and productInfo and productInfo.Name then data.Name = productInfo.Name end
     if args.include_performance then data.FPS=60; data.Memory=collectgarbage("count") end
     return{success=true,metadata=data}
 end
@@ -1079,9 +1081,10 @@ local function handleGuiButtonClick(args)
         local inst, err = resolvePath(path)
         if not inst then return {success=false, error=err} end
         local activated = false
-        pcall(function() inst:Click() end); activated = true
-        if not activated then pcall(function() firesignal(inst.MouseButton1Click) end); activated = true end
-        if not activated then pcall(function() firesignal(inst.Activated) end); activated = true end
+        local ok1 = pcall(function() inst:Click() end)
+        if ok1 then activated = true end
+        if not activated then local ok2 = pcall(function() firesignal(inst.MouseButton1Click) end); if ok2 then activated = true end end
+        if not activated then local ok3 = pcall(function() firesignal(inst.Activated) end); if ok3 then activated = true end end
         return {success=true, buttonPath=path, activated=activated}
     end
     local root = gethui()
@@ -1707,9 +1710,9 @@ local HANDLERS = {
     signal_replicator=function(a)if a.signal_path then local inst=resolvePath(a.signal_path);if inst then pcall(firesignal,inst)end;return{success=true}end;return{success=false,error="signal_path required"}end,
 
     mouse_move_absolute=handleMouseMove,
-    mouse_button_hold=handleMouseButton, mouse_drag_emitter=handleMouseButton,
+    mouse_button_hold=handleMouseButton,
     scroll_wheel_simulator=handleScrollWheel,
-    key_hold_controller=handleKeyHold, key_combo_simulator=handleKeyHold,
+    key_hold_controller=handleKeyHold,
     text_automated_typer=handleTextType,
     touch_input_simulator=handleMouseMove,
     ui_element_clicker=handleGuiButtonClick,
@@ -1754,8 +1757,8 @@ local HANDLERS = {
     string_value_reader=handlePropertyRead, tag_reader=handleTreeExplore,
     security_metadata_analyzer=handlePropertyRead,
     check_unc_capabilities=function()return{success=true,capabilities=MCP_CAPABILITIES}end,
-    message="Macro recorder not implemented in executor"}end,
-    message="Macro replayer not implemented in executor"}end,
+    macro_recorder=function()return{success=false,message="Macro recorder not implemented in executor"}end,
+    macro_replayer=function()return{success=false,message="Macro replayer not implemented in executor"}end,
 
     get_instance_from_path=function(a)a.action="path_resolve";return handleTreeExplore(a)end,
     network_ownership_mapper=handleNetworkOwnership,
@@ -1763,6 +1766,7 @@ local HANDLERS = {
     function_interceptor_remover=function(a)a.action="remove";return handleFuncInterceptor(a)end,
     mouse_drag_emitter=function(a)a.action="hold";return handleMouseButton(a)end,
     key_combo_simulator=function(a)a.key=(a.keys or {})[1] or "";return handleKeyHold(a)end,
+    argument_type_analyzer=handleRemoteConns,
     ui_change_watcher=handleUiChangeWatcher,
 }
 
@@ -1772,19 +1776,21 @@ end
 
 G.MCP_RUNNING = true
 print("[MCP] Starting: " .. WS_URL)
-local PING_INTERVAL = 1
-local PONG_TIMEOUT = 10
+local PING_INTERVAL = 15
+local PONG_TIMEOUT = 30
 local lastSentPing = tick()
 WS_GOT_PONG = true
 while true do
     if not WS_CONNECTED or not WS then
         print("[MCP] Connecting...")
-        local ok, err = pcall(wsReconnect)
-        if ok then
+        local pok, connOk, connErr = pcall(wsReconnect)
+        if pok and connOk then
             print("[MCP] Connected | Worker: " .. WORKER_ID)
             WS_GOT_PONG = true
+            lastSentPing = tick()
         else
-            print("[MCP] Connect failed: " .. tostring(err) .. " (retry in " .. RECONNECT_DELAY .. "s)")
+            local reason = (not pok) and tostring(connOk) or tostring(connErr)
+            print("[MCP] Connect failed: " .. reason .. " (retry in " .. RECONNECT_DELAY .. "s)")
             task.wait(RECONNECT_DELAY)
         end
     end

@@ -1,7 +1,7 @@
-
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+
 const readline = require('readline');
 
 const HOME = process.env.USERPROFILE || process.env.HOME || '';
@@ -41,7 +41,14 @@ const HTTP_CONFIG = {
     },
 };
 
-const PLATFORMS: Record<string, { name: string; icon: string; instructions: string; setup: () => Promise<boolean> }> = {
+interface PlatformDef {
+    name: string;
+    icon: string;
+    instructions: string;
+    setup: () => Promise<boolean>;
+}
+
+const PLATFORMS: Record<string, PlatformDef> = {
     'claude-code': {
         name: 'Claude Code', icon: '🤖',
         instructions: 'Registered via claude mcp add (HTTP).',
@@ -71,7 +78,7 @@ const PLATFORMS: Record<string, { name: string; icon: string; instructions: stri
     },
     'cursor': {
         name: 'Cursor', icon: '🔷',
-        instructions: 'Config at ~/.cursor/mcp.json.',
+        instructions: 'Restart Cursor IDE.',
         setup: async () => writeConfigFile(
             path.join(HOME, '.cursor'),
             path.join(HOME, '.cursor', 'mcp.json'),
@@ -80,7 +87,7 @@ const PLATFORMS: Record<string, { name: string; icon: string; instructions: stri
     },
     'windsurf': {
         name: 'Windsurf', icon: '🏄',
-        instructions: 'Config at ~/.windsurf/mcp_config.json.',
+        instructions: 'Restart Windsurf.',
         setup: async () => writeConfigFile(
             path.join(HOME, '.windsurf'),
             path.join(HOME, '.windsurf', 'mcp_config.json'),
@@ -89,10 +96,64 @@ const PLATFORMS: Record<string, { name: string; icon: string; instructions: stri
     },
     'vscode': {
         name: 'VS Code (Cline / Continue)', icon: '📝',
-        instructions: 'Config at ~/.vscode/mcp.json.',
+        instructions: 'Restart VS Code.',
         setup: async () => writeConfigFile(
-            path.join(HOME, '.vscode'),
-            path.join(HOME, '.vscode', 'mcp.json'),
+            path.join(HOME, 'AppData', 'Roaming', 'Code', 'User', 'globalStorage', 'rooveterinaryinc.roo-cline', 'settings'),
+            path.join(HOME, 'AppData', 'Roaming', 'Code', 'User', 'globalStorage', 'rooveterinaryinc.roo-cline', 'settings', 'cline_mcp_settings.json'),
+            HTTP_CONFIG,
+        ),
+    },
+    'gemini-cli': {
+        name: 'Gemini CLI', icon: '✨',
+        instructions: 'Run gemini CLI again.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.gemini'),
+            path.join(HOME, '.gemini', 'mcp.json'),
+            HTTP_CONFIG,
+        ),
+    },
+    'codex-cli': {
+        name: 'Codex CLI', icon: '🧠',
+        instructions: 'Run codex CLI again.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.codex'),
+            path.join(HOME, '.codex', 'mcp.json'),
+            HTTP_CONFIG,
+        ),
+    },
+    'antigravity-ide': {
+        name: 'AntiGravity IDE', icon: '🚀',
+        instructions: 'Restart AntiGravity IDE.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.antigravity'),
+            path.join(HOME, '.antigravity', 'mcp.json'),
+            HTTP_CONFIG,
+        ),
+    },
+    'antigravity-cli': {
+        name: 'AntiGravity CLI', icon: '🛸',
+        instructions: 'Run antigravity CLI again.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.antigravity-cli'),
+            path.join(HOME, '.antigravity-cli', 'mcp.json'),
+            HTTP_CONFIG,
+        ),
+    },
+    'roo-code': {
+        name: 'Roo Code', icon: '🦘',
+        instructions: 'Restart Roo Code.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.roocode'),
+            path.join(HOME, '.roocode', 'mcp.json'),
+            HTTP_CONFIG,
+        ),
+    },
+    'zed': {
+        name: 'Zed', icon: '⚡',
+        instructions: 'Restart Zed Editor.',
+        setup: async () => writeConfigFile(
+            path.join(HOME, '.config', 'zed'),
+            path.join(HOME, '.config', 'zed', 'mcp.json'),
             HTTP_CONFIG,
         ),
     },
@@ -124,66 +185,183 @@ function writeConfigFile(configDir: string, configFile: string, config: Record<s
     }
 }
 
-function question(rl: any, query: string): Promise<string> {
-    return new Promise<string>(resolve => rl.question(query, resolve));
+// ── Interactive multi-select for platform picker ────────────────────
+
+function clearScreen(): void {
+    console.clear();
 }
 
-async function runSetupWizard(targetAI?: string): Promise<void> {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+function hideCursor(): void {
+    process.stdout.write('\x1b[?25l');
+}
 
-    console.log('\n  Roblox MCP — Setup\n');
+function showCursor(): void {
+    process.stdout.write('\x1b[?25h');
+}
 
-    let selectedKeys: string[] | null = null;
+interface SelectItem {
+    key: string;
+    icon: string;
+    name: string;
+    checked: boolean;
+}
+
+let _setupLineCount = 0;
+
+function renderSetupMenu(items: SelectItem[], cursor: number, isFirstRender: boolean = false): void {
+    hideCursor();
+
+    const lines: string[] = [];
+    lines.push(`  \x1b[1;36mRoblox MCP — Setup Wizard\x1b[0m`);
+    lines.push(`  \x1b[2mSelect platforms (Space to toggle, Enter to confirm)\x1b[0m`);
+    lines.push('');
+
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const check = item.checked ? '\x1b[32m✔\x1b[0m' : ' ';
+        const pointer = i === cursor ? '\x1b[36m❯\x1b[0m' : ' ';
+        if (i === cursor) {
+            lines.push(`  ${pointer} [${check}] ${item.icon}  \x1b[1m${item.name}\x1b[0m`);
+        } else {
+            lines.push(`  ${pointer} [${check}] ${item.icon}  \x1b[2m${item.name}\x1b[0m`);
+        }
+    }
+
+    lines.push('');
+    lines.push(`  \x1b[2m↑↓ Navigate  Space Toggle  A All  ⏎ Confirm\x1b[0m`);
+
+    if (!isFirstRender && _setupLineCount > 0) {
+        readline.moveCursor(process.stdout, 0, -_setupLineCount);
+    }
+
+    for (const line of lines) {
+        process.stdout.write('\r\x1b[K' + line + '\n');
+    }
+    _setupLineCount = lines.length;
+}
+
+function interactiveSelectPlatforms(): Promise<string[]> {
+    return new Promise((resolve) => {
+        const keys = Object.keys(PLATFORMS);
+        const items: SelectItem[] = keys.map(key => ({
+            key,
+            icon: PLATFORMS[key].icon,
+            name: PLATFORMS[key].name,
+            checked: false,
+        }));
+
+        let cursor = 0;
+
+        clearScreen();
+        renderSetupMenu(items, cursor, true);
+        _setupLineCount = 0;
+
+        if (!process.stdin.isTTY) {
+            showCursor();
+            resolve(keys); // non-TTY: select all
+            return;
+        }
+
+        readline.emitKeypressEvents(process.stdin);
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+
+        const cleanup = () => {
+            showCursor();
+            process.stdin.setRawMode(false);
+            process.stdin.pause();
+            process.stdin.removeAllListeners('keypress');
+        };
+
+        process.stdin.on('keypress', (str: string, key: any) => {
+            // Ctrl+C
+            if (key.ctrl && key.name === 'c') {
+                cleanup();
+                clearScreen();
+                resolve([]);
+                return;
+            }
+
+            // Up
+            if (key.name === 'up' || key.name === 'k') {
+                cursor = (cursor - 1 + items.length) % items.length;
+                renderSetupMenu(items, cursor);
+                return;
+            }
+
+            // Down
+            if (key.name === 'down' || key.name === 'j') {
+                cursor = (cursor + 1) % items.length;
+                renderSetupMenu(items, cursor);
+                return;
+            }
+
+            // Space — toggle
+            if (key.name === 'space' || str === ' ') {
+                items[cursor].checked = !items[cursor].checked;
+                renderSetupMenu(items, cursor);
+                return;
+            }
+
+            // A/a — toggle all
+            if (key.name === 'a' || str === 'a' || str === 'A') {
+                const allChecked = items.every(i => i.checked);
+                for (const item of items) item.checked = !allChecked;
+                renderSetupMenu(items, cursor);
+                return;
+            }
+
+            // Enter — confirm
+            if (key.name === 'return' || key.name === 'enter') {
+                cleanup();
+                const selected = items.filter(i => i.checked).map(i => i.key);
+                resolve(selected);
+                return;
+            }
+        });
+    });
+}
+
+async function runSetupWizard(targetAI?: string | null): Promise<void> {
+    let selectedKeys: string[];
 
     if (targetAI) {
         const key = targetAI.toLowerCase().replace(/ /g, '-');
         if (PLATFORMS[key]) {
             selectedKeys = [key];
-            console.log(`  Auto-setup for: ${PLATFORMS[key].icon} ${PLATFORMS[key].name}`);
+            clearScreen();
+            console.log(`  Auto-setup: ${PLATFORMS[key].icon} ${PLATFORMS[key].name}`);
         } else {
-            console.log(`  Unknown AI: "${targetAI}".`);
-            rl.close(); return;
+            console.log(`  \x1b[33m⚠ Unknown AI: "${targetAI}"\x1b[0m`);
+            return;
         }
     } else {
-        console.log('  Select AI platform(s):\n');
-        const keys = Object.keys(PLATFORMS);
-        for (let i = 0; i < keys.length; i++) console.log(`    ${i + 1}. ${PLATFORMS[keys[i]].icon} ${PLATFORMS[keys[i]].name}`);
-        console.log('');
-        const answer = await question(rl, '  Enter numbers (comma-separated, or "all"): ');
-        const trimmed = answer.trim().toLowerCase();
-        if (trimmed === 'all') { selectedKeys = keys; }
-        else {
-            selectedKeys = [];
-            for (const part of trimmed.split(',').map((s: string) => s.trim())) {
-                const idx = parseInt(part, 10) - 1;
-                if (idx >= 0 && idx < keys.length) selectedKeys.push(keys[idx]);
-            }
+        selectedKeys = await interactiveSelectPlatforms();
+        if (selectedKeys.length === 0) {
+            console.log('  \x1b[2mNo platforms selected.\x1b[0m');
+            return;
         }
-        if (!selectedKeys || selectedKeys.length === 0) { console.log('  No selection. Exiting.'); rl.close(); return; }
     }
 
-    console.log('\n  Configuring (HTTP transport)...\n');
+    clearScreen();
+    console.log('  \x1b[1m⚙️  Configuring (HTTP)...\x1b[0m\n');
+
     let successCount = 0;
     for (const key of selectedKeys) {
         const platform = PLATFORMS[key];
         process.stdout.write(`  ${platform.icon} ${platform.name}... `);
         const ok = await platform.setup();
-        console.log(ok ? `✅\n     ${platform.instructions}` : `❌`);
-        console.log('');
+        console.log(ok ? `✅` : `❌`);
+        if (ok) console.log(`     \x1b[2m${platform.instructions}\x1b[0m`);
         if (ok) successCount++;
     }
 
-    console.log(`  Done! ${successCount}/${selectedKeys.length}\n`);
+    console.log(`\n  \x1b[1m✔ Done! ${successCount}/${selectedKeys.length} configured.\x1b[0m\n`);
+
     const devPath = getDevCliPath();
-    if (devPath) {
-        console.log(`  Start server: node ${devPath} start`);
-        console.log(`  Inject: loadstring(game:HttpGet("http://127.0.0.1:${MCP_PORT}/mcp.lua"))()`);
-    } else {
-        console.log(`  Start server: rblx-mcp start`);
-        console.log(`  Inject: loadstring(game:HttpGet("http://127.0.0.1:${MCP_PORT}/mcp.lua"))()`);
-    }
-    console.log('');
-    rl.close();
+    const startCmd = devPath ? `node ${devPath} start` : 'rblx-mcp start';
+    console.log(`  \x1b[2mStart:\x1b[0m  ${startCmd}`);
+    console.log(`  \x1b[2mInject:\x1b[0m loadstring(game:HttpGet("http://127.0.0.1:${MCP_PORT}/mcp.lua"))()`);
 }
 
 module.exports = { runSetupWizard, PLATFORMS };

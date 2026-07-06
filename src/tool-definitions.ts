@@ -16,9 +16,23 @@ class ToolDefinitions {
     private _defineTools(): ToolDefinition[] {
         return [
 
-            
-            
-            
+            {
+                name: "disable_client_anticheat",
+                description: "Disables local client-side anti-cheat mechanisms. Hooks Kick/Destroy to prevent the client from kicking itself, optionally disables local scripts matching known anti-cheat patterns, blocks teleport-based kicks, and enables an anti-AFK loop.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        hook_kick: { type: "boolean", description: "Hook LocalPlayer.Kick and humanoid death to prevent kicks. Default true." },
+                        disable_ac_scripts: { type: "boolean", description: "Scan and disable LocalScripts matching AC patterns (e.g. 'anticheat', 'guardian'). Default false." },
+                        block_teleport: { type: "boolean", description: "Hook TeleportService to prevent teleport-based kicks/bans. Default true." },
+                        anti_afk: { type: "boolean", description: "Enable background Anti-AFK loop to prevent 20-min idle kick. Default false." },
+                        afk_interval: { type: "number", description: "Interval in seconds for Anti-AFK actions. Default 30." }
+                    },
+                    required: []
+                }
+            },
+
+
 
             {
                 name: "recursive_tree_walker",

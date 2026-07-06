@@ -47,20 +47,21 @@ interface AppComponents {
 
 function handleMcpMessage(mcp: McpHandler): RequestHandler {
     return async (req: Request, res: Response): Promise<void> => {
+        const message: McpMessage = req.body;
         try {
-            const message: McpMessage = req.body;
             if (!message || typeof message !== 'object' || !message.method) {
                 res.status(400).json({
                     jsonrpc: '2.0',
-                    id: (message && message.id) || null,
+                    id: (message && message.id) ?? null,
                     error: { code: -32600, message: 'Invalid Request: method required' },
                 });
                 return;
             }
             const result = await mcp.handleMessage(message);
-            res.json({ jsonrpc: '2.0', id: message.id, ...result });
+            res.json({ jsonrpc: '2.0', id: message.id, result: result.result, error: result.error });
         } catch (err: any) {
-            res.json({ jsonrpc: '2.0', id: null, error: { code: -32603, message: err.message } });
+            const errorMsg = err instanceof Error ? err.message : String(err ?? 'Unknown error');
+            res.json({ jsonrpc: '2.0', id: (message && message.id) ?? null, error: { code: -32603, message: errorMsg } });
         }
     };
 }
@@ -80,24 +81,6 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     app.use(express.json({ limit: '10mb' }));
     const publicDir: string = path.join(PKG_DIR, 'public');
 
-    
-    app.get('/mcp.lua', (_req: Request, res: Response): void => {
-        const f = path.join(PKG_DIR, 'public', 'mcp.lua');
-        if (fs.existsSync(f)) {
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.send(fs.readFileSync(f, 'utf-8'));
-        } else res.status(404).send('-- mcp.lua not found.');
-    });
-    app.get('/mcp.luau', (_req: Request, res: Response): void => {
-        const f = path.join(PKG_DIR, 'public', 'mcp.lua');
-        if (fs.existsSync(f)) {
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.send(fs.readFileSync(f, 'utf-8'));
-        } else res.status(404).send('-- mcp.lua not found.');
-    });
-    if (fs.existsSync(publicDir)) app.use(express.static(publicDir));
-
-    
     app.use((_req: Request, res: Response, next: NextFunction): void => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -106,20 +89,45 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         next();
     });
 
-    
+    let mcpLuaCache: string | null = null;
+    const mcpLuaPath: string = path.join(PKG_DIR, 'public', 'mcp.lua');
+
+    app.get('/mcp.lua', (_req: Request, res: Response): void => {
+        if (!mcpLuaCache) {
+            if (fs.existsSync(mcpLuaPath)) {
+                mcpLuaCache = fs.readFileSync(mcpLuaPath, 'utf-8');
+            }
+        }
+        if (mcpLuaCache) {
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.send(mcpLuaCache);
+        } else res.status(404).send('-- mcp.lua not found.');
+    });
+    app.get('/mcp.luau', (_req: Request, res: Response): void => {
+        if (!mcpLuaCache) {
+            if (fs.existsSync(mcpLuaPath)) {
+                mcpLuaCache = fs.readFileSync(mcpLuaPath, 'utf-8');
+            }
+        }
+        if (mcpLuaCache) {
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.send(mcpLuaCache);
+        } else res.status(404).send('-- mcp.lua not found.');
+    });
+    if (fs.existsSync(publicDir)) app.use(express.static(publicDir));
+
     const server: Server = http.createServer(app);
     const wss = new WsServerCls(queue, sessions);
     wss.mount(server);
 
     const mcpHandler: RequestHandler = handleMcpMessage(mcp);
 
-    
     app.get('/', (_req: Request, res: Response): void => {
         const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
         const dashboardPath: string = path.join(PKG_DIR, 'public', 'dashboard.html');
         if (fs.existsSync(dashboardPath)) {
             let html: string = fs.readFileSync(dashboardPath, 'utf-8');
-            html = html.replace(/\{\{port\}\}/g, String(port)).replace(/\{\{version\}\}/g, PKG.version);
+            html = html.replace(/\{\{\s*port\s*\}\}/g, String(port)).replace(/\{\{\s*version\s*\}\}/g, PKG.version);
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.send(html);
         } else {
@@ -127,11 +135,9 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         }
     });
 
-    
     app.post('/', mcpHandler);
     app.post('/mcp', mcpHandler);
 
-    
     app.get('/type', (_req: Request, res: Response): void => {
         const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
         const host = _req.hostname || 'localhost';
@@ -146,7 +152,6 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         });
     });
 
-    
     app.get('/health', (_req: Request, res: Response): void => {
         res.json({
             status: 'ok',
@@ -158,6 +163,24 @@ function createApp(opts?: CreateAppOptions): AppComponents {
             activeSessions: sessions.activeCount,
             robloxProcesses: processManager.listRobloxProcesses().length,
         });
+    });
+
+    if (IS_VERBOSE) {
+        log('Server initialized with', tools.count, 'tools');
+    }
+
+    // SPA catch-all: serve dashboard for any unmatched GET route (e.g. /service_discoverer)
+    app.get('*', (_req: Request, res: Response): void => {
+        const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
+        const dashboardPath: string = path.join(PKG_DIR, 'public', 'dashboard.html');
+        if (fs.existsSync(dashboardPath)) {
+            let html: string = fs.readFileSync(dashboardPath, 'utf-8');
+            html = html.replace(/\{\{\s*port\s*\}\}/g, String(port)).replace(/\{\{\s*version\s*\}\}/g, PKG.version);
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.send(html);
+        } else {
+            res.status(404).send('Not found');
+        }
     });
 
     return { app, server, queue, tools, mcp, sessions, processManager, wss };
