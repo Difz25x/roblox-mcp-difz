@@ -1351,8 +1351,7 @@ class ToolDefinitions {
                                           "items": {
                                                     "type": "string"
                                           },
-                                          "uniqueItems": true
-                                },
+                                          },
                                 "include_hidden": {
                                           "type": "boolean",
                                           "description": "Whether to include GUI elements whose Visible property is false",
@@ -1369,8 +1368,7 @@ class ToolDefinitions {
                                           "items": {
                                                     "type": "string"
                                           },
-                                          "uniqueItems": true
-                                },
+                                          },
                                 "root_container": {
                                           "type": "string",
                                           "description": "Name of the root GUI container to dump (e.g. CoreGui, PlayerGui, StarterGui). Defaults to CoreGui.",
@@ -1648,8 +1646,7 @@ class ToolDefinitions {
                                           "items": {
                                                     "type": "string"
                                           },
-                                          "uniqueItems": true
-                                },
+                                          },
                                 "change_types": {
                                           "type": "array",
                                           "description": "Types of changes to report. Empty array reports all change types.",
@@ -1664,16 +1661,14 @@ class ToolDefinitions {
                                                               "size_changed"
                                                     ]
                                           },
-                                          "uniqueItems": true
-                                },
+                                          },
                                 "property_filters": {
                                           "type": "array",
                                           "description": "Only report changes to these specific property names (e.g. Text, Visible, Position, Size, BackgroundColor3)",
                                           "items": {
                                                     "type": "string"
                                           },
-                                          "uniqueItems": true
-                                },
+                                          },
                                 "include_screenshots": {
                                           "type": "boolean",
                                           "description": "Whether to capture a viewport screenshot alongside each change event for visual context",
@@ -2932,8 +2927,7 @@ class ToolDefinitions {
                                           "default": 1000,
                                           "minimum": 50,
                                           "maximum": 600000,
-                                          "multipleOf": 10
-                                },
+                                          },
                                 "hold_token": {
                                           "type": "string",
                                           "description": "Optional unique identifier for tracking this hold. Required to release a specific held key when multiple keys are held simultaneously. Auto-generated if omitted.",
@@ -5980,9 +5974,7 @@ class ToolDefinitions {
                                                                         ]
                                                               },
                                                               "fixed_value": {
-                                                                        "type": "object",
-                                                                        "description": "The replacement value to use when mode is 'replace' or 'inject'."
-                                                              },
+                                                                        "type": "object", "description": "The replacement value to use when mode is 'replace' or 'inject'.", "properties": {} },
                                                               "expression": {
                                                                         "type": "string",
                                                                         "description": "A Lua expression string to evaluate for the new argument value when mode is 'mutate'. The variables 'arg', 'index', 'remote', and 'call_count' are available in scope."
@@ -6054,9 +6046,7 @@ class ToolDefinitions {
                                                                         ]
                                                               },
                                                               "fixed_value": {
-                                                                        "type": "object",
-                                                                        "description": "The replacement return value when mode is 'replace'."
-                                                              },
+                                                                        "type": "object", "description": "The replacement return value when mode is 'replace'.", "properties": {} },
                                                               "expression": {
                                                                         "type": "string",
                                                                         "description": "Lua expression string evaluated on the response when mode is 'mutate'. The variable 'response' holds the original server response."
