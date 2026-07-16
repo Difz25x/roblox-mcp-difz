@@ -68,7 +68,7 @@ function renderMenu(items: MenuItem[], selected: number, isFirstRender: boolean 
 // ── Confirm prompt (Y/N) ────────────────────────────
 
 function confirm(message: string): Promise<boolean> {
-    return new Promise((resolve) => {
+    return new Promise<void>((resolve) => {
         showCursor();
         process.stdout.write(`  ${message} \x1b[2m(y/n)\x1b[0m `);
         readline.emitKeypressEvents(process.stdin);
@@ -88,7 +88,7 @@ function confirm(message: string): Promise<boolean> {
 // ── Fetch latest version ────────────────────────────
 
 function fetchLatestVersion(): Promise<string | null> {
-    return new Promise((resolve) => {
+    return new Promise<void>((resolve) => {
         const req = https.get(`https://registry.npmjs.org/${PKG.name}/latest`, {
             headers: { 'Accept': 'application/json' },
             timeout: 5000,
@@ -464,7 +464,7 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
                     label: 'Restart', icon: '🔄', description: 'Kill and restart',
                     action: async () => {
                         killProcess(p.pid);
-                        await new Promise(r => setTimeout(r, 1000));
+                        await new Promise<void>(r => setTimeout(r, 1000));
                         launchRoblox();
                         console.log('  \x1b[32mProcess restarted.\x1b[0m');
                     }
@@ -482,7 +482,7 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
                 }
             ];
 
-            return new Promise((resolve) => {
+            return new Promise<void>((resolve) => {
                 let actSelected = 0;
                 let actLineCount = 0;
 
@@ -528,7 +528,7 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
         action: async () => { parentMenuFn(); }
     });
 
-    return new Promise((resolve) => {
+    return new Promise<void>((resolve) => {
         let selected = 0;
         let lineCount = 0;
 
