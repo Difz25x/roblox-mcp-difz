@@ -365,6 +365,21 @@ async function performScreenshot(pid?: number): Promise<ScreenshotResult> {
     }
 }
 
+
+function killProcess(pid: number): boolean {
+    try {
+        if (IS_WIN) {
+            execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+        } else {
+            process.kill(pid, 'SIGKILL');
+        }
+        _procCache = null;
+        return true;
+    } catch (err) {
+        return false;
+    }
+}
+
 module.exports = {
     listRobloxProcesses,
     launchRoblox,

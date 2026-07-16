@@ -152,6 +152,26 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         });
     });
 
+    app.get('/api/processes', (_req: Request, res: Response): void => {
+        const procs = processManager.listRobloxProcesses();
+        res.json({ processes: procs });
+    });
+
+    app.post('/api/processes/:pid/kill', (_req: Request, res: Response): void => {
+        const pid = parseInt(_req.params.pid, 10);
+        const success = processManager.killProcess(pid);
+        res.json({ success });
+    });
+
+    app.post('/api/processes/:pid/restart', (_req: Request, res: Response): void => {
+        const pid = parseInt(_req.params.pid, 10);
+        processManager.killProcess(pid);
+        setTimeout(() => {
+            const result = processManager.launchRoblox();
+            res.json({ success: result.success });
+        }, 1000);
+    });
+
     app.get('/health', (_req: Request, res: Response): void => {
         res.json({
             status: 'ok',
