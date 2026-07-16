@@ -45,7 +45,7 @@ interface PlatformDef {
     name: string;
     icon: string;
     instructions: string;
-    setup: () => Promise<boolean>;
+    setup: () => Promise<boolean | string>;
 }
 
 const PLATFORMS: Record<string, PlatformDef> = {
@@ -164,7 +164,7 @@ const PLATFORMS: Record<string, PlatformDef> = {
     },
 };
 
-function writeConfigFile(configDir: string, configFile: string, config: Record<string, any>): boolean {
+function writeConfigFile(configDir: string, configFile: string, config: Record<string, any>): string {
     try {
         fs.mkdirSync(configDir, { recursive: true });
         let merged = config;
@@ -173,15 +173,13 @@ function writeConfigFile(configDir: string, configFile: string, config: Record<s
                 const existing = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
                 merged = { ...existing, mcpServers: { ...(existing.mcpServers || {}), ...config.mcpServers } };
             } catch (e: any) {
-                console.error(`     Warning: could not parse config (${e.message}), overwriting.`);
+                // Ignore parse errors, just overwrite
             }
         }
         fs.writeFileSync(configFile, JSON.stringify(merged, null, 2), 'utf-8');
-        console.log(`     File: ${normPath(configFile)}`);
-        return true;
+        return configFile;
     } catch (err: any) {
-        console.error(`     Failed: ${err.message}`);
-        return false;
+        throw new Error(err.message);
     }
 }
 
@@ -253,8 +251,8 @@ function interactiveSelectPlatforms(): Promise<string[]> {
         let cursor = 0;
 
         clearScreen();
-        renderSetupMenu(items, cursor, true);
         _setupLineCount = 0;
+        renderSetupMenu(items, cursor, true);
 
         if (!process.stdin.isTTY) {
             showCursor();
@@ -350,10 +348,18 @@ async function runSetupWizard(targetAI?: string | null): Promise<void> {
     for (const key of selectedKeys) {
         const platform = PLATFORMS[key];
         process.stdout.write(`  ${platform.icon} ${platform.name}... `);
-        const ok = await platform.setup();
-        console.log(ok ? `✅` : `❌`);
-        if (ok) console.log(`     \x1b[2m${platform.instructions}\x1b[0m`);
-        if (ok) successCount++;
+        try {
+            const resultPath = await platform.setup();
+            console.log(`✅`);
+            if (resultPath) {
+                console.log(`     \x1b[2mFile: ${normPath(typeof resultPath === 'string' ? resultPath : '')}\x1b[0m`);
+            }
+            console.log(`     \x1b[2m${platform.instructions}\x1b[0m`);
+            successCount++;
+        } catch (err: any) {
+            console.log(`❌`);
+            console.log(`     \x1b[31mError: ${err.message}\x1b[0m`);
+        }
     }
 
     console.log(`\n  \x1b[1m✔ Done! ${successCount}/${selectedKeys.length} configured.\x1b[0m\n`);
