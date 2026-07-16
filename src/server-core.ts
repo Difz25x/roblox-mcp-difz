@@ -158,13 +158,13 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.post('/api/processes/:pid/kill', (_req: Request, res: Response): void => {
-        const pid = parseInt(_req.params.pid, 10);
+        const pid = parseInt(_req.params.pid as string, 10);
         const success = processManager.killProcess(pid);
         res.json({ success });
     });
 
     app.post('/api/processes/:pid/restart', (_req: Request, res: Response): void => {
-        const pid = parseInt(_req.params.pid, 10);
+        const pid = parseInt(_req.params.pid as string, 10);
         processManager.killProcess(pid);
         setTimeout(() => {
             const result = processManager.launchRoblox();
