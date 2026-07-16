@@ -205,7 +205,8 @@ interface SelectItem {
 
 let _setupLineCount = 0;
 
-function renderSetupMenu(items: SelectItem[], cursor: number, isFirstRender: boolean = false): void {
+function renderSetupMenu(items: SelectItem[], cursor: number): void {
+    console.clear();
     hideCursor();
 
     const lines: string[] = [];
@@ -227,9 +228,7 @@ function renderSetupMenu(items: SelectItem[], cursor: number, isFirstRender: boo
     lines.push('');
     lines.push(`  \x1b[2m↑↓ Navigate  Space Toggle  A All  ⏎ Confirm\x1b[0m`);
 
-    if (!isFirstRender && _setupLineCount > 0) {
-        readline.moveCursor(process.stdout, 0, -_setupLineCount);
-    }
+
 
     for (const line of lines) {
         process.stdout.write('\r\x1b[K' + line + '\n');
@@ -251,7 +250,7 @@ function interactiveSelectPlatforms(): Promise<string[]> {
 
         clearScreen();
         _setupLineCount = 0;
-        renderSetupMenu(items, cursor, true);
+        renderSetupMenu(items, cursor);
 
         if (!process.stdin.isTTY) {
             showCursor();

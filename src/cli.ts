@@ -40,7 +40,8 @@ interface MenuItem {
 
 let _menuLineCount = 0;
 
-function renderMenu(items: MenuItem[], selected: number, isFirstRender: boolean = false): void {
+function renderMenu(items: MenuItem[], selected: number): void {
+    console.clear();
     hideCursor();
     const lines: string[] = [];
     lines.push(`  \x1b[1;36m${PKG.name}\x1b[0m \x1b[2mv${PKG.version}\x1b[0m`);
@@ -56,9 +57,7 @@ function renderMenu(items: MenuItem[], selected: number, isFirstRender: boolean 
     lines.push('');
     lines.push(`  \x1b[2m↑↓ Navigate  ⏎ Select  Ctrl+C Exit\x1b[0m`);
 
-    if (!isFirstRender && _menuLineCount > 0) {
-        readline.moveCursor(process.stdout, 0, -_menuLineCount);
-    }
+
     for (const line of lines) {
         process.stdout.write('\r\x1b[K' + line + '\n');
     }
@@ -223,7 +222,7 @@ function showPostStartMenu(port: number, pid: number): void {
 
     let selected = 0;
     _menuLineCount = 0;
-    renderMenu(items, selected, true);
+    renderMenu(items, selected);
 
     if (!process.stdin.isTTY) return;
 
@@ -501,6 +500,7 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
 
                 const renderActMenu = () => {
                     hideCursor();
+                    console.clear();
                     const lines = [`  \x1b[1;36mManage Process\x1b[0m \x1b[2m${p.pid}\x1b[0m`, ''];
                     for (let i = 0; i < actionItems.length; i++) {
                         const item = actionItems[i];
@@ -508,7 +508,7 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
                         else lines.push(`    ${item.icon}  \x1b[2m${item.label}\x1b[0m`);
                     }
                     lines.push('', `  \x1b[2m↑↓ Navigate  ⏎ Select\x1b[0m`);
-                    if (actLineCount > 0) readline.moveCursor(process.stdout, 0, -actLineCount);
+                    // if (actLineCount > 0) readline.moveCursor(process.stdout, 0, -actLineCount);
                     for (const line of lines) process.stdout.write('\r\x1b[K' + line + '\n');
                     actLineCount = lines.length;
                 };
@@ -547,6 +547,7 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
 
         const render = () => {
             hideCursor();
+            console.clear();
             const lines = [`  \x1b[1;36mSelect Process\x1b[0m`, ''];
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
@@ -554,7 +555,7 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
                 else lines.push(`    ${item.icon}  \x1b[2m${item.label}\x1b[0m`);
             }
             lines.push('', `  \x1b[2m↑↓ Navigate  ⏎ Select\x1b[0m`);
-            if (lineCount > 0) readline.moveCursor(process.stdout, 0, -lineCount);
+            // if (lineCount > 0) readline.moveCursor(process.stdout, 0, -lineCount);
             for (const line of lines) process.stdout.write('\r\x1b[K' + line + '\n');
             lineCount = lines.length;
         };
@@ -617,7 +618,7 @@ function showInteractiveMenu(): Promise<void> {
         _menuLineCount = 0;
 
         console.clear();
-        renderMenu(items, selected, true);
+        renderMenu(items, selected);
 
         if (!process.stdin.isTTY) {
             showCursor();
