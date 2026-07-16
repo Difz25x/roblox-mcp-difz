@@ -430,6 +430,140 @@ async function cmdSetup(): Promise<void> {
 
 // ── Main menu ───────────────────────────────────────
 
+async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
+    const { listRobloxProcesses, killProcess, launchRoblox } = require('./process-manager');
+    const procs = listRobloxProcesses();
+
+    if (procs.length === 0) {
+        console.clear();
+        console.log(`  \x1b[33mNo Roblox processes found.\x1b[0m\n`);
+        console.log(`  \x1b[2mPress any key to return...\x1b[0m`);
+
+        await new Promise<void>((resolve) => {
+            readline.emitKeypressEvents(process.stdin);
+            if (process.stdin.isTTY) process.stdin.setRawMode(true);
+            process.stdin.resume();
+            process.stdin.once('keypress', () => {
+                if (process.stdin.isTTY) process.stdin.setRawMode(false);
+                process.stdin.pause();
+                process.stdin.removeAllListeners('keypress');
+                parentMenuFn();
+                resolve();
+            });
+        });
+        return;
+    }
+
+    const items: MenuItem[] = procs.map((p: any) => ({
+        label: p.windowTitle || p.name,
+        icon: '🎮',
+        description: `PID: ${p.pid} | Mem: ${p.memoryMB}MB`,
+        action: async () => {
+            const actionItems: MenuItem[] = [
+                {
+                    label: 'Restart', icon: '🔄', description: 'Kill and restart',
+                    action: async () => {
+                        killProcess(p.pid);
+                        await new Promise(r => setTimeout(r, 1000));
+                        launchRoblox();
+                        console.log('  \x1b[32mProcess restarted.\x1b[0m');
+                    }
+                },
+                {
+                    label: 'Kill', icon: '💀', description: 'Force kill process',
+                    action: async () => {
+                        killProcess(p.pid);
+                        console.log('  \x1b[32mProcess killed.\x1b[0m');
+                    }
+                },
+                {
+                    label: 'Cancel', icon: '↩️', description: 'Go back',
+                    action: async () => {}
+                }
+            ];
+
+            return new Promise((resolve) => {
+                let actSelected = 0;
+                let actLineCount = 0;
+
+                const renderActMenu = () => {
+                    hideCursor();
+                    const lines = [`  \x1b[1;36mManage Process\x1b[0m \x1b[2m${p.pid}\x1b[0m`, ''];
+                    for (let i = 0; i < actionItems.length; i++) {
+                        const item = actionItems[i];
+                        if (i === actSelected) lines.push(`  \x1b[36m❯ ${item.icon}  ${item.label}\x1b[0m  \x1b[2m${item.description}\x1b[0m`);
+                        else lines.push(`    ${item.icon}  \x1b[2m${item.label}\x1b[0m`);
+                    }
+                    lines.push('', `  \x1b[2m↑↓ Navigate  ⏎ Select\x1b[0m`);
+                    if (actLineCount > 0) readline.moveCursor(process.stdout, 0, -actLineCount);
+                    for (const line of lines) process.stdout.write('\r\x1b[K' + line + '\n');
+                    actLineCount = lines.length;
+                };
+
+                console.clear();
+                renderActMenu();
+
+                const onKey = async (_str: string, key: any) => {
+                    if (!key) return;
+                    if (key.name === 'up') { actSelected = (actSelected - 1 + actionItems.length) % actionItems.length; renderActMenu(); }
+                    else if (key.name === 'down') { actSelected = (actSelected + 1) % actionItems.length; renderActMenu(); }
+                    else if (key.name === 'return') {
+                        process.stdin.removeListener('keypress', onKey);
+                        console.clear();
+                        await actionItems[actSelected].action();
+                        setTimeout(() => {
+                            parentMenuFn();
+                            resolve();
+                        }, 1000);
+                    }
+                };
+
+                process.stdin.on('keypress', onKey);
+            });
+        }
+    }));
+
+    items.push({
+        label: 'Back', icon: '↩️', description: 'Return to menu',
+        action: async () => { parentMenuFn(); }
+    });
+
+    return new Promise((resolve) => {
+        let selected = 0;
+        let lineCount = 0;
+
+        const render = () => {
+            hideCursor();
+            const lines = [`  \x1b[1;36mSelect Process\x1b[0m`, ''];
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (i === selected) lines.push(`  \x1b[36m❯ ${item.icon}  ${item.label}\x1b[0m  \x1b[2m${item.description}\x1b[0m`);
+                else lines.push(`    ${item.icon}  \x1b[2m${item.label}\x1b[0m`);
+            }
+            lines.push('', `  \x1b[2m↑↓ Navigate  ⏎ Select\x1b[0m`);
+            if (lineCount > 0) readline.moveCursor(process.stdout, 0, -lineCount);
+            for (const line of lines) process.stdout.write('\r\x1b[K' + line + '\n');
+            lineCount = lines.length;
+        };
+
+        console.clear();
+        render();
+
+        const onKey = async (_str: string, key: any) => {
+            if (!key) return;
+            if (key.name === 'up') { selected = (selected - 1 + items.length) % items.length; render(); }
+            else if (key.name === 'down') { selected = (selected + 1) % items.length; render(); }
+            else if (key.name === 'return') {
+                process.stdin.removeListener('keypress', onKey);
+                await items[selected].action();
+                resolve();
+            }
+        };
+
+        process.stdin.on('keypress', onKey);
+    });
+}
+
 function showInteractiveMenu(): Promise<void> {
     return new Promise((resolve, reject) => {
         const items: MenuItem[] = [
@@ -444,6 +578,19 @@ function showInteractiveMenu(): Promise<void> {
                 icon: '⚙️',
                 description: 'Configure AI platform',
                 action: cmdSetup,
+            },
+            {
+                label: 'Manage Processes',
+                icon: '🛠️',
+                description: 'Restart or kill Roblox',
+                action: async () => {
+                    if (process.stdin.isTTY) {
+                        process.stdin.setRawMode(false);
+                        process.stdin.pause();
+                        process.stdin.removeAllListeners('keypress');
+                    }
+                    await manageProcessesMenu(() => showInteractiveMenu());
+                },
             },
             {
                 label: 'Update',
