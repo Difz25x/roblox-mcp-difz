@@ -45,7 +45,7 @@ interface PlatformDef {
     name: string;
     icon: string;
     instructions: string;
-    setup: () => Promise<boolean | string>;
+    setup: () => Promise<string | undefined>;
 }
 
 const PLATFORMS: Record<string, PlatformDef> = {
@@ -58,12 +58,11 @@ const PLATFORMS: Record<string, PlatformDef> = {
                 const cmd = `claude mcp add roblox-mcp-difz -s user --transport http http://localhost:${MCP_PORT}/mcp`;
                 const result = execSync(cmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
                 console.log(`     ${result.toString().trim().split('\n').pop()}`);
-                return true;
+                return undefined;
             } catch (err: any) {
                 const msg = err.stderr?.toString() || err.message || '';
-                if (msg.includes('already exists') || msg.includes('Added')) return true;
-                console.error(`     Error: ${msg.trim()}`);
-                return false;
+                if (msg.includes('already exists') || msg.includes('Added')) return undefined;
+                throw new Error(msg.trim());
             }
         },
     },
