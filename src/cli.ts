@@ -68,7 +68,7 @@ function renderMenu(items: MenuItem[], selected: number, isFirstRender: boolean 
 // ── Confirm prompt (Y/N) ────────────────────────────
 
 function confirm(message: string): Promise<boolean> {
-    return new Promise<void>((resolve) => {
+    return new Promise((resolve) => {
         showCursor();
         process.stdout.write(`  ${message} \x1b[2m(y/n)\x1b[0m `);
         readline.emitKeypressEvents(process.stdin);
@@ -88,7 +88,7 @@ function confirm(message: string): Promise<boolean> {
 // ── Fetch latest version ────────────────────────────
 
 function fetchLatestVersion(): Promise<string | null> {
-    return new Promise<void>((resolve) => {
+    return new Promise((resolve) => {
         const req = https.get(`https://registry.npmjs.org/${PKG.name}/latest`, {
             headers: { 'Accept': 'application/json' },
             timeout: 5000,
