@@ -266,7 +266,20 @@ async function hideInTray(port: number, oldPid: number): Promise<void> {
         // Close the current server so the daemon can bind to the port
         if (_activeServer) {
             await new Promise<void>(resolve => {
-                _activeServer.close(() => resolve());
+                // Force close all idle and active connections immediately (Node 18+)
+                if (typeof _activeServer.closeAllConnections === 'function') {
+                    _activeServer.closeAllConnections();
+                }
+                
+                // Fallback timeout in case close takes too long
+                const timeout = setTimeout(() => {
+                    resolve();
+                }, 500);
+
+                _activeServer.close(() => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
             });
         }
 

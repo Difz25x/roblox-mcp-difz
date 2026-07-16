@@ -278,18 +278,17 @@ foreach ($w in $allWindows) {
 }
 if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Compress }
 `;
-    const tmpFile = path.join(os.tmpdir(), `roblox_enum_${Date.now()}.ps1`);
     try {
-        fs.writeFileSync(tmpFile, ps, "utf-8");
+        const encodedScript = Buffer.from(ps, 'utf16le').toString('base64');
         const raw = execSync(
-            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpFile}"`,
+            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedScript}"`,
             { encoding: "utf-8" as BufferEncoding, timeout: 15000, windowsHide: true }
         ).trim();
         if (!raw || raw === "null") return [];
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [parsed];
     } catch { return []; }
-    finally { try { fs.unlinkSync(tmpFile); } catch {} }
+    
 }
 
 function captureWindowPNG(hwnd: string): string {
@@ -327,11 +326,10 @@ $b64 = [Convert]::ToBase64String($bytes)
 [System.IO.File]::WriteAllText('${outFile}', $b64)
 Write-Output 'OK'
 `;
-    const tmpFile = path.join(os.tmpdir(), `roblox_cap_${Date.now()}.ps1`);
     try {
-        fs.writeFileSync(tmpFile, ps, "utf-8");
+        const encodedScript = Buffer.from(ps, 'utf16le').toString('base64');
         execSync(
-            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpFile}"`,
+            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedScript}"`,
             { encoding: "utf-8" as BufferEncoding, timeout: 15000, windowsHide: true }
         );
         if (!fs.existsSync(outFile)) throw new Error("No output");
@@ -339,7 +337,7 @@ Write-Output 'OK'
         if (!result) throw new Error("Empty output");
         return result;
     } finally {
-        try { fs.unlinkSync(tmpFile); } catch {}
+        
         try { fs.unlinkSync(outFile); } catch {}
     }
 }

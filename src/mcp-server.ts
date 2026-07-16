@@ -85,7 +85,7 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
     prompts: [
       { name: 'analyze_game', description: 'Dumps game metadata, remotes, and player data in one shot.', arguments: [] },
-      { name: 'find_exploit_vector', description: 'Scan remotes and workspace to find exploit entry points.', arguments: [] },
+      { name: 'find_vulnerability_vector', description: 'Scan remotes and workspace to find vulnerability entry points.', arguments: [] },
     ],
   }));
 
@@ -99,9 +99,9 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
         ]
       };
     }
-    if (name === 'find_exploit_vector') {
+    if (name === 'find_vulnerability_vector') {
       return {
-        description: 'Scan remotes and workspace to find exploit entry points.',
+        description: 'Scan remotes and workspace to find vulnerability entry points.',
         messages: [
           { role: 'user', content: { type: 'text', text: 'First call dump_remote_events. Review the names and paths of the remotes. Identify any that look like they handle sensitive actions (e.g. AddMoney, Ban, Admin, GiveItem). Then call get_workspace_objects with class_filter="Script" to find any exposed client scripts that might interact with these remotes.' } }
         ]
