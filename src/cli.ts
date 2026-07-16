@@ -248,6 +248,21 @@ function showPostStartMenu(port: number, pid: number): void {
             console.clear();
             try { await items[selected].action(); }
             catch (err: any) { console.error(`  \x1b[31m✖ ${err.message}\x1b[0m`); }
+            if (items[selected].label === 'Open Dashboard') {
+                showPostStartMenu(port, pid);
+            } else if (items[selected].label !== 'Hide in Tray' && items[selected].label !== 'Stop Server') {
+                console.log(`
+  [2mPress any key...[0m`);
+                readline.emitKeypressEvents(process.stdin);
+                process.stdin.setRawMode(true);
+                process.stdin.resume();
+                process.stdin.once('keypress', () => {
+                    process.stdin.setRawMode(false);
+                    process.stdin.pause();
+                    process.stdin.removeAllListeners('keypress');
+                    showPostStartMenu(port, pid);
+                });
+            }
         }
     });
 }
