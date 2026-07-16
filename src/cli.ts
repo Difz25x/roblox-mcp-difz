@@ -197,6 +197,19 @@ function showPostStartMenu(port: number, pid: number): void {
             },
         },
         {
+            label: 'Manage Processes',
+            icon: '🛠️',
+            description: 'Restart or kill Roblox',
+            action: async () => {
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                    process.stdin.pause();
+                    process.stdin.removeAllListeners('keypress');
+                }
+                await manageProcessesMenu(() => showPostStartMenu(port, pid));
+            },
+        },
+        {
             label: 'Stop Server',
             icon: '⏹️',
             description: 'Shutdown and exit',
