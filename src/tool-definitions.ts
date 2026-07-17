@@ -5605,7 +5605,7 @@ class ToolDefinitions {
                 description: "Test which UNC functions are available in the executor and return the capability report. Useful for debugging why certain tools fail — the executor may not support all required UNC functions.",
                 inputSchema: {
                     "type": "object",
-                    "properties": {},
+                    "properties": { "json_data": { "type": "string", "description": "JSON stringified object data" } },
                     "required": []
                 }
             },
@@ -5974,7 +5974,7 @@ class ToolDefinitions {
                                         ]
                                     },
                                     "fixed_value": {
-                                        "type": "object", "description": "The replacement value to use when mode is 'replace' or 'inject'.", "properties": {}
+                                        "type": "object", "description": "The replacement value to use when mode is 'replace' or 'inject'.", "properties": { "json_data": { "type": "string", "description": "JSON stringified object data" } }
                                     },
                                     "expression": {
                                         "type": "string",
@@ -6047,7 +6047,7 @@ class ToolDefinitions {
                                         ]
                                     },
                                     "fixed_value": {
-                                        "type": "object", "description": "The replacement return value when mode is 'replace'.", "properties": {}
+                                        "type": "object", "description": "The replacement return value when mode is 'replace'.", "properties": { "json_data": { "type": "string", "description": "JSON stringified object data" } }
                                     },
                                     "expression": {
                                         "type": "string",
@@ -6231,7 +6231,7 @@ class ToolDefinitions {
                         "args": {
                             "type": "array",
                             "description": "Arguments to pass to the remote",
-                            "items": {}
+                            "items": { "type": "string" }
                         },
                         "method": {
                             "type": "string",
@@ -6261,7 +6261,7 @@ class ToolDefinitions {
                         "args": {
                             "type": "array",
                             "description": "Arguments to pass to the remote function",
-                            "items": {}
+                            "items": { "type": "string" }
                         },
                         "timeout": {
                             "type": "number",
@@ -6325,7 +6325,7 @@ class ToolDefinitions {
                         "spoof_arguments": {
                             "type": "array",
                             "description": "Replacement arguments to send instead of the original ones. Used with 'spoof' action.",
-                            "items": {}
+                            "items": { "type": "string" }
                         },
                         "block_remotes": {
                             "type": "array",
@@ -6890,7 +6890,7 @@ class ToolDefinitions {
                 description: "List installed Roblox versions on this machine. Scans Versions directory in Program Files and LocalAppData. Returns version string, whether launcher and player exes exist.",
                 inputSchema: {
                     "type": "object",
-                    "properties": {},
+                    "properties": { "json_data": { "type": "string", "description": "JSON stringified object data" } },
                     "required": []
                 }
             },
