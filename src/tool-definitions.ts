@@ -10,7 +10,44 @@ class ToolDefinitions {
     private tools: ToolDefinition[];
 
     constructor() {
-        this.tools = this._defineTools();
+        this.tools = this._defineTools().map(tool => {
+            tool.inputSchema = this._sanitizeSchema(tool.inputSchema);
+            return tool;
+        });
+    }
+
+    private _sanitizeSchema(schema: any): any {
+        const sanitize = (obj: any): any => {
+            if (!obj || typeof obj !== 'object') return obj;
+
+            if (Array.isArray(obj)) {
+                return obj.map(item => sanitize(item));
+            }
+
+            // Ensure JSON schema types are lowercase (string, object, array, boolean, number)
+            if (typeof obj.type === 'string') {
+                obj.type = obj.type.toLowerCase();
+            }
+
+            // Gemini/Vertex AI strict rules: delete unsupported keys
+            delete obj.default;
+            delete obj.oneOf;
+            delete obj.anyOf;
+
+            for (const key in obj) {
+                if (typeof obj[key] === 'object') {
+                    obj[key] = sanitize(obj[key]);
+                }
+            }
+
+            return obj;
+        };
+
+        // Ensure root has a type and properties
+        if (!schema.type) schema.type = 'object';
+        if (!schema.properties) schema.properties = {};
+
+        return sanitize(schema);
     }
 
     private _defineTools(): ToolDefinition[] {
