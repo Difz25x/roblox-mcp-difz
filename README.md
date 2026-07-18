@@ -1,8 +1,10 @@
 # roblox-mcp-difz
 
-**Universal MCP (Model Context Protocol) server for Roblox game control, reverse engineering, network interception, input simulation, and game state manipulation.**
+**A bridge between AI agents and Roblox.** I built this MCP (Model Context Protocol) server so your AI can directly control Roblox, reverse engineer games, intercept networks, simulate inputs, and mess with the game state.
 
-Works with **any MCP-compatible AI client** — Claude Code, Claude Desktop, Cursor, Windsurf, VS Code (Cline/Continue.dev), or a custom MCP integration. 151 tools covering instance traversal, property inspection, remote event/function control, Lua code execution, function hooking, metatable manipulation, network traffic interception, file system operations, input simulation, and more.
+It works with **any MCP-compatible AI client** like Claude Code, Cursor, Windsurf, or whatever else you use. 
+
+I packed it with 150+ tools. It can traverse the DataModel, inspect properties, fire remotes, run raw Lua, hook functions, intercept network traffic, and simulate user input. Basically, if you can do it in an executor, the AI can do it now.
 
 ---
 
@@ -13,11 +15,11 @@ Works with **any MCP-compatible AI client** — Claude Code, Claude Desktop, Cur
 - [Executor Setup](#executor-setup)
 - [MCP Client Configuration](#mcp-client-configuration)
 - [Commands](#commands)
-- [UNC Capabilities Table](#unc-capabilities-table)
-- [Tool Listing by Category](#tool-listing-by-category)
-- [Architecture](#architecture)
+- [UNC Compatibility (Executor Support)](#unc-compatibility-executor-support)
+- [Tools (Yeah, there are a lot)](#tools-yeah-there-are-a-lot)
+- [How It Actually Works](#how-it-actually-works)
 - [Multi-Instance Support](#multi-instance-support)
-- [Troubleshooting](#troubleshooting)
+- [When Things Break (Troubleshooting)](#when-things-break-troubleshooting)
 - [Environment Variables](#environment-variables)
 - [Programmatic API](#programmatic-api)
 - [License](#license)
@@ -217,17 +219,6 @@ rblx-mcp setup --ai vscode
 }
 ```
 
-### Generic MCP Client
-
-```bash
-rblx-mcp setup --ai generic
-```
-
-This writes `mcp-config.json` to the current directory. Any MCP client that supports `type: "http"` transport can use:
-```
-http://localhost:28429/mcp
-```
-
 ---
 
 ## Commands
@@ -254,7 +245,7 @@ http://localhost:28429/mcp
 
 ---
 
-## UNC Capabilities Table
+## UNC Compatibility (Executor Support)
 
 The client script (mcp.lua) uses **Universal Compatibility (UNC)** functions to communicate with the Roblox executor and interact with the game. Not all executors support every function. The table below lists every UNC function required, which tools depend on it, and whether a fallback exists.
 
@@ -308,7 +299,7 @@ The client script (mcp.lua) uses **Universal Compatibility (UNC)** functions to 
 
 ---
 
-## Tool Listing by Category
+## Tools (Yeah, there are a lot)
 
 ### Game Metadata & Discovery (8 tools)
 
@@ -471,7 +462,7 @@ The client script (mcp.lua) uses **Universal Compatibility (UNC)** functions to 
 | `closure_inspector` | Dump prototype tree, constants, upvalues, and debug info |
 | `closure_upvalue_editor` | Read/modify upvalues on any loaded closure |
 | `dump_constants_and_upvalues` | Inspect constants and upvalues of a function |
-| `debug_info_extractor` | Extract comprehensive debug info: source, line numbers, upvalues, locals |
+| `debug_info_extractor` | Extract full debug info: source, line numbers, upvalues, locals |
 
 ### Metatable Manipulation (4 tools)
 
@@ -592,7 +583,7 @@ These tools execute on the Node.js server directly without requiring a Roblox ex
 
 ---
 
-## Architecture
+## How It Actually Works
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -718,7 +709,7 @@ If no PID is specified, tasks are broadcast to ALL connected executors. To use m
 
 ## UNC Compatibility Layer
 
-The client script (mcp.lua) includes a comprehensive compatibility layer that adapts to the executor's available UNC functions. Every function has a fallback strategy:
+The client script (mcp.lua) includes a full compatibility layer that adapts to the executor's available UNC functions. Every function has a fallback strategy:
 
 | UNC Function | Fallback Behavior |
 |---|---|
@@ -754,7 +745,7 @@ The `script_decompiler` tool automatically falls through three decompile service
 
 ---
 
-## Troubleshooting
+## When Things Break (Troubleshooting)
 
 ### Check UNC Capabilities
 
