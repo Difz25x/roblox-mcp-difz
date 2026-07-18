@@ -133,15 +133,18 @@ async function cmdUpdate(): Promise<void> {
         });
         console.log(`  \x1b[32m✔ Updated to v${latest}!\x1b[0m`);
 
-        // Auto relaunch in new PowerShell
-        if (process.platform === 'win32') {
-            console.log(`  \x1b[2mRelaunching...\x1b[0m`);
-            const child = spawn('powershell', ['-NoProfile', '-Command', `Start-Process powershell -ArgumentList '-NoProfile','-Command','rblx-mcp'`], {
-                detached: true, stdio: 'ignore', windowsHide: false,
-            });
-            child.unref();
-        }
-        process.exit(0);
+        console.log(`  \x1b[2mRelaunching...\x1b[0m`);
+
+        // Auto relaunch in the exact same terminal
+        const child = spawn(process.execPath, [__filename], {
+            stdio: 'inherit',
+            detached: false
+        });
+
+        child.on('exit', (code: number | null) => {
+            process.exit(code || 0);
+        });
+        return; // wait for the new process instead of exiting immediately
     } catch (err: any) {
         console.error(`  \x1b[31m✖ Update failed: ${err.message}\x1b[0m`);
     }

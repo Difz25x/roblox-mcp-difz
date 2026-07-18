@@ -10,7 +10,38 @@ class ToolDefinitions {
     private tools: ToolDefinition[];
 
     constructor() {
-        this.tools = this._defineTools();
+        this.tools = this._defineTools().map(tool => {
+            tool.inputSchema = this._sanitizeSchema(tool.inputSchema);
+            return tool;
+        });
+    }
+
+    private _sanitizeSchema(schema: any): any {
+        const sanitize = (obj: any): any => {
+            if (!obj || typeof obj !== 'object') return obj;
+
+            if (Array.isArray(obj)) {
+                return obj.map(item => sanitize(item));
+            }
+
+            if (typeof obj.type === 'string') {
+                obj.type = obj.type.toUpperCase();
+            }
+
+            delete obj.default;
+            delete obj.oneOf;
+            delete obj.anyOf;
+
+            for (const key in obj) {
+                if (typeof obj[key] === 'object') {
+                    obj[key] = sanitize(obj[key]);
+                }
+            }
+
+            return obj;
+        };
+
+        return sanitize(schema);
     }
 
     private _defineTools(): ToolDefinition[] {
