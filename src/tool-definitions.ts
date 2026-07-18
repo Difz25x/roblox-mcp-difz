@@ -24,10 +24,12 @@ class ToolDefinitions {
                 return obj.map(item => sanitize(item));
             }
 
+            // Ensure JSON schema types are lowercase (string, object, array, boolean, number)
             if (typeof obj.type === 'string') {
-                obj.type = obj.type.toUpperCase();
+                obj.type = obj.type.toLowerCase();
             }
 
+            // Gemini/Vertex AI strict rules: delete unsupported keys
             delete obj.default;
             delete obj.oneOf;
             delete obj.anyOf;
@@ -40,6 +42,10 @@ class ToolDefinitions {
 
             return obj;
         };
+
+        // Ensure root has a type and properties
+        if (!schema.type) schema.type = 'object';
+        if (!schema.properties) schema.properties = {};
 
         return sanitize(schema);
     }
