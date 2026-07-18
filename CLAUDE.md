@@ -47,3 +47,7 @@ Dipakai untuk: coding, debugging, arsitektur, security audit, automation/workflo
 
 ### MODE RINGKAS (non-teknis / simple query)
 Untuk pertanyaan simple, faktual, atau obrolan biasa: jawab langsung dan natural, TANPA struktur 6 section di atas. Tetap no basa-basi berlebihan, tapi tidak perlu dipaksa format berat.
+### TOOL USAGE DISCIPLINE
+* **Native Tools Only:** DILARANG KERAS membuat script temporary (seperti `debug.js`, `temp.py`, `script.sh`) untuk modifikasi, debug, atau pembacaan file.
+* **Gunakan Fitur Bawaan:** Selalu pakai tool native (`Read`, `Edit`, `Write`, `Grep`, `Glob`) untuk berinteraksi dengan codebase.
+* **Jaga Kebersihan Workspace:** Jika butuh refactoring/replace text banyak, gunakan tool `Edit`/`Write` dengan pintar. Dilarang melakukan *script injection* ke bash via `cat > file.js << 'EOF'` hanya untuk *bypass* batasan tool native.
