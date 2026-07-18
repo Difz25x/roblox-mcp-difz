@@ -62,6 +62,9 @@ class WsServer {
                         if (cur.pid) this.pidMap.delete(cur.pid);
                         this.workers.delete(workerId);
                         this.sessions.unregister(workerId);
+                        if (this.queue && this.queue.cancelPollersForWorker) {
+                            this.queue.cancelPollersForWorker(workerId);
+                        }
                         console.log(`[WS] Disconnected: ${workerId}`);
                     }
                 }
@@ -96,6 +99,10 @@ class WsServer {
             };
 
             ws.on('message', (raw: any) => {
+                if (raw.length > 50 * 1024 * 1024) { // 50MB limit
+                    console.error('[WS] Payload too large');
+                    return;
+                }
                 let msg: any;
                 try { msg = JSON.parse(raw.toString()); } catch { return; }
 
@@ -107,8 +114,8 @@ class WsServer {
                         registered = false;
 
                         const old = this.workers.get(workerId);
-                        if (old && old.ws !== ws) {
-                            if (old.pid) this.pidMap.delete(old.pid);
+                if (old && old.ws !== ws) {
+                    // Do not eagerly delete pidMap yet, wait for finalizeReg
                             try { old.ws.close(); } catch {}
                         }
 

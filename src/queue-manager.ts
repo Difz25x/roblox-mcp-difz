@@ -49,6 +49,21 @@ export class QueueManager extends EventEmitter {
         this._startCleanupInterval();
     }
 
+    cancelPollersForWorker(workerId: string): void {
+        const toCancel: WaitingPoller[] = [];
+        this.waitingPollers = this.waitingPollers.filter(p => {
+            if (p.workerId === workerId) {
+                toCancel.push(p);
+                return false;
+            }
+            return true;
+        });
+        for (const poller of toCancel) {
+            clearTimeout(poller.timer);
+            poller.resolve(null);
+        }
+    }
+
     destroy(): void {
         if (this._cleanupInterval) {
             clearInterval(this._cleanupInterval);

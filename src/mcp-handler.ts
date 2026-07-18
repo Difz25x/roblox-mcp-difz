@@ -210,6 +210,9 @@ class McpHandler {
             if (args && args.pid) {
                 opts.targetPid = Number(args.pid);
             }
+            if (args && (args.timeout_ms !== undefined || args.timeout !== undefined)) {
+                opts.timeoutMs = Number(args.timeout_ms ?? args.timeout);
+            }
             const result = await this.queue.submitTask(name, args || {}, opts);
             const elapsed = Date.now() - startTime;
 

@@ -156,6 +156,10 @@ function openGame(placeId: string | number, opts?: OpenGameOptions): OpenGameRes
     const jobId: string = opts.jobId || '';
     const privateServerLinkCode: string = opts.privateServerLinkCode || '';
     const browserTrackerId: string = opts.browserTrackerId || `tracker_${Date.now()}`;
+    
+    if (opts.browserTrackerId && !/^[a-zA-Z0-9_-]+$/.test(opts.browserTrackerId)) {
+        return { success: false, error: 'Invalid browserTrackerId format' };
+    }
     const launchTime: string = opts.launchTime || Date.now().toString();
     const authTicket: string = opts.authTicket || '';
 

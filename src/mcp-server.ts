@@ -45,7 +45,11 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
         return { content: [{ type: 'text', text: JSON.stringify(sr, null, 2) }] };
       }
       const workerId = args?.pid ? String(args.pid) : undefined;
-      const result = await queue.submitTask(name, args || {}, { workerId });
+      const opts: any = { workerId };
+      if (args && (args.timeout_ms !== undefined || args.timeout !== undefined)) {
+          opts.timeoutMs = Number(args.timeout_ms ?? args.timeout);
+      }
+      const result = await queue.submitTask(name, args || {}, opts);
       return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }] };
     } catch (err) {
       return { content: [{ type: 'text', text: JSON.stringify({ success: false, error: err instanceof Error ? err.message : String(err) }) }], isError: true };
