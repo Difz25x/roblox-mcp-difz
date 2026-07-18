@@ -156,11 +156,6 @@ const PLATFORMS: Record<string, PlatformDef> = {
             HTTP_CONFIG,
         ),
     },
-    'generic': {
-        name: 'Generic MCP Client', icon: '🔌',
-        instructions: 'Saved to CWD as mcp-config.json.',
-        setup: async () => writeConfigFile(CWD, path.join(CWD, 'mcp-config.json'), HTTP_CONFIG),
-    },
 };
 
 function writeConfigFile(configDir: string, configFile: string, config: Record<string, any>): string {

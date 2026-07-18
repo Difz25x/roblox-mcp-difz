@@ -6813,7 +6813,7 @@ class ToolDefinitions {
                     "type": "object",
                     "properties": {
                         "remote_path": { "type": "string", "description": "Full path to the RemoteEvent or BindableEvent." },
-                        "args": { "type": "array", "description": "Arguments to replicate with the signal." },
+                        "args": { "type": "array", "description": "Arguments to replicate with the signal.", "items": { "type": "string" } },
                         "fire_all": { "type": "boolean", "default": true, "description": "If true, fires all connections; if false, fires only the first." }
                     },
                     "required": ["remote_path"]
