@@ -10,44 +10,7 @@ class ToolDefinitions {
     private tools: ToolDefinition[];
 
     constructor() {
-        this.tools = this._defineTools().map(tool => {
-            tool.inputSchema = this._sanitizeSchema(tool.inputSchema);
-            return tool;
-        });
-    }
-
-    private _sanitizeSchema(schema: any): any {
-        const sanitize = (obj: any): any => {
-            if (!obj || typeof obj !== 'object') return obj;
-
-            if (Array.isArray(obj)) {
-                return obj.map(item => sanitize(item));
-            }
-
-            // Ensure JSON schema types are lowercase (string, object, array, boolean, number)
-            if (typeof obj.type === 'string') {
-                obj.type = obj.type.toLowerCase();
-            }
-
-            // Gemini/Vertex AI strict rules: delete unsupported keys
-            delete obj.default;
-            delete obj.oneOf;
-            delete obj.anyOf;
-
-            for (const key in obj) {
-                if (typeof obj[key] === 'object') {
-                    obj[key] = sanitize(obj[key]);
-                }
-            }
-
-            return obj;
-        };
-
-        // Ensure root has a type and properties
-        if (!schema.type) schema.type = 'object';
-        if (!schema.properties) schema.properties = {};
-
-        return sanitize(schema);
+        this.tools = this._defineTools();
     }
 
     private _defineTools(): ToolDefinition[] {
@@ -853,7 +816,7 @@ class ToolDefinitions {
                             "description": "Full path to the target Instance (e.g., 'workspace.Player', 'Players.difzz.LocalPlayer'). Supports colon-delimited service references (':Players').",
                             "minLength": 1
                         },
-                        "properties": {
+                        "property_list": {
                             "type": "array",
                             "items": {
                                 "type": "string",
@@ -1499,7 +1462,7 @@ class ToolDefinitions {
                             "description": "Parent container to inject into (e.g. CoreGui, PlayerGui). Defaults to CoreGui.",
                             "default": "CoreGui"
                         },
-                        "properties": {
+                        "property_map": {
                             "type": "string",
                             "description": "JSON string of property name-value pairs (e.g. '{\"DisplayOrder\":2,\"Enabled\":true}'). Empty string or null means no custom properties."
                         },
@@ -2610,7 +2573,7 @@ class ToolDefinitions {
                             "description": "Full path to the parent instance",
                             "default": "CoreGui"
                         },
-                        "properties": {
+                        "property_map": {
                             "type": "string",
                             "description": "JSON string of additional properties to set on the GUI (e.g. '{\"BackgroundColor3\":[0.1,0.1,0.2],\"BorderSizePixel\":0}'). Empty/null = none."
                         }
@@ -3413,7 +3376,7 @@ class ToolDefinitions {
                                 "game.Players.LocalPlayer.Character.Humanoid"
                             ]
                         },
-                        "properties": {
+                        "property_list": {
                             "type": "array",
                             "description": "Array of property names to read from the target instance (e.g. '[\"WalkSpeed\",\"JumpPower\",\"Health\"]' or omitted for Name+ClassName only).",
                             "items": {
@@ -3460,7 +3423,7 @@ class ToolDefinitions {
                                 "game.Players.LocalPlayer.PlayerGui"
                             ]
                         },
-                        "properties": {
+                        "property_map": {
                             "type": "string",
                             "description": "JSON string of initial property values for the new instance (e.g. '{\"Size\":[0,2,0,2],\"Position\":[0.5,0,0.5,0],\"Color\":[1,0,0]}'). Empty/null = defaults."
                         },
@@ -4766,7 +4729,7 @@ class ToolDefinitions {
                 inputSchema: {
                     "type": "object",
                     "properties": {
-                        "properties": {
+                        "property_map": {
                             "type": "string",
                             "description": "JSON string of properties to modify (e.g. '{\"WalkSpeed\":50,\"JumpPower\":100,\"Noclip\":true,\"InfiniteJump\":true}'). Empty/null = no changes."
                         },

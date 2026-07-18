@@ -345,14 +345,14 @@ local function handleTreeExplore(args)
 end
 local function handlePropertyRead(args)
     local inst,err=resolvePath(args.instance_path or args.path or "game"); if not inst then return{success=false,error=err} end
-    local pn=args.properties or {"Name","ClassName"}; local result={_path=getFullPath(inst),_className=inst.ClassName}
+    local pn=(args.property_map or args.property_list or args.properties) or {"Name","ClassName"}; local result={_path=getFullPath(inst),_className=inst.ClassName}
     for _,p in ipairs(pn) do local ok,v=pcall(function() return inst[p] end); if ok then result[p]=serialize(v) end end
     return{success=true,data=result}
 end
 local function handleGuiInject(args)
     local gt=args.gui_type or "ScreenGui"; local gn=args.gui_name or "McpOverlay"; local pp=args.parent_path or "game:GetService(\"CoreGui\")"
     local parent,err=resolvePath(pp); if not parent then return{success=false,error="Parent not found"} end
-    local props=jsonDecode(args.properties) or {}
+    local props=jsonDecode((args.property_map or args.property_list or args.properties)) or {}
     local ok,ng=pcall(function() local inst=Instance.new(gt); inst.Name=gn; for k,v in pairs(props) do inst[k]=v end; inst.Parent=parent; return inst end)
     if not ok then return{success=false,error="GUI create failed: "..tostring(ng)} end
     return{success=true,name=gn,instance_path=getFullPath(ng)}
@@ -1241,7 +1241,7 @@ end
 
 local function handleLightingConfig(args)
     local lighting = game:GetService("Lighting")
-    local properties = args.properties or {}
+    local properties = (args.property_map or args.property_list or args.properties) or {}
     for k, v in pairs(properties) do
         pcall(function() lighting[k] = v end)
     end
@@ -1281,7 +1281,7 @@ local function handleSoundControl(args)
 end
 
 local function handlePhysicsTune(args)
-    local properties = args.properties or {}
+    local properties = (args.property_map or args.property_list or args.properties) or {}
     local ws = workspace
     for k, v in pairs(properties) do
         pcall(function() ws[k] = v end)
