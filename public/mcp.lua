@@ -123,6 +123,9 @@ local function getFullPath(inst)
 	if not inst then
 		return "nil"
 	end
+	if typeof(inst) ~= "Instance" then
+		return "null"
+	end
 	if inst == game then
 		return "game"
 	end
@@ -194,8 +197,9 @@ local function resolvePath(str)
 	end
 	return obj
 end
-local function serialize(v, d)
+local function serialize(v, d, seen)
 	d = d or 0
+	seen = seen or {}
 	if d > 8 then
 		return "<<max>>"
 	end
@@ -226,13 +230,16 @@ local function serialize(v, d)
 		return tostring(v)
 	end
 	if t == "table" then
+		if seen[v] then return "<<cyclic>>" end
+		seen[v] = true
 		local r = {}
 		for k, val in pairs(v) do
-			local ks = serialize(k, d + 1)
+			local ks = serialize(k, d + 1, seen)
 			if ks ~= nil then
-				r[ks] = serialize(val, d + 1)
+				r[ks] = serialize(val, d + 1, seen)
 			end
 		end
+		seen[v] = nil
 		return r
 	end
 	if t == "Instance" then
@@ -1130,7 +1137,7 @@ local function handleInputSim(args)
 		end)
 		return { success = true }
 	end
-	if a == "char_move" then
+	if a == "char_move" or a == "character_motion_controller" then
 		if not LocalPlayer.Character then
 			return { success = false, error = "No character" }
 		end
@@ -1138,8 +1145,10 @@ local function handleInputSim(args)
 		if not hrp then
 			return { success = false, error = "No HRP" }
 		end
-		local t = args.target_position or { x = 0, y = 0, z = 0 }
-		hrp.CFrame = CFrame.new(Vector3.new(t.x, t.y, t.z))
+		local x = args.target_x or (args.target_position and args.target_position.x) or hrp.Position.X
+		local y = args.target_y or (args.target_position and args.target_position.y) or hrp.Position.Y
+		local z = args.target_z or (args.target_position and args.target_position.z) or hrp.Position.Z
+		hrp.CFrame = CFrame.new(Vector3.new(x, y, z))
 		return { success = true }
 	end
 	return { success = false, error = "Unknown input action" }
@@ -1794,7 +1803,7 @@ local function handleRemoteSpy(args)
 						remotePath = getFullPath(self),
 						method = m,
 						direction = "incoming",
-						args = Result,
+						args = serialize(Result),
 						timestamp = tick(),
 						isCallbackReturn = true,
 					})
@@ -1809,7 +1818,7 @@ local function handleRemoteSpy(args)
 					remotePath = getFullPath(self),
 					method = m,
 					direction = "outgoing",
-					args = callArgs,
+					args = serialize(callArgs),
 					timestamp = tick(),
 				})
 			end
@@ -1846,7 +1855,7 @@ local function handleRemoteSpy(args)
 					remotePath = getFullPath(inst),
 					method = classesToHook[inst.ClassName] or "OnClientEvent",
 					direction = "incoming",
-					args = args,
+					args = serialize(args),
 					timestamp = tick(),
 				})
 			end
@@ -3130,7 +3139,10 @@ local HANDLERS = {
 	teleport_to_target = handleStateBypass,
 	key_press_emitter = handleInputSim,
 	mouse_click_simulator = handleInputSim,
-	character_motion_controller = handleInputSim,
+	character_motion_controller = function(a)
+		a.action = "char_move"
+		return handleInputSim(a)
+	end,
 
 	get_loaded_modules = handleGetLoadedModules,
 	module_registry_scanner = handleGetLoadedModules,
