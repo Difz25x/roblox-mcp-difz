@@ -230,7 +230,9 @@ local function serialize(v, d, seen)
 		return tostring(v)
 	end
 	if t == "table" then
-		if seen[v] then return "<<cyclic>>" end
+		if seen[v] then
+			return "<<cyclic>>"
+		end
 		seen[v] = true
 		local r = {}
 		for k, val in pairs(v) do
@@ -567,15 +569,12 @@ local function handleNetworkOwnership(args)
 			local ok, owner = pcall(function()
 				return part:GetNetworkOwner()
 			end)
-			table.insert(
-				results,
-				{
-					Name = part.Name,
-					Path = getFullPath(part),
-					clientOwned = ok and owner ~= nil,
-					owner = ok and tostring(owner) or "server",
-				}
-			)
+			table.insert(results, {
+				Name = part.Name,
+				Path = getFullPath(part),
+				clientOwned = ok and owner ~= nil,
+				owner = ok and tostring(owner) or "server",
+			})
 		end
 	end
 	return { success = true, count = #results, parts = results }
@@ -1189,7 +1188,9 @@ local function handleInputSim(args)
 				if reached then
 					hum.Jump = true
 				end
-				if conn then conn:Disconnect() end
+				if conn then
+					conn:Disconnect()
+				end
 			end)
 		end
 
@@ -1653,7 +1654,13 @@ local function handleClosureInspect(args)
 			table.insert(constants, { index = n, valueType = typeof(v) })
 		end
 	end)
-	return { success = true, upvalues = upvalues, constants = constants, upvalueCount = #upvalues, constantCount = #constants }
+	return {
+		success = true,
+		upvalues = upvalues,
+		constants = constants,
+		upvalueCount = #upvalues,
+		constantCount = #constants,
+	}
 end
 
 local function handleDumpConstants(args)
@@ -1689,7 +1696,13 @@ local function handleDumpConstants(args)
 			table.insert(upvalues, { name = n, value = tostring(v), type = typeof(v) })
 		end
 	end)
-	return { success = true, constants = constants, upvalues = upvalues, constantCount = #constants, upvalueCount = #upvalues }
+	return {
+		success = true,
+		constants = constants,
+		upvalues = upvalues,
+		constantCount = #constants,
+		upvalueCount = #upvalues,
+	}
 end
 
 local function handleDebugInfo(args)
@@ -2408,17 +2421,14 @@ local function handleScreenText(args)
 			return
 		end
 		if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
-			table.insert(
-				results,
-				{
-					Name = inst.Name,
-					Path = getFullPath(inst),
-					text = inst.Text,
-					textColor = tostring(inst.TextColor3),
-					visible = inst.Visible,
-					position = tostring(inst.Position),
-				}
-			)
+			table.insert(results, {
+				Name = inst.Name,
+				Path = getFullPath(inst),
+				text = inst.Text,
+				textColor = tostring(inst.TextColor3),
+				visible = inst.Visible,
+				position = tostring(inst.Position),
+			})
 		end
 		for _, c in ipairs(inst:GetChildren()) do
 			scan(c)
@@ -2497,17 +2507,14 @@ local function handleSoundControl(args)
 		local results = {}
 		for _, c in ipairs(workspace:GetDescendants()) do
 			if c:IsA("Sound") then
-				table.insert(
-					results,
-					{
-						Name = c.Name,
-						Path = getFullPath(c),
-						playing = c.Playing,
-						volume = c.Volume,
-						timeLength = c.TimeLength,
-						soundId = c.SoundId,
-					}
-				)
+				table.insert(results, {
+					Name = c.Name,
+					Path = getFullPath(c),
+					playing = c.Playing,
+					volume = c.Volume,
+					timeLength = c.TimeLength,
+					soundId = c.SoundId,
+				})
 			end
 		end
 		return { success = true, count = #results, sounds = results }
@@ -2561,17 +2568,14 @@ local function handleSpawnManage(args)
 		local sp = {}
 		for _, c in ipairs(workspace:GetDescendants()) do
 			if c:IsA("SpawnLocation") then
-				table.insert(
-					sp,
-					{
-						Name = c.Name,
-						Path = getFullPath(c),
-						duration = c.Duration,
-						neutral = c.Neutral,
-						allowTeamChange = c.AllowTeamChange,
-						teamColor = tostring(c.TeamColor),
-					}
-				)
+				table.insert(sp, {
+					Name = c.Name,
+					Path = getFullPath(c),
+					duration = c.Duration,
+					neutral = c.Neutral,
+					allowTeamChange = c.AllowTeamChange,
+					teamColor = tostring(c.TeamColor),
+				})
 			end
 		end
 		return { success = true, count = #sp, spawns = sp }
@@ -2669,16 +2673,13 @@ local function handleUiChangeWatcher(args)
 				if not matchFilter(inst) then
 					return
 				end
-				table.insert(
-					changes,
-					{
-						type = "child_added",
-						name = inst.Name,
-						className = inst.ClassName,
-						path = getFullPath(inst),
-						timestamp = tick(),
-					}
-				)
+				table.insert(changes, {
+					type = "child_added",
+					name = inst.Name,
+					className = inst.ClassName,
+					path = getFullPath(inst),
+					timestamp = tick(),
+				})
 			end)
 		)
 	end
@@ -2692,16 +2693,13 @@ local function handleUiChangeWatcher(args)
 				if not matchFilter(inst) then
 					return
 				end
-				table.insert(
-					changes,
-					{
-						type = "child_removed",
-						name = inst.Name,
-						className = inst.ClassName,
-						path = getFullPath(inst),
-						timestamp = tick(),
-					}
-				)
+				table.insert(changes, {
+					type = "child_removed",
+					name = inst.Name,
+					className = inst.ClassName,
+					path = getFullPath(inst),
+					timestamp = tick(),
+				})
 			end)
 		)
 	end
@@ -2760,18 +2758,15 @@ local function handleUiChangeWatcher(args)
 								local ok2, val = pcall(function()
 									return inst[pn]
 								end)
-								table.insert(
-									changes,
-									{
-										type = "property_changed",
-										name = inst.Name,
-										className = inst.ClassName,
-										path = getFullPath(inst),
-										property = pn,
-										newValue = tostring(ok2 and val or "?"),
-										timestamp = tick(),
-									}
-								)
+								table.insert(changes, {
+									type = "property_changed",
+									name = inst.Name,
+									className = inst.ClassName,
+									path = getFullPath(inst),
+									property = pn,
+									newValue = tostring(ok2 and val or "?"),
+									timestamp = tick(),
+								})
 							end)
 						)
 					end
@@ -3092,7 +3087,6 @@ local HANDLERS = {
 	get_console_logs = handleConsoleLog,
 	get_network_ownership = handleNetworkOwnership,
 	luau_code_executor = handleCodeExec,
-	execute_custom_luau = handleCodeExec,
 	get_workspace_objects = handleWorkspaceObjects,
 	remote_event_trigger = handleRemoteFire,
 	remote_function_caller = handleRemoteFire,
@@ -3376,8 +3370,11 @@ local HANDLERS = {
 		if parent then
 			clone.Parent = parent
 		end
-		return { success = true, clonedName = clone.Name, clonedPath = a.parent_path ~= "" and getFullPath(clone)
-			or "unparented" }
+		return {
+			success = true,
+			clonedName = clone.Name,
+			clonedPath = a.parent_path ~= "" and getFullPath(clone) or "unparented",
+		}
 	end,
 
 	folder_creator = function(a)

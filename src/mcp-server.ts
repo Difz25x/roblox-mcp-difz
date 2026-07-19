@@ -44,6 +44,16 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
         const sr = await runServerTool(name, args || {}, proc, sessions);
         return { content: [{ type: 'text', text: JSON.stringify(sr, null, 2) }] };
       }
+
+      if (name === "luau_code_executor" && args.file) {
+          const fs = require("fs");
+          try {
+              args.code = fs.readFileSync(args.file, "utf-8");
+          } catch (e: any) {
+              throw new Error(`Failed to read file ${args.file}: ${e.message}`);
+          }
+      }
+
       const workerId = args?.pid ? String(args.pid) : undefined;
       const opts: any = { workerId };
       if (args && (args.timeout_ms !== undefined || args.timeout !== undefined)) {

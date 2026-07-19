@@ -5369,6 +5369,10 @@ class ToolDefinitions {
                             "type": "string",
                             "description": "Optional URL to fetch and execute Luau code from. Takes precedence over `code` if provided."
                         },
+                        "file": {
+                            "type": "string",
+                            "description": "Optional file path. The MCP server will read the file and execute its contents."
+                        },
                         "identity_level": {
                             "type": "integer",
                             "description": "Identity level to execute the code under. Identity 0-2 is standard sandbox. Identity 3-7 has increasing script/module access. Identity 8+ has full API access including HTTP requests and plugin APIs. Default is 8.",
@@ -5404,8 +5408,10 @@ class ToolDefinitions {
                             "description": "Optional JSON string of key-value pairs to merge into global _G. Example: '{\"myVar\":\"injected string\",\"myFunc\":\"function(...) return ... end\"}'. Empty/null = no overrides."
                         }
                     },
-                    "required": [
-                        "code"
+                    "anyOf": [
+                        { "required": ["code"] },
+                        { "required": ["url"] },
+                        { "required": ["file"] }
                     ]
                 },
             },
@@ -5606,42 +5612,6 @@ class ToolDefinitions {
                     },
                     "required": [
                         "target_path"
-                    ]
-                },
-            },
-            {
-                name: "execute_custom_luau",
-                description: "Execute arbitrary Luau source code in the executor environment. The code runs with full executor privileges (can access debug library, metatable hooks, etc.). Return values are serialized automatically. This is the most powerful tool equivalent to full remote code execution. Optionally, supply a `url` to download and execute code from a URL instead.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "code": {
-                            "type": "string",
-                            "description": "Luau source code to execute"
-                        },
-                        "url": {
-                            "type": "string",
-                            "description": "Optional URL to fetch and execute Luau code from. Takes precedence over `code` if provided."
-                        },
-                        "return_mode": {
-                            "type": "string",
-                            "enum": [
-                                "auto",
-                                "json",
-                                "raw"
-                            ],
-                            "description": "How to serialize return values",
-                            "default": "auto"
-                        },
-                        "timeout": {
-                            "type": "number",
-                            "description": "Maximum execution time in seconds",
-                            "default": 5,
-                            "maximum": 30
-                        }
-                    },
-                    "required": [
-                        "code"
                     ]
                 },
             },
