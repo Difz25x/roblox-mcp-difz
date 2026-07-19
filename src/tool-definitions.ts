@@ -5353,7 +5353,7 @@ class ToolDefinitions {
             },
             {
                 name: "luau_code_executor",
-                description: "Executes arbitrary Luau source code in the target Roblox process with full read and write access to the global environment, registry, and DataModel. Supports configurable identity levels to control which API restrictions apply during execution, with higher identities elevating execution context. The executed code runs synchronously by default but can be scheduled asynchronously on a separate Lua thread. All standard Luau libraries are available including debug, io (if accessible), andOS-level calls depending on the identity level. Returns any values returned by the executed code, or an error message if execution fails.",
+                description: "Executes arbitrary Luau source code in the target Roblox process with full read and write access to the global environment, registry, and DataModel. Supports configurable identity levels to control which API restrictions apply during execution, with higher identities elevating execution context. The executed code runs synchronously by default but can be scheduled asynchronously on a separate Lua thread. All standard Luau libraries are available including debug, io (if accessible), andOS-level calls depending on the identity level. Returns any values returned by the executed code, or an error message if execution fails. You can provide a `url` to fetch and execute code remotely.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -5364,6 +5364,10 @@ class ToolDefinitions {
                                 "return game:GetService(\"Players\").LocalPlayer",
                                 "for _,v in pairs(game.Workspace:GetChildren()) do print(v.Name) end"
                             ]
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "Optional URL to fetch and execute Luau code from. Takes precedence over `code` if provided."
                         },
                         "identity_level": {
                             "type": "integer",
@@ -5607,13 +5611,17 @@ class ToolDefinitions {
             },
             {
                 name: "execute_custom_luau",
-                description: "Execute arbitrary Luau source code in the executor environment. The code runs with full executor privileges (can access debug library, metatable hooks, etc.). Return values are serialized automatically. This is the most powerful tool equivalent to full remote code execution.",
+                description: "Execute arbitrary Luau source code in the executor environment. The code runs with full executor privileges (can access debug library, metatable hooks, etc.). Return values are serialized automatically. This is the most powerful tool equivalent to full remote code execution. Optionally, supply a `url` to download and execute code from a URL instead.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
                         "code": {
                             "type": "string",
                             "description": "Luau source code to execute"
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "Optional URL to fetch and execute Luau code from. Takes precedence over `code` if provided."
                         },
                         "return_mode": {
                             "type": "string",

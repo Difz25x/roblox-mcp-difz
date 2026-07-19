@@ -1,0 +1,84 @@
+                name: "character_motion_controller",
+                description: "Automates Roblox character movement by simulating directional key inputs (WASD) to navigate to specified world coordinates or waypoints. Supports sprint toggling, jump integration, and obstacle avoidance timing. Can queue multiple waypoints for path following.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "target_x": {
+                            "type": "number",
+                            "description": "Target world X coordinate for the character to move toward. Uses the game's 3D world coordinate system.",
+                            "minimum": -999999,
+                            "maximum": 999999
+                        },
+                        "target_z": {
+                            "type": "number",
+                            "description": "Target world Z coordinate for the character to move toward. Depth axis in the game's 3D world coordinate system.",
+                            "minimum": -999999,
+                            "maximum": 999999
+                        },
+                        "target_y": {
+                            "type": "number",
+                            "description": "Optional target Y coordinate (vertical/height). When omitted, maintains current height or navigates terrain naturally.",
+                            "minimum": -999999,
+                            "maximum": 999999
+                        },
+                        "sprint": {
+                            "type": "boolean",
+                            "description": "When true, holds the LeftShift modifier for sprinting while moving.",
+                            "default": false
+                        },
+                        "jump_at_end": {
+                            "type": "boolean",
+                            "description": "When true, simulates a jump (Space key press) upon reaching the destination.",
+                            "default": false
+                        },
+                        "arrival_tolerance": {
+                            "type": "number",
+                            "description": "Distance in world units from the target position considered as 'arrived'. Prevents micro-adjustments from jittering movement keys.",
+                            "default": 3,
+                            "minimum": 0.1,
+                            "maximum": 50
+                        },
+                        "max_duration_seconds": {
+                            "type": "integer",
+                            "description": "Maximum time in seconds to attempt reaching the waypoint before stopping movement and returning.",
+                            "default": 30,
+                            "minimum": 1,
+                            "maximum": 600
+                        },
+                        "waypoints": {
+                            "type": "array",
+                            "description": "Optional ordered list of intermediate waypoints to navigate through sequentially before reaching the final target. Each waypoint is a coordinate triplet.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "x": {
+                                        "type": "number",
+                                        "description": "Waypoint X coordinate"
+                                    },
+                                    "z": {
+                                        "type": "number",
+                                        "description": "Waypoint Z coordinate"
+                                    },
+                                    "y": {
+                                        "type": "number",
+                                        "description": "Optional waypoint Y coordinate"
+                                    }
+                                },
+                                "required": [
+                                    "x",
+                                    "z"
+                                ],
+                                "additionalProperties": false
+                            },
+                            "minItems": 1,
+                            "maxItems": 100
+                        }
+                    },
+                    "required": [
+                        "target_x",
+                        "target_z"
+                    ],
+                    "additionalProperties": false
+                },
+            },
+            {

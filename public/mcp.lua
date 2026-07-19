@@ -582,9 +582,28 @@ local function handleNetworkOwnership(args)
 end
 local function handleCodeExec(args)
 	local code = args.code or ""
-	if code == "" then
-		return { success = false, error = "code required" }
+	local url = args.url or ""
+
+	if code == "" and url == "" then
+		return { success = false, error = "code or url required" }
 	end
+
+	if url ~= "" then
+		local okHttp, response = pcall(function()
+			return game:HttpGet(url)
+		end)
+		if not okHttp then
+			return { success = false, error = "Failed to fetch URL: " .. tostring(response) }
+		end
+		code = response
+	end
+
+	if args.identity_level then
+		pcall(setthreadidentity, args.identity_level)
+	else
+		pcall(setthreadidentity, 8)
+	end
+
 	local envOverrides = jsonDecode(args.environment_overrides)
 	local ok, fn = pcall(loadstring, code)
 	if not ok then
@@ -595,6 +614,14 @@ local function handleCodeExec(args)
 			_G[k] = v
 		end
 	end
+
+	if args.async then
+		task.spawn(function()
+			pcall(fn)
+		end)
+		return { success = true, async = true, message = "Code scheduled asynchronously" }
+	end
+
 	local ok2, r = pcall(fn)
 	if envOverrides then
 		for k, _ in pairs(envOverrides) do
@@ -1141,6 +1168,10 @@ local function handleInputSim(args)
 		if not LocalPlayer.Character then
 			return { success = false, error = "No character" }
 		end
+		local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if not hum then
+			return { success = false, error = "No Humanoid" }
+		end
 		local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 		if not hrp then
 			return { success = false, error = "No HRP" }
@@ -1148,8 +1179,21 @@ local function handleInputSim(args)
 		local x = args.target_x or (args.target_position and args.target_position.x) or hrp.Position.X
 		local y = args.target_y or (args.target_position and args.target_position.y) or hrp.Position.Y
 		local z = args.target_z or (args.target_position and args.target_position.z) or hrp.Position.Z
-		hrp.CFrame = CFrame.new(Vector3.new(x, y, z))
-		return { success = true }
+
+		-- Use natural walking via Humanoid:MoveTo
+		hum:MoveTo(Vector3.new(x, y, z))
+
+		if args.jump_at_end or args.jump then
+			local conn
+			conn = hum.MoveToFinished:Connect(function(reached)
+				if reached then
+					hum.Jump = true
+				end
+				if conn then conn:Disconnect() end
+			end)
+		end
+
+		return { success = true, action = "moving" }
 	end
 	return { success = false, error = "Unknown input action" }
 end
@@ -3048,7 +3092,7 @@ local HANDLERS = {
 	get_console_logs = handleConsoleLog,
 	get_network_ownership = handleNetworkOwnership,
 	luau_code_executor = handleCodeExec,
-	execute_custom_luau = handleSandboxExec,
+	execute_custom_luau = handleCodeExec,
 	get_workspace_objects = handleWorkspaceObjects,
 	remote_event_trigger = handleRemoteFire,
 	remote_function_caller = handleRemoteFire,
