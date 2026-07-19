@@ -297,29 +297,39 @@ function captureWindowPNG(hwnd: string): string {
     const outFile = path.join(os.tmpdir(), `roblox_ss_${Date.now()}.b64`);
     const ps = `
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class WinCapture {
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
-    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hDC, uint nFlags);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref System.Drawing.Point lpPoint);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 }
 "@
 $hwnd = [IntPtr]::new([long]${hwnd})
 if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
+[WinCapture]::SetForegroundWindow($hwnd) | Out-Null
+Start-Sleep -Milliseconds 100
+
 $rect = New-Object WinCapture+RECT
 [WinCapture]::GetClientRect($hwnd, [ref]$rect) | Out-Null
 $w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
 if ($w -le 0 -or $h -le 0) { Write-Error "Zero size"; exit 1 }
+
+$pt = New-Object System.Drawing.Point(0, 0)
+[WinCapture]::ClientToScreen($hwnd, [ref]$pt) | Out-Null
+
 $bmp = New-Object System.Drawing.Bitmap($w, $h)
 $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-$hdc = $gfx.GetHdc()
-[WinCapture]::PrintWindow($hwnd, $hdc, 2) | Out-Null
-$gfx.ReleaseHdc($hdc); $gfx.Dispose()
+$gfx.CopyFromScreen($pt.X, $pt.Y, 0, 0, $bmp.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
+$gfx.Dispose()
+
 $ms = New-Object System.IO.MemoryStream
 $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
 $bytes = $ms.ToArray(); $ms.Dispose()
@@ -387,55 +397,68 @@ async function recordVideo(pid?: number, duration: number = 5): Promise<Screensh
         const outFile = path.join(os.tmpdir(), `roblox_rec_${targetPid}_${Date.now()}.mp4`);
         const durationSecs = Math.min(Math.max(1, duration), 30);
 
-        // We will use PowerShell and ffmpeg (via winget if not available or just rely on ffmpeg being in PATH, but if not we can use ScreenCapture api using PowerShell)
-        // Since ffmpeg is not guaranteed to be installed, we can record a series of screenshots and compile them, or use SnippingTool API/Graphics.CopyFromScreen.
-        // Actually, Windows has a built-in "ScreenCapture" via MediaFoundation or we can just make a quick loop of screenshots and pack them into a basic format, but that is heavy.
-        // Let's use PowerShell to capture frames and save them. We'll use a PS script to record the screen area of the window.
-        // Actually, the easiest reliable way without external dependencies (ffmpeg) is just grabbing ~10 FPS using PrintWindow and returning the frames or an animated GIF, but it's large.
-        // Since we want video, and if ffmpeg is not guaranteed, let's create a GIF using PowerShell!
+        // 15 FPS is a safer sweet spot when writing raw images directly to disk
+        const targetFps = 30;
 
         const ps = `
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class WinCapture {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
-    [DllImport("user32.dll")] public static extern IntPtr GetWindowDC(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hDC, uint nFlags);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref System.Drawing.Point lpPoint);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 }
 "@
 
 $hwnd = [IntPtr]::new([long]${targets[0].hwnd})
 if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
+[WinCapture]::SetForegroundWindow($hwnd) | Out-Null
+Start-Sleep -Milliseconds 100
 
 $rect = New-Object WinCapture+RECT
 [WinCapture]::GetClientRect($hwnd, [ref]$rect) | Out-Null
 $w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
 if ($w -le 0 -or $h -le 0) { Write-Error "Zero size"; exit 1 }
 
+$pt = New-Object System.Drawing.Point(0, 0)
+[WinCapture]::ClientToScreen($hwnd, [ref]$pt) | Out-Null
+
 $duration = ${durationSecs}
-$fps = 30
+$fps = ${targetFps}
 $frames = $duration * $fps
+$frameDelayMs = 1000 / $fps
 
 $outFolder = Join-Path $env:TEMP "roblox_frames_$(${targets[0].pid})_$(Get-Date -UFormat '%s')"
 New-Item -ItemType Directory -Path $outFolder | Out-Null
 
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
 for ($i = 0; $i -lt $frames; $i++) {
+    $loopStart = $sw.ElapsedMilliseconds
+
     $bmp = New-Object System.Drawing.Bitmap($w, $h)
     $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-    $hdc = $gfx.GetHdc()
-    [WinCapture]::PrintWindow($hwnd, $hdc, 2) | Out-Null
-    $gfx.ReleaseHdc($hdc)
+    $gfx.CopyFromScreen($pt.X, $pt.Y, 0, 0, $bmp.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
     $gfx.Dispose()
 
-    $bmp.Save((Join-Path $outFolder "frame_$i.jpg"), [System.Drawing.Imaging.ImageFormat]::Jpeg)
+    # Formatted file name (e.g., frame_0001.jpg) ensures FFmpeg reads them in perfect numerical order
+    $fileName = StringFormat "frame_{0:D4}.jpg" $i
+    $bmp.Save((Join-Path $outFolder $fileName), [System.Drawing.Imaging.ImageFormat]::Jpeg)
     $bmp.Dispose()
-    Start-Sleep -Milliseconds (1000 / $fps)
+
+    # Dynamic sleep: subtract the time it took to capture/save from the target frame delay
+    $elapsed = $sw.ElapsedMilliseconds - $loopStart
+    $sleepTime = $frameDelayMs - $elapsed
+    if ($sleepTime -gt 0) {
+        Start-Sleep -Milliseconds [Math]::Round($sleepTime)
+    }
 }
 
 Write-Output $outFolder
@@ -444,31 +467,28 @@ Write-Output $outFolder
         const encodedScript = Buffer.from(ps, 'utf16le').toString('base64');
         const psResult = execSync(
             `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedScript}"`,
-            { encoding: "utf-8" as BufferEncoding, timeout: (durationSecs * 1000) + 15000, windowsHide: true }
+            { encoding: "utf-8", timeout: (durationSecs * 1000) + 15000, windowsHide: true }
         );
 
-        const frameFolder = psResult.trim().split('\\n').pop()?.trim() || "";
+        const frameFolder = psResult.trim().split(/\r?\n/).pop()?.trim() || "";
         if (!fs.existsSync(frameFolder)) {
             return { error: "Failed to record video frames." };
         }
 
-        // Check if ffmpeg exists to create mp4
         let hasFfmpeg = true;
-        try { execSync("ffmpeg -version", { stdio: 'ignore' }); } catch { hasFfmpeg = false; }
+        try { execSync("ffmpeg -version", { stdio: 'ignore', windowsHide: true }); } catch { hasFfmpeg = false; }
 
         if (hasFfmpeg) {
-            execSync(`ffmpeg -y -framerate 5 -i "${path.join(frameFolder, 'frame_%d.jpg')}" -c:v libx264 -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
+            execSync(`ffmpeg -y -framerate ${targetFps} -i "${path.join(frameFolder, 'frame_%04d.jpg')}" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
             try { fs.rmSync(frameFolder, { recursive: true, force: true }); } catch { }
             return { pid: targetPid, filePath: outFile };
         } else {
-            // Return folder path directly since ffmpeg is missing
             return { pid: targetPid, filePath: frameFolder, error: "ffmpeg not installed. Raw frames saved to folder instead of video." };
         }
     } catch (err: any) {
         return { error: `Failed to record window: ${err.message}` };
     }
 }
-
 
 function killProcess(pid: number): boolean {
     try {
