@@ -3078,22 +3078,16 @@ end
 local HANDLERS = {
 	disable_client_anticheat = handleDisableAntiCheat,
 	get_game_metadata = handleGetMetadata,
-	game_metadata_collector = handleGetMetadata,
 	dump_workspace_players = handleDumpPlayers,
-	local_player_state_dumper = handleDumpPlayers,
 	get_local_player_data = handlePlayerState,
 	dump_remote_events = handleDumpRemotes,
-	remote_surface_scanner = handleDumpRemotes,
 	get_console_logs = handleConsoleLog,
 	get_network_ownership = handleNetworkOwnership,
 	luau_code_executor = handleCodeExec,
 	get_workspace_objects = handleWorkspaceObjects,
 	remote_event_trigger = handleRemoteFire,
-	remote_function_caller = handleRemoteFire,
 	invoke_remote_function = handleRemoteFire,
-	fire_remote_event = handleRemoteFire,
 	remote_connection_inspector = handleRemoteConns,
-	get_remote_connections = handleRemoteConns,
 	recursive_tree_walker = function(a)
 		a.action = "walk"
 		return handleTreeExplore(a)
@@ -3138,10 +3132,6 @@ local HANDLERS = {
 		a.action = "nil_realm"
 		return handleTreeExplore(a)
 	end,
-	get_nil_instances = function(a)
-		a.action = "nil_realm"
-		return handleTreeExplore(a)
-	end,
 	class_instance_collector = function(a)
 		a.action = "class_collect"
 		return handleTreeExplore(a)
@@ -3150,7 +3140,6 @@ local HANDLERS = {
 	property_deep_dive = handlePropertyRead,
 	class_blueprint_viewer = handlePropertyRead,
 	gui_injector = handleGuiInject,
-	inject_gui = handleGuiInject,
 	screen_overlay_renderer = handleGuiInject,
 	viewport_capture_handler = handleGuiDump,
 	gui_hierarchy_dumper = handleGuiDump,
@@ -3183,7 +3172,6 @@ local HANDLERS = {
 	end,
 
 	get_loaded_modules = handleGetLoadedModules,
-	module_registry_scanner = handleGetLoadedModules,
 	running_scripts_lister = handleRunningScripts,
 	script_source_ripper = handleScriptSource,
 	script_decompiler = handleScriptDecompiler,
@@ -3207,22 +3195,16 @@ local HANDLERS = {
 		return handleMetatableModifier(a)
 	end,
 	function_interceptor_installer = handleFuncInterceptor,
-	function_interceptor_remover = handleFuncInterceptor,
-	function_hook_installer = handleFuncInterceptor,
 	closure_type_checker = handleClosureType,
 
 	registry_scanner = handleRegistryScan,
-	registry_reader = handleRegistryScan,
 	gc_scanner = handleGCScan,
 	closure_inspector = handleClosureInspect,
-	closure_upvalue_editor = handleClosureInspect,
 	dump_constants_and_upvalues = handleDumpConstants,
 	debug_info_extractor = handleDebugInfo,
-	module_registry_scanner = handleGetLoadedModules,
 
 	spy_remote_traffic = handleRemoteSpy,
 	traffic_interceptor_installer = handleRemoteSpy,
-	traffic_interceptor_remover = handleRemoteSpy,
 	remote_blocker_installer = function(a)
 		a.action = "block"
 		return handleRemoteSpy(a)
@@ -3238,7 +3220,6 @@ local HANDLERS = {
 	sibling_enumerator = handleSiblingEnum,
 	property_value_seeker = handlePropertySeeker,
 	data_model_explorer = handleDataModelExplore,
-	datamodel_explorer = handleDataModelExplore,
 	humanoid_state_extractor = handleHumanoidState,
 	interact_all_proximity_prompts = handleInteractAllPrompts,
 	gui_button_clicker = handleGuiButtonClick,
@@ -3261,11 +3242,9 @@ local HANDLERS = {
 	touch_input_simulator = handleMouseMove,
 	ui_element_clicker = handleGuiButtonClick,
 
-	camera_state_reader = handleCameraControl,
 	camera_controller = handleCameraControl,
 	screen_text_extractor = handleScreenText,
 	notification_hider = handleNotificationHide,
-	clean_gui_traces = handleNotificationHide,
 	cursor_tracker = function()
 		local m = LocalPlayer:GetMouse()
 		return { success = true, x = m.X, y = m.Y }
@@ -3299,12 +3278,9 @@ local HANDLERS = {
 	end,
 
 	esp_label_manager = handleESP,
-	billboard_attachment_manager = handleESP,
 	lighting_configurator = handleLightingConfig,
 	terrain_brush_controller = handleTerrainBrush,
 	sound_effect_manager = handleSoundControl,
-	atmosphere_tweaker = handleLightingConfig,
-	cloud_fog_controller = handleLightingConfig,
 	physics_engine_tuner = handlePhysicsTune,
 	character_appearance_modifier = handleCharacterAppearance,
 	spawn_location_manager = handleSpawnManage,
@@ -3397,17 +3373,6 @@ local HANDLERS = {
 		return { success = false, error = "getcustomasset failed" }
 	end,
 
-	bytecode_disassembler = handleScriptSource,
-	runtime_bytecode_patcher = handleScriptSource,
-	response_interceptor = handleRemoteSpy,
-
-	value_container_scanner = handlePropertySeeker,
-	object_value_resolver = handlePropertySeeker,
-	attribute_collector = handleTreeExplore,
-	full_attribute_enumerator = handleTreeExplore,
-	string_value_reader = handlePropertyRead,
-	tag_reader = handleTreeExplore,
-	security_metadata_analyzer = handlePropertyRead,
 	check_unc_capabilities = function()
 		return { success = true, capabilities = MCP_CAPABILITIES }
 	end,
@@ -3422,24 +3387,6 @@ local HANDLERS = {
 		a.action = "path_resolve"
 		return handleTreeExplore(a)
 	end,
-	network_ownership_mapper = handleNetworkOwnership,
-	traffic_interceptor_remover = function(a)
-		a.action = "remove"
-		return handleRemoteSpy(a)
-	end,
-	function_interceptor_remover = function(a)
-		a.action = "remove"
-		return handleFuncInterceptor(a)
-	end,
-	mouse_drag_emitter = function(a)
-		a.action = "hold"
-		return handleMouseButton(a)
-	end,
-	key_combo_simulator = function(a)
-		a.key = (a.keys or {})[1] or ""
-		return handleKeyHold(a)
-	end,
-	argument_type_analyzer = handleRemoteConns,
 	ui_change_watcher = handleUiChangeWatcher,
 }
 

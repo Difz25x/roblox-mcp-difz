@@ -491,52 +491,6 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "datamodel_explorer",
-                description: "Enumerates the top-level children of the Roblox DataModel, which includes all services and any other instances directly parented to 'game'. Provides a bird's-eye view of the entire game environment, revealing which services are loaded, their hierarchy structure down to a configurable depth, and any user-created top-level folders. Essential first step for game reconnaissance and understanding the overall instance landscape.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "max_depth": {
-                            "type": "integer",
-                            "description": "How many levels deep to descend below each top-level DataModel child. 0 returns only the service/instance names at the root.",
-                            "default": 2,
-                            "minimum": 0,
-                            "maximum": 10
-                        },
-                        "include_hidden_instances": {
-                            "type": "boolean",
-                            "description": "When true, includes instances and services that are normally hidden or internal (e.g. 'InsertService', 'ScriptInformationProvider', 'NetworkServer').",
-                            "default": false
-                        },
-                        "class_filter": {
-                            "type": "string",
-                            "description": "Only show top-level entries matching this ClassName filter. Comma-separated for multiple values.",
-                            "default": ""
-                        },
-                        "include_count_totals": {
-                            "type": "boolean",
-                            "description": "When true, appends a total descendant count for each top-level entry, giving a sense of the subtree size.",
-                            "default": false
-                        },
-                        "instance_count_threshold": {
-                            "type": "integer",
-                            "description": "If include_count_totals is true, only compute and include subtree counts for top-level entries with total instances under this threshold. Use to cap expensive counting on very large subtrees.",
-                            "default": 5000,
-                            "minimum": 0,
-                            "maximum": 100000
-                        },
-                        "max_results": {
-                            "type": "integer",
-                            "description": "Maximum number of top-level entries to return.",
-                            "default": 200,
-                            "minimum": 1,
-                            "maximum": 1000
-                        }
-                    },
-                    "required": []
-                },
-            },
-            {
                 name: "property_value_seeker",
                 description: "Searches the instance tree for instances where a specific property has a given value. Supports exact match, numeric range match, and pattern match for string properties. For example, finding all Parts where 'Transparency' equals 0.5, all BaseParts where 'Material' equals 'Neon', or all instances where 'Visible' is false. Uses the scoped root and class filter to keep searches efficient on large games.",
                 inputSchema: {
@@ -742,70 +696,6 @@ class ToolDefinitions {
                             "type": "number",
                             "description": "Maximum instances to return",
                             "default": 200
-                        }
-                    },
-                    "required": []
-                },
-            },
-            {
-                name: "dump_workspace_players",
-                description: "Get real-time data for every player in the server: display name, user ID, character position (Vector3 as x/y/z), Health/MaxHealth, Team color, character state (alive/dead/frozen), active tool, and any ProximityPrompt instances nearby.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "include_proximity_prompts": {
-                            "type": "boolean",
-                            "description": "Include nearby ProximityPrompt data per player",
-                            "default": true
-                        },
-                        "include_backpack": {
-                            "type": "boolean",
-                            "description": "Include backpack contents per player",
-                            "default": false
-                        },
-                        "include_character_humanoid": {
-                            "type": "boolean",
-                            "description": "Include character humanoid details",
-                            "default": true
-                        }
-                    },
-                    "required": []
-                },
-            },
-            {
-                name: "get_workspace_objects",
-                description: "Recursively dump the Workspace object tree. Returns each object name, class name, position (if a BasePart), CFrame, size, color, and custom attributes. Use this to map the 3D game environment.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "max_depth": {
-                            "type": "number",
-                            "description": "Maximum recursion depth",
-                            "default": 5
-                        },
-                        "class_filter": {
-                            "type": "string",
-                            "description": "Only return objects matching this class name (e.g. Part, MeshPart, Model)"
-                        },
-                        "include_properties": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "description": "List of properties to include per object",
-                            "default": [
-                                "Name",
-                                "ClassName",
-                                "Position",
-                                "Size",
-                                "Color",
-                                "Material"
-                            ]
-                        },
-                        "include_attributes": {
-                            "type": "boolean",
-                            "description": "Include custom attribute values",
-                            "default": true
                         }
                     },
                     "required": []
@@ -1105,61 +995,6 @@ class ToolDefinitions {
                     "required": [
                         "instance_paths"
                     ]
-                },
-            },
-            {
-                name: "game_metadata_collector",
-                description: "Collects comprehensive metadata about the currently running Roblox game session. Returns PlaceId, UniverseId, JobId, CreatorId, CreatorType, GameId, Name, Description, PrivateServerId, PrivateServerOwnerId, VisitCountMax, FpsMax, PreferredFps, ThumbnailCamera, ThumbnailType, and EconmyType. Also includes content provider information and the current server time. All values are obtained from the Roblox API endpoints (game:GetService('MarketplaceService'), game:GetService('HttpService'), DataModel, etc.) without making external HTTP requests.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "include_creator_info": {
-                            "type": "boolean",
-                            "description": "If true, resolves CreatorId to a descriptive name if available via the local creator metadata. Default true.",
-                            "default": true
-                        },
-                        "include_server_info": {
-                            "type": "boolean",
-                            "description": "If true, includes server-specific details: JobId, PrivateServerId, PrivateServerOwnerId, and elapsed server time. Default true.",
-                            "default": true
-                        },
-                        "include_membership_type": {
-                            "type": "boolean",
-                            "description": "If true, returns the local user's MembershipType (None, BuildersClub, TurboBuildersClub, OutrageousBuildersClub, Premium). Default false.",
-                            "default": false
-                        }
-                    },
-                    "required": []
-                },
-            },
-            {
-                name: "local_player_state_dumper",
-                description: "Produces a comprehensive state dump of the LocalPlayer (Players.LocalPlayer). Returns all major sub-categories in a single structured response: AccountInfo (UserId, Name, DisplayName, AccountAge, Thumbnail), CharacterInfo (Character name, Humanoid state, HumanoidRootPart position), PlayerGui (active ScreenGuids and their enabled/disabled state), Backpack (Tools and their parents), DataStore-like bindings, DevEnableMouseLock, CameraMinZoomDistance, CameraMaxZoomDistance, ReplicationFocus, and the player's current SubscriptionProductId. Serves as the primary reconnaissance endpoint for understanding client-side player state.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "include_character": {
-                            "type": "boolean",
-                            "description": "If true, includes full character state: Humanoid health/metadata, HumanoidRootPart CFrame/Position/Velocity, and all equipped Tool names. Default true.",
-                            "default": true
-                        },
-                        "include_gui": {
-                            "type": "boolean",
-                            "description": "If true, enumerates all active ScreenGui instances in PlayerGui and reports their names, enabled state, and ResetOnSpawn flag. Default true.",
-                            "default": true
-                        },
-                        "include_backpack": {
-                            "type": "boolean",
-                            "description": "If true, lists all Tool objects in the player's Backpack with their Name and ClassName. Default true.",
-                            "default": true
-                        },
-                        "resolve_user_id": {
-                            "type": "boolean",
-                            "description": "If true, resolves UserId to the account's Name and DisplayName automatically. Default true.",
-                            "default": true
-                        }
-                    },
-                    "required": []
                 },
             },
             {
@@ -5624,86 +5459,11 @@ class ToolDefinitions {
                     "required": []
                 }
             },
-            {
-                name: "get_console_logs",
-                description: "Fetch LogService output (Messages / Errors / Warnings). Lets the AI detect when integrity checks fires, observe server print statements, and debug custom scripts in real-time. Each log entry includes the message text, type, timestamp, and (if available) script source line.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "log_type": {
-                            "type": "string",
-                            "enum": [
-                                "all",
-                                "error",
-                                "warning",
-                                "info",
-                                "app"
-                            ],
-                            "description": "Filter log entries by type",
-                            "default": "all"
-                        },
-                        "max_lines": {
-                            "type": "number",
-                            "description": "Maximum log lines to return",
-                            "default": 100,
-                            "maximum": 500
-                        },
-                        "include_timestamp": {
-                            "type": "boolean",
-                            "description": "Include timestamps in log entries",
-                            "default": true
-                        }
-                    },
-                    "required": []
-                },
-            },
 
 
 
 
 
-            {
-                name: "remote_surface_scanner",
-                description: "Enumerates all RemoteEvent and RemoteFunction instances across the entire Roblox data model, including those nested within services, PlayerGui, StarterGui, ReplicatedStorage, ServerScriptService, and any other containers. Returns the full hierarchical path, instance class type, and a unique identifier for each discovered remote. This is the foundational reconnaissance tool used before any interception or manipulation of network traffic.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "search_ancestor": {
-                            "type": "string",
-                            "description": "Optional root container to scope the scan (e.g., 'game.ReplicatedStorage', 'game.ServerScriptService', 'game.Players'). If omitted, scans the entire game data model.",
-                            "default": ""
-                        },
-                        "include_disabled": {
-                            "type": "boolean",
-                            "description": "Whether to include remotes whose Enabled property is currently false. Default is false.",
-                            "default": false
-                        },
-                        "instance_class_filter": {
-                            "type": "array",
-                            "description": "Optional array of Roblox class names to filter by. If omitted, returns both RemoteEvent and RemoteFunction instances. Allowed values: 'RemoteEvent', 'RemoteFunction'.",
-                            "items": {
-                                "type": "string",
-                                "enum": [
-                                    "RemoteEvent",
-                                    "RemoteFunction"
-                                ]
-                            },
-                            "default": [
-                                "RemoteEvent",
-                                "RemoteFunction"
-                            ]
-                        },
-                        "max_results": {
-                            "type": "integer",
-                            "description": "Maximum number of remote instances to return. Use 0 for no limit. Default is 500.",
-                            "default": 500,
-                            "minimum": 0
-                        }
-                    },
-                    "required": [],
-                    "additionalProperties": false
-                },
-            },
             {
                 name: "remote_event_trigger",
                 description: "Fires a RemoteEvent from the client to the server using the FireServer/InvokeServer equivalent mechanism. Accepts the target remote's full path or Instance and a variable-length list of arguments to pass. Supports passing primitive types, strings, tables, CFrames, Vector3, Color3, Ray, EnumItems, and nested data structures. Automatically coerces Lua-safe values. This is the core execution primitive for triggering server-side logic from the client.",
@@ -5724,34 +5484,6 @@ class ToolDefinitions {
                             "default": 5,
                             "minimum": 0.5,
                             "maximum": 30
-                        }
-                    },
-                    "required": [
-                        "remote_path"
-                    ],
-                    "additionalProperties": false
-                },
-            },
-            {
-                name: "remote_function_caller",
-                description: "Invokes a RemoteFunction from the client using InvokeServer-equivalent semantics and captures the server's return value. This is a synchronous, blocking operation that waits for the server to process the request and reply. Returns the full server response including any yielded return values. Unlike RemoteEvent firing, this tool returns the server's acknowledgement signal. Only works on RemoteFunction instances, not RemoteEvents.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "remote_path": {
-                            "type": "string",
-                            "description": "Full hierarchical path to the RemoteFunction instance, e.g. 'game.ReplicatedStorage.MyFunction'. Must point to an existing RemoteFunction, not a RemoteEvent."
-                        },
-                        "arguments": {
-                            "type": "string",
-                            "description": "JSON string of arguments to pass to InvokeServer (e.g. '[\"player_id\", 12345]'). Empty string or null = no arguments."
-                        },
-                        "timeout": {
-                            "type": "number",
-                            "description": "Maximum time in seconds to wait for the server response. InvokeServer can hang indefinitely if the server does not return. Default is 10. Minimum is 1, maximum is 60.",
-                            "default": 10,
-                            "minimum": 1,
-                            "maximum": 60
                         }
                     },
                     "required": [
@@ -6199,98 +5931,6 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "dump_remote_events",
-                description: "Scan every service (ReplicatedStorage, Workspace, ServerScriptService, etc.) for RemoteEvent and RemoteFunction instances. Returns their full paths, class names, and optional parent hierarchy. Used to map the full remote validation surface.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "search_paths": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "description": "List of service paths to search (default: all relevant services)",
-                            "default": [
-                                "game.ReplicatedStorage",
-                                "game.Workspace",
-                                "game.ServerScriptService",
-                                "game.ServerStorage",
-                                "game.StarterGui",
-                                "game.StarterPlayer"
-                            ]
-                        },
-                        "include_hierarchy": {
-                            "type": "boolean",
-                            "description": "Include parent hierarchy in results",
-                            "default": false
-                        },
-                        "include_arguments": {
-                            "type": "boolean",
-                            "description": "Attempt to inspect expected argument patterns",
-                            "default": false
-                        }
-                    },
-                    "required": []
-                },
-            },
-            {
-                name: "fire_remote_event",
-                description: "Fire a RemoteEvent with arbitrary arguments. Supports strings, numbers, booleans, tables, and nested structures. Also works with RemoteFunction via the 'method' parameter (FireServer | InvokeServer). The remote is resolved by full game path.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "remote_path": {
-                            "type": "string",
-                            "description": "Full game path to the RemoteEvent or RemoteFunction"
-                        },
-                        "args": {
-                            "type": "array",
-                            "description": "Arguments to pass to the remote",
-                            "items": { "type": "string" }
-                        },
-                        "method": {
-                            "type": "string",
-                            "enum": [
-                                "FireServer",
-                                "InvokeServer"
-                            ],
-                            "description": "Method to call on the remote",
-                            "default": "FireServer"
-                        }
-                    },
-                    "required": [
-                        "remote_path"
-                    ]
-                },
-            },
-            {
-                name: "invoke_remote_function",
-                description: "Call a RemoteFunction and return the server response. Unlike fire_remote_event, this WAITS for the server to reply and forwards the return value back to the AI. Supports all argument types and includes a configurable timeout.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "remote_path": {
-                            "type": "string",
-                            "description": "Full game path to the RemoteFunction"
-                        },
-                        "args": {
-                            "type": "array",
-                            "description": "Arguments to pass to the remote function",
-                            "items": { "type": "string" }
-                        },
-                        "timeout": {
-                            "type": "number",
-                            "description": "Maximum time in seconds to wait for a response",
-                            "default": 10,
-                            "maximum": 30
-                        }
-                    },
-                    "required": [
-                        "remote_path"
-                    ]
-                },
-            },
-            {
                 name: "spy_remote_traffic",
                 description: "Master tool for network traffic interception, blocking, and argument spoofing. Hooks FireServer/InvokeServer on RemoteEvent/RemoteFunction instances via __namecall metatable hook.",
                 inputSchema: {
@@ -6377,27 +6017,6 @@ class ToolDefinitions {
                         }
                     },
                     "required": []
-                },
-            },
-            {
-                name: "get_remote_connections",
-                description: "For a given remote, inspect all connected event handlers (both client and server-bound). Returns function reference and debug info if available. Critical for understanding what a remote does before firing it.",
-                inputSchema: {
-                    "type": "object",
-                    "properties": {
-                        "remote_path": {
-                            "type": "string",
-                            "description": "Full game path to the remote instance"
-                        },
-                        "include_handler_source": {
-                            "type": "boolean",
-                            "description": "Attempt to read the handler function source",
-                            "default": false
-                        }
-                    },
-                    "required": [
-                        "remote_path"
-                    ]
                 },
             },
             {
