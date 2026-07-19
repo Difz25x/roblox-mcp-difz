@@ -14,9 +14,9 @@ const otpFlag = args.includes("--otp");
 const otp = otpFlag ? args[args.indexOf("--otp") + 1] : undefined;
 const tokenFlag = args.includes("--token");
 const publishToken = tokenFlag ? args[args.indexOf("--token") + 1] : (process.env.NPM_TOKEN || "");
-const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-const tag = `v${pkg.version}`;
-const [major, minor, patch] = pkg.version.split('.').map(Number);
+let pkg = JSON.parse(readFileSync("package.json", "utf8"));
+let tag = `v${pkg.version}`;
+let [major, minor, patch] = pkg.version.split('.').map(Number);
 
 function spawn(command, args, options = {}) {
     if (process.platform === "win32" && command === "npm") {
@@ -84,6 +84,22 @@ async function ensureTag() {
 }
 
 async function main() {
+    const newVersion = await prompt(`Enter version to publish (current is ${pkg.version}): `);
+    if (newVersion) {
+        pkg.version = newVersion;
+        writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n", "utf8");
+        const lockfile = JSON.parse(readFileSync("package-lock.json", "utf8"));
+        lockfile.version = newVersion;
+        if (lockfile.packages && lockfile.packages[""]) {
+            lockfile.packages[""].version = newVersion;
+        }
+        writeFileSync("package-lock.json", JSON.stringify(lockfile, null, 2) + "\n", "utf8");
+        tag = `v${newVersion}`;
+        const parts = newVersion.split('.').map(Number);
+        major = parts[0]; minor = parts[1]; patch = parts[2];
+        console.log(`Updated version to ${newVersion} in package.json and package-lock.json`);
+    }
+
     run("npm", ["run", "build"]);
     run("npm", ["pack", "--dry-run", "--ignore-scripts"]);
     if (dryRun) { console.log(`[dry-run] would commit, tag ${tag}, push, and publish.`); process.exit(0); }

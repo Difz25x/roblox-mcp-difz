@@ -1,6 +1,3 @@
-
-
-
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -126,7 +123,7 @@ function launchRoblox(customPath?: string): LaunchResult {
     }
     try {
         const child = spawn(exePath, [], { detached: true, stdio: 'ignore', windowsHide: false });
-        child.on('error', () => {}); // Catch spawn errors silently
+        child.on('error', () => { }); // Catch spawn errors silently
         child.unref();
         if (child.pid === undefined) return { success: false, error: 'Failed to spawn process' };
         return { success: true, pid: child.pid, path: exePath };
@@ -156,7 +153,7 @@ function openGame(placeId: string | number, opts?: OpenGameOptions): OpenGameRes
     const jobId: string = opts.jobId || '';
     const privateServerLinkCode: string = opts.privateServerLinkCode || '';
     const browserTrackerId: string = opts.browserTrackerId || `tracker_${Date.now()}`;
-    
+
     if (opts.browserTrackerId && !/^[a-zA-Z0-9_-]+$/.test(opts.browserTrackerId)) {
         return { success: false, error: 'Invalid browserTrackerId format' };
     }
@@ -208,13 +205,13 @@ function openGame(placeId: string | number, opts?: OpenGameOptions): OpenGameRes
             const start = spawn('cmd', ['/c', 'start', '', launchUrl], {
                 detached: true, stdio: 'ignore', windowsHide: true,
             });
-            start.on('error', () => {});
+            start.on('error', () => { });
             start.unref();
         } else {
             const open = spawn('open', [launchUrl], {
                 detached: true, stdio: 'ignore',
             });
-            open.on('error', () => {});
+            open.on('error', () => { });
             open.unref();
         }
         return { success: true, launchUrl };
@@ -292,7 +289,7 @@ if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Co
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [parsed];
     } catch { return []; }
-    
+
 }
 
 function captureWindowPNG(hwnd: string): string {
@@ -341,8 +338,8 @@ Write-Output 'OK'
         if (!result) throw new Error("Empty output");
         return result;
     } finally {
-        
-        try { fs.unlinkSync(outFile); } catch {}
+
+        try { fs.unlinkSync(outFile); } catch { }
     }
 }
 
@@ -369,6 +366,109 @@ async function performScreenshot(pid?: number): Promise<ScreenshotResult> {
     }
 }
 
+async function recordVideo(pid?: number, duration: number = 5): Promise<ScreenshotResult & { filePath?: string }> {
+    const windows = enumRobloxWindows();
+    if (windows.length === 0) {
+        return { error: "No visible Roblox windows found." };
+    }
+    let targets = windows;
+    if (pid !== undefined) {
+        targets = windows.filter((w) => w.pid === pid);
+        if (targets.length === 0) {
+            return { error: `No Roblox window for PID ${pid}. Available:\n` + windows.map((w) => `  PID ${w.pid} - "${w.title}"`).join("\n") };
+        }
+    }
+    if (targets.length > 1) {
+        return { needsDisambiguation: true, windows: targets };
+    }
+
+    try {
+        const targetPid = targets[0].pid;
+        const outFile = path.join(os.tmpdir(), `roblox_rec_${targetPid}_${Date.now()}.mp4`);
+        const durationSecs = Math.min(Math.max(1, duration), 30);
+
+        // We will use PowerShell and ffmpeg (via winget if not available or just rely on ffmpeg being in PATH, but if not we can use ScreenCapture api using PowerShell)
+        // Since ffmpeg is not guaranteed to be installed, we can record a series of screenshots and compile them, or use SnippingTool API/Graphics.CopyFromScreen.
+        // Actually, Windows has a built-in "ScreenCapture" via MediaFoundation or we can just make a quick loop of screenshots and pack them into a basic format, but that is heavy.
+        // Let's use PowerShell to capture frames and save them. We'll use a PS script to record the screen area of the window.
+        // Actually, the easiest reliable way without external dependencies (ffmpeg) is just grabbing ~10 FPS using PrintWindow and returning the frames or an animated GIF, but it's large.
+        // Since we want video, and if ffmpeg is not guaranteed, let's create a GIF using PowerShell!
+
+        const ps = `
+Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class WinCapture {
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindowDC(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hDC, uint nFlags);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+
+$hwnd = [IntPtr]::new([long]${targets[0].hwnd})
+if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
+
+$rect = New-Object WinCapture+RECT
+[WinCapture]::GetClientRect($hwnd, [ref]$rect) | Out-Null
+$w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
+if ($w -le 0 -or $h -le 0) { Write-Error "Zero size"; exit 1 }
+
+$duration = ${durationSecs}
+$fps = 30
+$frames = $duration * $fps
+
+$outFolder = Join-Path $env:TEMP "roblox_frames_$(${targets[0].pid})_$(Get-Date -UFormat '%s')"
+New-Item -ItemType Directory -Path $outFolder | Out-Null
+
+for ($i = 0; $i -lt $frames; $i++) {
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+    $hdc = $gfx.GetHdc()
+    [WinCapture]::PrintWindow($hwnd, $hdc, 2) | Out-Null
+    $gfx.ReleaseHdc($hdc)
+    $gfx.Dispose()
+
+    $bmp.Save((Join-Path $outFolder "frame_$i.jpg"), [System.Drawing.Imaging.ImageFormat]::Jpeg)
+    $bmp.Dispose()
+    Start-Sleep -Milliseconds (1000 / $fps)
+}
+
+Write-Output $outFolder
+        `;
+
+        const encodedScript = Buffer.from(ps, 'utf16le').toString('base64');
+        const psResult = execSync(
+            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedScript}"`,
+            { encoding: "utf-8" as BufferEncoding, timeout: (durationSecs * 1000) + 15000, windowsHide: true }
+        );
+
+        const frameFolder = psResult.trim().split('\\n').pop()?.trim() || "";
+        if (!fs.existsSync(frameFolder)) {
+            return { error: "Failed to record video frames." };
+        }
+
+        // Check if ffmpeg exists to create mp4
+        let hasFfmpeg = true;
+        try { execSync("ffmpeg -version", { stdio: 'ignore' }); } catch { hasFfmpeg = false; }
+
+        if (hasFfmpeg) {
+            execSync(`ffmpeg -y -framerate 5 -i "${path.join(frameFolder, 'frame_%d.jpg')}" -c:v libx264 -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
+            try { fs.rmSync(frameFolder, { recursive: true, force: true }); } catch { }
+            return { pid: targetPid, filePath: outFile };
+        } else {
+            // Return folder path directly since ffmpeg is missing
+            return { pid: targetPid, filePath: frameFolder, error: "ffmpeg not installed. Raw frames saved to folder instead of video." };
+        }
+    } catch (err: any) {
+        return { error: `Failed to record window: ${err.message}` };
+    }
+}
+
 
 function killProcess(pid: number): boolean {
     try {
@@ -392,4 +492,6 @@ module.exports = {
     isSupported,
     enumRobloxWindows,
     performScreenshot,
+    recordVideo,
+    killProcess,
 };

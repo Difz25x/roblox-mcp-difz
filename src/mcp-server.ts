@@ -26,7 +26,7 @@ const { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSch
         ListResourcesRequestSchema, ReadResourceRequestSchema, ListPromptsRequestSchema,
         GetPromptRequestSchema } = loadSdk();
 
-const SERVER_SIDE_TOOLS = new Set(['get_roblox_processes', 'launch_roblox', 'open_game', 'capture_roblox_screenshot', 'get_roblox_versions']);
+const SERVER_SIDE_TOOLS = new Set(['get_roblox_processes', 'launch_roblox', 'open_game', 'capture_roblox_screenshot', 'record_roblox_video', 'get_roblox_versions']);
 
 function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
   const server = new Server(
@@ -140,6 +140,12 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
         if (ss.error) return { success: false, error: ss.error };
         if (ss.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: ss.windows };
         return { success: true, image: 'data:image/png;base64,' + ss.imageBase64, pid: ss.pid ?? args?.pid ?? null };
+    }
+    case 'record_roblox_video': {
+        const vd = await proc.recordVideo(args?.pid ? Number(args.pid) : undefined, args?.duration_seconds ? Number(args.duration_seconds) : 5);
+        if (vd.error) return { success: false, error: vd.error };
+        if (vd.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: vd.windows };
+        return { success: true, file_path: vd.filePath, pid: vd.pid ?? args?.pid ?? null, note: "Video saved to file. You can download or view it via external media." };
     }
     case 'get_roblox_versions': return getRobloxVersions();
     default: return { success: false, error: `Unknown: ${name}` };

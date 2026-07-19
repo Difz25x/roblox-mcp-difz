@@ -6520,6 +6520,18 @@ class ToolDefinitions {
                 }
             },
             {
+                name: "record_roblox_video",
+                description: "Record a short video of the Roblox game window on Windows. Records using PowerShell + FFmpeg / built-in capture (desktop duplication) for the specified duration. Returns the saved local video file path or base64 data.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "pid": { "type": "number", "description": "PID of the Roblox process to record. Omit for first found." },
+                        "duration_seconds": { "type": "number", "description": "Duration of the video to record in seconds.", "default": 5, "maximum": 30, "minimum": 1 }
+                    },
+                    "required": ["duration_seconds"]
+                }
+            },
+            {
                 name: "get_roblox_versions",
                 description: "List installed Roblox versions on this machine. Scans Versions directory in Program Files and LocalAppData. Returns version string, whether launcher and player exes exist.",
                 inputSchema: {
