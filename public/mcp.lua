@@ -1746,306 +1746,337 @@ local function handleDebugInfo(args)
 end
 
 local function handleRemoteSpy(args)
-	local action = args.action or "install"
+	local action = args.action or args.operation or "install"
+	if not action then
+		return { success = false, error = "No action specified" }
+	end
+
 	local filter = args.filter_remote_path or ""
 	local maxLog = args.max_log_entries or args.max_logs or 500
 
-	local blockPaths = args.remote_paths or args.block_remotes or {}
-	if type(blockPaths) == "string" then
-		blockPaths = { blockPaths }
+	-- Initialize global state
+	if not G.MCP_SPY_INIT then
+		G.MCP_SPY_INIT = true
+		G.MCP_SPY_LOGS = {} -- only outgoing for remotespy.lua
+		G.MCP_SPY_BLACKLIST = {} -- By DebugId or Name
+		G.MCP_SPY_BLOCKLIST = {} -- By DebugId or Name
+		G.MCP_SPY_ACTIVE = false
+		G.MCP_SPY_LOGCHECKCALLER = false
 	end
 
-	local remoteClassNames = { ["RemoteEvent"] = true, ["RemoteFunction"] = true, ["UnreliableRemoteEvent"] = true }
-	local remoteMethods = { ["FireServer"] = true, ["InvokeServer"] = true }
-	local classesToHook =
-		{ RemoteEvent = "OnClientEvent", RemoteFunction = "OnClientInvoke", UnreliableRemoteEvent = "OnClientEvent" }
-
-	if action == "block" then
-		for _, p in ipairs(blockPaths) do
-			local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
-			MCP_BLOCKED[rName] = true
-			MCP_BLOCKED[p] = true
-		end
-		return { success = true, action = "blocked", blockPaths = blockPaths }
-	end
-	if action == "unblock" then
-		for _, p in ipairs(blockPaths) do
-			local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
-			MCP_BLOCKED[rName] = nil
-			MCP_BLOCKED[p] = nil
-		end
-		return { success = true, action = "unblocked", blockPaths = blockPaths }
-	end
-	if action == "ignore" then
-		for _, p in ipairs(blockPaths) do
-			local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
-			MCP_IGNORED[rName] = true
-			MCP_IGNORED[p] = true
-		end
-		return { success = true, action = "ignored", blockPaths = blockPaths }
-	end
-	if action == "unignore" then
-		for _, p in ipairs(blockPaths) do
-			local rName = (p:match("([^%.]+)$") or p):gsub("^.*[\\/]", "")
-			MCP_IGNORED[rName] = nil
-			MCP_IGNORED[p] = nil
-		end
-		return { success = true, action = "unignored", blockPaths = blockPaths }
-	end
-	if action == "get_log" then
-		local max = args.max_results or 500
-		local entries = {}
-		local total = #(MCP_SPY_LOG or {})
-		for i = math.max(1, total - max + 1), total do
-			entries[#entries + 1] = MCP_SPY_LOG[i]
-		end
-		return { success = true, entries = entries, total = total }
-	end
-	if action == "clear" then
-		MCP_SPY_LOG = {}
-		return { success = true }
-	end
-
-	if action == "install" then
-		if MCP_SPY_ACTIVE then
-			return { success = true, action = "already_installed" }
-		end
-		MCP_SPY_LOG = {}
-
-		if type(getrawmetatable) ~= "function" then
-			return { success = false, error = "getrawmetatable not supported" }
-		end
-		if type(hookmetamethod) ~= "function" then
-			return { success = false, error = "hookmetamethod not supported" }
-		end
-
-		local gameMt = getrawmetatable(game)
-		if not gameMt then
-			return { success = false, error = "Cannot access game metatable" }
-		end
-		if not gameMt.__namecall then
-			return { success = false, error = "__namecall not found in game metatable" }
-		end
-
-		local origNamecall
-		local spyHook = function(...)
-			local self = ...
-			local m = getnamecallmethod()
-
-			if not remoteMethods[m] then
-				return origNamecall(...)
-			end
-
-			if typeof(self) ~= "Instance" or not remoteClassNames[self.ClassName] then
-				return origNamecall(...)
-			end
-
-			local rName = self.Name
-
-			if m == "FireServer" and (MCP_BLOCKED[rName] or MCP_BLOCK_ALL) then
-				return
-			end
-			if m == "InvokeServer" and MCP_BLOCKED[rName] then
-				return nil
-			end
-			if MCP_IGNORED[rName] then
-				return origNamecall(...)
-			end
-
-			if self.ClassName == "RemoteFunction" and m == "InvokeServer" then
-				local Result = table.pack(origNamecall(...))
-				if #MCP_SPY_LOG < maxLog and (filter == "" or rName:find(filter, 1, true)) then
-					pcall(table.insert, MCP_SPY_LOG, {
-						remote = rName,
-						remotePath = getFullPath(self),
-						method = m,
-						direction = "incoming",
-						args = serialize(Result),
-						timestamp = tick(),
-						isCallbackReturn = true,
-					})
+	local function GetDebugId(inst)
+		if not G.MCP_SPY_DEBUG_HANDLER then
+			local b = Instance.new("BindableFunction")
+			b.OnInvoke = function(obj)
+				local ok, id = pcall(game.GetDebugId, game, obj)
+				if ok then
+					return id
 				end
-				return table.unpack(Result, 1, Result.n)
+				return "unknown"
+			end
+			G.MCP_SPY_DEBUG_HANDLER = b
+		end
+		return G.MCP_SPY_DEBUG_HANDLER:Invoke(inst)
+	end
+
+	local function IsCyclicTable(tbl)
+		local checked = {}
+		local function search(t)
+			table.insert(checked, t)
+			for i, v in next, t do
+				if type(v) == "table" then
+					local found = false
+					for _, c in ipairs(checked) do
+						if c == v then
+							found = true
+							break
+						end
+					end
+					if found then
+						return true
+					end
+					if search(v) then
+						return true
+					end
+				end
+			end
+			return false
+		end
+		return search(tbl)
+	end
+
+	if action == "install" or action == "ensure-remote-spy" then
+		if G.MCP_SPY_ACTIVE then
+			return { success = true, status = "already_loaded" }
+		end
+
+		local oth = syn and syn.oth
+		local hook = oth and oth.hook
+		local unhook = oth and oth.unhook
+
+		local function GetHookMethod()
+			if hookmetamethod then
+				return hookmetamethod
+			end
+			if getrawmetatable and hookfunction then
+				return function(obj, meta, fn)
+					return hookfunction(getrawmetatable(obj)[meta], fn)
+				end
+			end
+			return nil
+		end
+		local hook_meta = GetHookMethod()
+
+		if not hook_meta then
+			return { success = false, error = "hookmetamethod / hookfunction not supported" }
+		end
+
+		local function deepclone(t, copies)
+			copies = copies or {}
+			local copy = nil
+			if type(t) == "table" then
+				if copies[t] then
+					copy = copies[t]
+				else
+					copy = {}
+					copies[t] = copy
+					for i, v in next, t do
+						copy[deepclone(i, copies)] = deepclone(v, copies)
+					end
+				end
+			elseif typeof(t) == "Instance" then
+				copy = cloneref(t)
+			else
+				copy = t
+			end
+			return copy
+		end
+
+		local function ProcessOutgoing(method, inst, callArgs)
+			if not G.MCP_SPY_LOGCHECKCALLER and checkcaller and checkcaller() then
+				return false -- Do not intercept, let it pass
 			end
 
-			if #MCP_SPY_LOG < maxLog and (filter == "" or rName:find(filter, 1, true)) then
-				local callArgs = table.pack(select(2, ...))
-				pcall(table.insert, MCP_SPY_LOG, {
-					remote = rName,
-					remotePath = getFullPath(self),
-					method = m,
-					direction = "outgoing",
-					args = serialize(callArgs),
-					timestamp = tick(),
-				})
+			local id = GetDebugId(inst)
+			local blockcheck = G.MCP_SPY_BLOCKLIST[id] or G.MCP_SPY_BLOCKLIST[inst.Name]
+			local ignorecheck = G.MCP_SPY_BLACKLIST[id] or G.MCP_SPY_BLACKLIST[inst.Name]
+
+			if not ignorecheck and not IsCyclicTable(callArgs) then
+				if #G.MCP_SPY_LOGS < maxLog then
+					pcall(function()
+						local logEntry = {
+							remote = inst.Name,
+							remotePath = getFullPath(inst),
+							method = method,
+							direction = "outgoing",
+							args = serialize(deepclone(callArgs)),
+							timestamp = tick(),
+							blocked = blockcheck and true or false,
+							infofunc = debug.info(3, "f") or "unknown",
+							source = debug.info(3, "s") or "unknown",
+							line = debug.info(3, "l") or 0,
+						}
+						table.insert(G.MCP_SPY_LOGS, 1, logEntry)
+					end)
+				end
 			end
 
+			return blockcheck and true or false
+		end
+
+		-- Direct method hooks
+		local origFireServer, origInvokeServer, origUnreliableFireServer
+
+		local function newFireServer(...)
+			local self = ...
+			if typeof(self) == "Instance" and self.ClassName == "RemoteEvent" then
+				local args = { select(2, ...) }
+				if ProcessOutgoing("FireServer", self, args) then
+					return
+				end
+			end
+			return origFireServer(...)
+		end
+
+		local function newUnreliableFireServer(...)
+			local self = ...
+			if typeof(self) == "Instance" and self.ClassName == "UnreliableRemoteEvent" then
+				local args = { select(2, ...) }
+				if ProcessOutgoing("FireServer", self, args) then
+					return
+				end
+			end
+			return origUnreliableFireServer(...)
+		end
+
+		local function newInvokeServer(...)
+			local self = ...
+			if typeof(self) == "Instance" and self.ClassName == "RemoteFunction" then
+				local args = { select(2, ...) }
+				if ProcessOutgoing("InvokeServer", self, args) then
+					return nil
+				end
+			end
+			return origInvokeServer(...)
+		end
+
+		-- Namecall hook
+		local origNamecall
+		local function newNamecall(...)
+			local method = getnamecallmethod()
+			if
+				method == "FireServer"
+				or method == "fireServer"
+				or method == "InvokeServer"
+				or method == "invokeServer"
+			then
+				local self = ...
+				if
+					typeof(self) == "Instance"
+					and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction") or self:IsA("UnreliableRemoteEvent"))
+				then
+					local args = { select(2, ...) }
+					local blocked = ProcessOutgoing(method, self, args)
+					if blocked then
+						if self:IsA("RemoteFunction") then
+							return nil
+						end
+						return
+					end
+				end
+			end
 			return origNamecall(...)
 		end
 
-		local ok, displaced = pcall(hookmetamethod, game, "__namecall", spyHook)
-		if not ok then
-			return { success = false, error = "hookmetamethod failed: " .. tostring(displaced) }
-		end
-		origNamecall = displaced or gameMt.__namecall
-		if not origNamecall then
-			return { success = false, error = "hookmetamethod returned nil original" }
-		end
-		MCP_SPY_ACTIVE = true
-		MCP_SPY_ORIGINAL = origNamecall
-		G.MCP_SPY_ON = true
-		G.MCP_SPY_ORIG = origNamecall
-
-		local incomingHooked = 0
-
-		local function LogIncoming(inst, args)
-			local rName = inst.Name
-			if MCP_IGNORED[rName] then
-				return
-			end
-			if MCP_BLOCKED[rName] then
-				return
-			end
-			if #MCP_SPY_LOG < maxLog and (filter == "" or rName:find(filter, 1, true)) then
-				pcall(table.insert, MCP_SPY_LOG, {
-					remote = rName,
-					remotePath = getFullPath(inst),
-					method = classesToHook[inst.ClassName] or "OnClientEvent",
-					direction = "incoming",
-					args = serialize(args),
-					timestamp = tick(),
-				})
-			end
+		if oth and hook then
+			origNamecall = hook(getrawmetatable(game).__namecall, clonefunction(newcclosure(newNamecall)))
+			origFireServer = hook(Instance.new("RemoteEvent").FireServer, clonefunction(newcclosure(newFireServer)))
+			origInvokeServer =
+				hook(Instance.new("RemoteFunction").InvokeServer, clonefunction(newcclosure(newInvokeServer)))
+			origUnreliableFireServer = hook(
+				Instance.new("UnreliableRemoteEvent").FireServer,
+				clonefunction(newcclosure(newUnreliableFireServer))
+			)
+		else
+			origNamecall = hook_meta(game, "__namecall", clonefunction(newcclosure(newNamecall)))
+			origFireServer =
+				hookfunction(Instance.new("RemoteEvent").FireServer, clonefunction(newcclosure(newFireServer)))
+			origInvokeServer =
+				hookfunction(Instance.new("RemoteFunction").InvokeServer, clonefunction(newcclosure(newInvokeServer)))
+			origUnreliableFireServer = hookfunction(
+				Instance.new("UnreliableRemoteEvent").FireServer,
+				clonefunction(newcclosure(newUnreliableFireServer))
+			)
 		end
 
-		local function CreateConnectionFunction(inst)
-			return function(...)
-				local callArgs = table.pack(...)
-				LogIncoming(inst, callArgs)
-			end
-		end
+		G.MCP_SPY_HOOKS = {
+			Namecall = origNamecall,
+			FireServer = origFireServer,
+			InvokeServer = origInvokeServer,
+			UnreliableFireServer = origUnreliableFireServer,
+		}
 
-		local function HookRemoteFunction(inst)
-			local method = classesToHook[inst.ClassName]
-			if not method then
-				return
-			end
-			local ok, callback = pcall(function()
-				return inst[method]
-			end)
-			if ok and typeof(callback) == "function" then
-				local detour = function(...)
-					local callArgs = table.pack(...)
-					LogIncoming(inst, callArgs)
-					local old = getthreadidentity()
-					setthreadidentity(2)
-					local result = table.pack(callback(table.unpack(callArgs, 1, callArgs.n)))
-					setthreadidentity(old)
-					return table.unpack(result, 1, result.n)
-				end
-				inst[method] = detour
-			end
-		end
+		G.MCP_SPY_ACTIVE = true
 
-		local function HandleInstance(inst)
-			local cn = inst.ClassName
-			if not classesToHook[cn] then
-				return
-			end
-			if cn == "RemoteEvent" or cn == "UnreliableRemoteEvent" then
-				local ok, conn = pcall(function()
-					return inst.OnClientEvent:Connect(CreateConnectionFunction(inst))
-				end)
-				if ok and conn then
-					MCP_SPY_CONNECTIONS[inst] = conn
-				end
-			elseif cn == "RemoteFunction" then
-				HookRemoteFunction(inst)
-			end
-		end
-
-		local descConn
-		descConn = game.DescendantAdded:Connect(function(inst)
-			if MCP_SPY_CONNECTIONS[inst] then
-				return
-			end
-			HandleInstance(inst)
-		end)
-		MCP_SPY_CONNECTIONS["__descAdded"] = descConn
-
-		local function scan(inst)
-			HandleInstance(inst)
-			for _, c in ipairs(inst:GetChildren()) do
-				scan(c)
-			end
-		end
-		pcall(scan, game)
-
-		local newIndexHookConn
-		local newIndexHook = function(...)
-			local self, key, value = ...
-
-			if typeof(self) ~= "Instance" or not remoteClassNames[self.ClassName] then
-				return MCP_SPY_NEWINDEX(...)
-			end
-
-			if
-				self.ClassName == "RemoteFunction"
-				and key == classesToHook[self.ClassName]
-				and typeof(value) == "function"
-			then
-				local detour = function(...)
-					local callArgs = table.pack(...)
-					LogIncoming(self, callArgs)
-					local old2 = getthreadidentity()
-					setthreadidentity(2)
-					local result = table.pack(value(table.unpack(callArgs, 1, callArgs.n)))
-					setthreadidentity(old2)
-					return table.unpack(result, 1, result.n)
-				end
-				return MCP_SPY_NEWINDEX(self, key, detour)
-			end
-
-			return MCP_SPY_NEWINDEX(...)
-		end
-
-		local gameMt2 = getrawmetatable(game)
-		if gameMt2 and type(hookmetamethod) == "function" then
-			local ok2, origNewIndex = pcall(hookmetamethod, game, "__newindex", newIndexHook)
-			if ok2 and origNewIndex then
-				MCP_SPY_NEWINDEX_ORIG = origNewIndex
-				MCP_SPY_NEWINDEX = origNewIndex
-				G.MCP_SPY_NI_ORIG = origNewIndex
-			end
-		end
-
-		return { success = true, action = "installed", outgoing = "__namecall", incoming = incomingHooked }
+		return { success = true, status = "loaded", message = "RemoteSpy loaded successfully." }
 	end
 
-	if action == "remove" or action == "uninstall" then
-		if MCP_SPY_ORIGINAL and type(hookmetamethod) == "function" then
-			pcall(hookmetamethod, game, "__namecall", MCP_SPY_ORIGINAL)
+	if action == "get_log" or action == "list" then
+		if not G.MCP_SPY_ACTIVE then
+			return { success = false, error = "Spy not loaded" }
 		end
-		if MCP_SPY_NEWINDEX_ORIG and type(hookmetamethod) == "function" then
-			pcall(hookmetamethod, game, "__newindex", MCP_SPY_NEWINDEX_ORIG)
-		end
-		for inst, conn in pairs(MCP_SPY_CONNECTIONS) do
-			if type(conn) == "table" and type(conn.Disconnect) == "function" then
-				pcall(conn.Disconnect, conn)
+		local max = args.max_results or 500
+		local results = {}
+		local count = 0
+		for _, entry in ipairs(G.MCP_SPY_LOGS) do
+			if filter == "" or entry.remote:lower():find(filter:lower(), 1, true) then
+				table.insert(results, entry)
+				count = count + 1
+				if count >= max then
+					break
+				end
 			end
 		end
-		MCP_SPY_CONNECTIONS = {}
-		MCP_SPY_ACTIVE = false
-		MCP_SPY_ORIGINAL = nil
-		MCP_SPY_NEWINDEX_ORIG = nil
-		MCP_SPY_NEWINDEX = nil
-		G.MCP_SPY_ON = nil
-		G.MCP_SPY_ORIG = nil
-		G.MCP_SPY_NI_ORIG = nil
-		return { success = true, action = "removed" }
+		return { success = true, count = #results, results = results }
 	end
 
-	return { success = false, error = "Unknown action: " .. tostring(action) }
+	if action == "clear" then
+		G.MCP_SPY_LOGS = {}
+		return { success = true }
+	end
+
+	if action == "block" then
+		local p = args.remoteName or args.remote_paths
+		if type(p) == "table" then
+			p = p[1]
+		end
+		G.MCP_SPY_BLOCKLIST[p] = true
+		return { success = true, blocked = p }
+	end
+
+	if action == "unblock" then
+		local p = args.remoteName or args.remote_paths
+		if type(p) == "table" then
+			p = p[1]
+		end
+		G.MCP_SPY_BLOCKLIST[p] = nil
+		return { success = true, unblocked = p }
+	end
+
+	if action == "ignore" then
+		local p = args.remoteName or args.remote_paths
+		if type(p) == "table" then
+			p = p[1]
+		end
+		G.MCP_SPY_BLACKLIST[p] = true
+		return { success = true, ignored = p }
+	end
+
+	if action == "unignore" then
+		local p = args.remoteName or args.remote_paths
+		if type(p) == "table" then
+			p = p[1]
+		end
+		G.MCP_SPY_BLACKLIST[p] = nil
+		return { success = true, unignored = p }
+	end
+
+	if action == "logcheckcaller" then
+		G.MCP_SPY_LOGCHECKCALLER = args.state == nil and true or args.state
+		return { success = true, state = G.MCP_SPY_LOGCHECKCALLER }
+	end
+
+	if action == "uninstall" or action == "remove" then
+		if not G.MCP_SPY_ACTIVE then
+			return { success = true }
+		end
+
+		local oth = syn and syn.oth
+		local unhook = oth and oth.unhook
+
+		if unhook then
+			pcall(unhook, getrawmetatable(game).__namecall, G.MCP_SPY_HOOKS.Namecall)
+			pcall(unhook, Instance.new("RemoteEvent").FireServer, G.MCP_SPY_HOOKS.FireServer)
+			pcall(unhook, Instance.new("RemoteFunction").InvokeServer, G.MCP_SPY_HOOKS.InvokeServer)
+			pcall(unhook, Instance.new("UnreliableRemoteEvent").FireServer, G.MCP_SPY_HOOKS.UnreliableFireServer)
+		else
+			if hookmetamethod then
+				pcall(hookmetamethod, game, "__namecall", G.MCP_SPY_HOOKS.Namecall)
+			else
+				pcall(hookfunction, getrawmetatable(game).__namecall, G.MCP_SPY_HOOKS.Namecall)
+			end
+			pcall(hookfunction, Instance.new("RemoteEvent").FireServer, G.MCP_SPY_HOOKS.FireServer)
+			pcall(hookfunction, Instance.new("RemoteFunction").InvokeServer, G.MCP_SPY_HOOKS.InvokeServer)
+			pcall(hookfunction, Instance.new("UnreliableRemoteEvent").FireServer, G.MCP_SPY_HOOKS.UnreliableFireServer)
+		end
+
+		G.MCP_SPY_ACTIVE = false
+		G.MCP_SPY_LOGS = {}
+		G.MCP_SPY_HOOKS = {}
+		return { success = true, action = "RemoteSpy unloaded successfully" }
+	end
+
+	return { success = false, error = "Unknown action" }
 end
 
 local function handleInstanceComparer(args)
