@@ -95,7 +95,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-console-logs",
-                description: "Read the in-game developer console logs (prints, warnings, and errors).",
+                description: "Baca isi log developer console di game (print, warning, sama error).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
