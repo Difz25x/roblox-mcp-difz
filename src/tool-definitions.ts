@@ -54,7 +54,7 @@ class ToolDefinitions {
         return [
             {
                 name: "dump-workspace-players",
-                description: "Dumps all active players and their character models. Returns player names, user IDs, health, max health, walkspeed, backpack items, and proximity prompts if requested.",
+                description: "Get a list of all players along with their character models, HP, speed, and backpack contents.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -95,7 +95,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-console-logs",
-                description: "Retrieves recent console logs from the Roblox client's LogService. Useful for intercepting script prints, warnings, and errors.",
+                description: "Read the contents of the in-game developer console logs (prints, warnings, and errors).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -119,7 +119,7 @@ class ToolDefinitions {
 
             {
                 name: "disable-anticheat",
-                description: "Disables local client-side integrity mechanisms. Hooks Kick/Destroy to prevent the client from kicking itself, optionally disables local scripts matching known integrity validation patterns, blocks teleport-based kicks, and enables an anti-AFK loop.",
+                description: "Bypass client-side anticheat. Prevents Kick(), disables suspiciously named scripts, and blocks teleport-based bans.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -137,7 +137,7 @@ class ToolDefinitions {
 
             {
                 name: "walk-tree",
-                description: "Walks the Roblox instance tree recursively starting from a given root, returning instances that match the specified filters. Supports configurable maximum depth to prevent runaway traversal, class-name filtering (e.g. only 'Part' or 'Model'), and name-based filtering with wildcard or regex patterns. Results include the full hierarchy path for each matched instance and the total count of nodes visited.",
+                description: "Search for objects within the game. Can be filtered by name, object type (class), and maximum folder depth.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -200,7 +200,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-services",
-                description: "Enumerates all Roblox engine services currently instantiated under the DataModel. Services are singleton instances that provide engine-level functionality (Workspace, Players, ReplicatedStorage, etc.). Returns each service's name, ClassName, and current status (loaded/not loaded). Optionally discovers children within each service to reveal the default structure of the game environment.",
+                description: "List all active core Roblox services (such as Workspace, Players, Lighting).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -232,7 +232,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-instances-by-class",
-                description: "Collects every instance of a specified Roblox class (and optionally its subclasses) throughout the entire game or within a scoped root. This is the primary tool for finding all Parts, all Scripts, all LocalScripts, all Models, etc. in one operation. Returns the full path, ClassName, and a configurable set of property values for each matched instance.",
+                description: "Collect all objects of a specific type (e.g., find all LocalScripts or Parts).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -283,7 +283,7 @@ class ToolDefinitions {
             },
             {
                 name: "resolve-path",
-                description: "Resolves a dot-delimited or slash-delimited instance path string (like 'game.Workspace.Baseplate' or 'Players/Player1/Backpack') into a concrete instance reference. Handles both absolute paths starting from 'game', 'workspace', 'players', etc., and relative paths from a given base. Returns the resolved instance path, ClassName, and any ambiguity if multiple instances match the same name at any level.",
+                description: "Resolve a string path like 'workspace.Model.Part' into an actual object reference.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -315,7 +315,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-siblings",
-                description: "Enumerates sibling instances around a given instance path within the same parent container. Useful for understanding the layout of objects at the same hierarchy level, such as all tools in a Toolbox folder, all enemies in an EnemySpawner, or all parts in a Model. Can return siblings before, after, or including the target instance, and optionally include index/order information.",
+                description: "List all objects located in the same folder or parent as your target.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -622,7 +622,7 @@ class ToolDefinitions {
             },
             {
                 name: "scan-proximity",
-                description: "Finds instances within a specified 3D radius around a given world position. Only works on spatial instances (BasePart subclasses and Attachments that have a world-space position). Critical for security testing tasks like finding all parts near a player's character, detecting nearby pickups/collectibles, locating spawned enemies around a coordinate, or identifying teleport-pad triggers. Results can be sorted by distance and filtered by class.",
+                description: "Search for any objects within a close radius of specific coordinates.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -691,7 +691,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-instances-by-subclass",
-                description: "Enumerates all instances of a given Roblox Lua class AND all of its subclass types by walking the class inheritance tree. Unlike class_instance_collector which matches only the exact class, this tool includes every derived class. For example, enumerating 'Instance' returns every single object in the game, 'BasePart' returns Parts, MeshParts, WedgeParts, CornerWedgeParts, etc., and 'PVInstance' returns all Models and BaseParts. Accepts a scope root to limit search range.",
+                description: "Find all objects of a particular class and its descendants (e.g., BasePart will return Part, MeshPart, etc.).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -744,7 +744,7 @@ class ToolDefinitions {
             
             {
                 name: "get-instance",
-                description: "Resolve any arbitrary game path string and return its properties. Useful when you know the path to an object and want to inspect it without scanning the whole tree.",
+                description: "Retrieve details and properties of an object using its path.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -775,7 +775,7 @@ class ToolDefinitions {
 
             {
                 name: "read-properties",
-                description: "Reads one or more named properties from any Roblox Instance in a single operation. Accepts an array of property names and returns a map of property names to their current values. Supports nested property paths using dot notation (e.g., 'Humanoid.WalkSpeed'). Optimized for batch reads to minimize round-trips and bypass Lua-level getter overhead when possible.",
+                description: "Extract and read multiple properties from an object simultaneously.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -809,7 +809,7 @@ class ToolDefinitions {
             },
             {
                 name: "inspect-property",
-                description: "Performs a deep inspection of a single property on a Roblox Instance, returning its current value alongside full metadata: Roblox data type, security context (Readable/Writable/NotReplicated status), replication flag, serialization group, and the property's default value. Additionally returns the resolved Lua type (CFrame, Vector3, BrickColor, EnumItem, etc.) when applicable. Useful for understanding property constraints before attempting to modify them.",
+                description: "Check the details of a property (its value type, default value, and security level).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -845,7 +845,7 @@ class ToolDefinitions {
             
             {
                 name: "get-humanoid-state",
-                description: "Extracts the complete detailed state of a Humanoid instance. Returns all key properties including Health, MaxHealth, WalkSpeed, JumpPower, JumpHeight, AutoJumpEnabled, AutoRotate, FloorMaterial, MoveDirection, RigType, HipHeight, NameOcclusion, DisplayDistanceType, HealthDisplayDistance, CameraOffset, SeatedPart, PlatformStand, UseJumpPower, BreakJointsOnDeath, MaxSlopeAngle, and StateType (as a human-readable string). Designed for ESP, player state overlays, and movement system analysis in compromised clients.",
+                description: "Retrieve crucial info from a Humanoid (HP, Speed, JumpPower, State).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1125,7 +1125,7 @@ class ToolDefinitions {
             },
             {
                 name: "inject-gui",
-                description: "Injects a custom ScreenGui, BillboardGui, or SurfaceGui into the game client with fully configurable properties. Supports setting size, position, background color, border, transparency, z-index behavior, and event bindings. Can optionally auto-destroy after a specified duration or on player death. Returns the instance identifier for subsequent manipulation or removal.",
+                description: "Inject your own custom UI (ScreenGui, SurfaceGui) into the game.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1178,7 +1178,7 @@ class ToolDefinitions {
             },
             {
                 name: "manage-esp",
-                description: "Manages ESP (Extra Sensory Perception) overlay labels that attach to players, NPCs, or world objects. Supports creating, updating, and destroying billboard-style text overlays with configurable text, color, font size, transparency, and attachment offset. Labels track their target object position automatically each frame via RenderStepped. Returns an identifier for each created label for later modification.",
+                description: "Create or modify ESP text attached above players/objects.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2085,7 +2085,7 @@ class ToolDefinitions {
             },
             {
                 name: "record-macro",
-                description: "Records a sequence of mouse and keyboard input events into a named macro for later replay. Captures event types, positions, timestamps, and relative delays between events. Supports filtering to record only specific event types and setting a maximum recording duration.",
+                description: "Record mouse and keyboard movements to replay later.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
