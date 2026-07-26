@@ -37,7 +37,7 @@ function getDevCliPath(): string | null {
 
 const HTTP_CONFIG = {
     mcpServers: {
-        'roblox-mcp-difz': { type: 'http', url: `http://localhost:${MCP_PORT}/mcp` },
+        'roblox-difz': { type: 'http', url: `http://localhost:${MCP_PORT}/mcp` },
     },
 };
 

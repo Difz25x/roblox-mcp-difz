@@ -52,6 +52,70 @@ class ToolDefinitions {
 
     private _defineTools(): ToolDefinition[] {
         return [
+            {
+                name: "dump-workspace-players",
+                description: "Dumps all active players and their character models. Returns player names, user IDs, health, max health, walkspeed, backpack items, and proximity prompts if requested.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "include_character_humanoid": {
+                            "type": "boolean",
+                            "description": "Include detailed Humanoid state (Health, WalkSpeed, etc.) for each player's character.",
+                            "default": true
+                        },
+                        "include_backpack": {
+                            "type": "boolean",
+                            "description": "Include items in each player's backpack.",
+                            "default": false
+                        },
+                        "include_proximity_prompts": {
+                            "type": "boolean",
+                            "description": "Include proximity prompts parented within the player's character.",
+                            "default": false
+                        }
+                    },
+                    "required": []
+                },
+            },
+            {
+                name: "dump-remote-events",
+                description: "Scans specified paths (usually ReplicatedStorage and Workspace) for all RemoteEvents, RemoteFunctions, and UnreliableRemoteEvents. Returns their names, class names, and absolute paths.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "search_paths": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Paths to recursively search for remotes. Defaults to ReplicatedStorage and Workspace.",
+                            "default": ["game:GetService(\"ReplicatedStorage\")", "game:GetService(\"Workspace\")"]
+                        }
+                    },
+                    "required": []
+                },
+            },
+            {
+                name: "get-console-logs",
+                description: "Retrieves recent console logs from the Roblox client's LogService. Useful for intercepting script prints, warnings, and errors.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "log_type": {
+                            "type": "string",
+                            "enum": ["all", "message", "warning", "error", "info"],
+                            "description": "Filter by specific log type.",
+                            "default": "all"
+                        },
+                        "max_lines": {
+                            "type": "integer",
+                            "description": "Maximum number of recent lines to retrieve.",
+                            "default": 100,
+                            "minimum": 1,
+                            "maximum": 1000
+                        }
+                    },
+                    "required": []
+                },
+            },
 
             {
                 name: "disable-anticheat",

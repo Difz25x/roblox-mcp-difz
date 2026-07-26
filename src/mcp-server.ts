@@ -26,11 +26,11 @@ const { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSch
         ListResourcesRequestSchema, ReadResourceRequestSchema, ListPromptsRequestSchema,
         GetPromptRequestSchema } = loadSdk();
 
-const SERVER_SIDE_TOOLS = new Set(['get_roblox_processes', 'launch_roblox', 'open_game', 'capture_roblox_screenshot', 'record_roblox_video', 'get_roblox_versions']);
+const SERVER_SIDE_TOOLS = new Set(['list-roblox-processes', 'launch-roblox', 'open-roblox-game', 'take-screenshot', 'record-roblox-video', 'get-roblox-versions']);
 
 function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
   const server = new Server(
-    { name: 'roblox-mcp-difz', version: '1.0.0' },
+    { name: 'roblox-difz', version: '1.0.0' },
     { capabilities: { tools: {}, resources: {}, prompts: {} } },
   );
 
@@ -45,7 +45,7 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
         return { content: [{ type: 'text', text: JSON.stringify(sr, null, 2) }] };
       }
 
-      if (name === "luau_code_executor" && args.file) {
+      if (name === "execute-script" && args.file) {
           const fs = require("fs");
           try {
               args.code = fs.readFileSync(args.file, "utf-8");
@@ -77,11 +77,11 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
   }));
 
   const RESOURCE_MAP: Record<string, string> = {
-    'mcp://roblox/game/metadata': 'get_game_metadata',
-    'mcp://roblox/game/players': 'dump_workspace_players',
-    'mcp://roblox/game/remotes': 'dump_remote_events',
+    'mcp://roblox/game/metadata': 'get-metadata',
+    'mcp://roblox/game/players': 'get-local-player',
+    'mcp://roblox/game/remotes': 'dump-remote-events',
     'mcp://roblox/game/workspace': 'get_workspace_objects',
-    'mcp://roblox/game/console': 'get_console_logs',
+    'mcp://roblox/game/console': 'get-console-logs',
   };
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request: any) => {
@@ -129,25 +129,25 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
 
 async function runServerTool(name: string, args: any, proc: any, sessions: any): Promise<any> {
   switch (name) {
-    case 'get_roblox_processes': return { success: true, processes: proc.listRobloxProcesses(), count: sessions.activeCount };
-    case 'launch_roblox': return proc.launchRoblox(args?.path || null);
-    case 'open_game': {
+    case 'list-roblox-processes': return { success: true, processes: proc.listRobloxProcesses(), count: sessions.activeCount };
+    case 'launch-roblox': return proc.launchRoblox(args?.path || null);
+    case 'open-roblox-game': {
         if (!args?.place_id) return { success: false, error: "place_id is required" };
         return proc.openGame(args.place_id, args || {});
     }
-    case 'capture_roblox_screenshot': {
+    case 'take-screenshot': {
         const ss = await proc.performScreenshot(args?.pid ? Number(args.pid) : undefined);
         if (ss.error) return { success: false, error: ss.error };
         if (ss.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: ss.windows };
         return { success: true, image: 'data:image/png;base64,' + ss.imageBase64, pid: ss.pid ?? args?.pid ?? null };
     }
-    case 'record_roblox_video': {
+    case 'record-roblox-video': {
         const vd = await proc.recordVideo(args?.pid ? Number(args.pid) : undefined, args?.duration_seconds ? Number(args.duration_seconds) : 5);
         if (vd.error) return { success: false, error: vd.error };
         if (vd.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: vd.windows };
         return { success: true, file_path: vd.filePath, pid: vd.pid ?? args?.pid ?? null, note: "Video saved to file. You can download or view it via external media." };
     }
-    case 'get_roblox_versions': return getRobloxVersions();
+    case 'get-roblox-versions': return getRobloxVersions();
     default: return { success: false, error: `Unknown: ${name}` };
   }
 }

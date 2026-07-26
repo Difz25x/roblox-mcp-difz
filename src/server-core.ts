@@ -142,7 +142,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
         const host = _req.hostname || 'localhost';
         res.json({
-            server: 'roblox-mcp-difz',
+            server: 'roblox-difz',
             version: PKG.version,
             tools: tools.count,
             transport: 'http+ws',

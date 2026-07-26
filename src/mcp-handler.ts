@@ -89,7 +89,7 @@ class McpHandler {
         this.sessions = sessions;
         this.proc = processManager;
         this.serverInfo = {
-            name: 'roblox-mcp-difz-server',
+            name: 'roblox-difz-server',
             version: '1.0.0',
             description:
                 'Roblox MCP — full game control, reverse engineering, ' +

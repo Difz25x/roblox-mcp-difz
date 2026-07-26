@@ -3082,9 +3082,11 @@ local function handleDisableAntiCheat(args)
 end
 
 local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["get-metadata"] = handleGetMetadata,
-	dump_workspace_players = handleDumpPlayers,	["get-local-player"] = handlePlayerState,
-	dump_remote_events = handleDumpRemotes,
-	get_console_logs = handleConsoleLog,	["get-network-ownership"] = handleNetworkOwnership,
+	["dump-workspace-players"] = handleDumpPlayers,
+	["get-local-player"] = handlePlayerState,
+	["dump-remote-events"] = handleDumpRemotes,
+	["get-console-logs"] = handleConsoleLog,
+	["get-network-ownership"] = handleNetworkOwnership,
 	["execute-script"] = handleCodeExec,
 	["execute-file"] = handleCodeExecFile,
 	get_workspace_objects = handleWorkspaceObjects,	["fire-remote"] = handleRemoteFire,
