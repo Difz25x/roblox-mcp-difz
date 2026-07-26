@@ -68,11 +68,11 @@ interface McpResult {
 }
 
 const SERVER_SIDE_TOOLS = new Set<string>([
-    'get_roblox_processes',
-    'launch_roblox',
-    'open_game',
-    'capture_roblox_screenshot',
-    'get_roblox_versions',
+    'list-roblox-processes',
+    'launch-roblox',
+    'open-roblox-game',
+    'take-screenshot',
+    'get-roblox-versions',
 ]);
 
 class McpHandler {
@@ -239,13 +239,13 @@ class McpHandler {
 
     private async _runServerTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
         switch (name) {
-            case 'get_roblox_processes':
+            case 'list-roblox-processes':
                 return { success: true, processes: this.proc.listRobloxProcesses(), count: this.sessions.activeCount };
 
-            case 'launch_roblox':
+            case 'launch-roblox':
                 return this.proc.launchRoblox((args.path as string) || null);
 
-            case 'open_game':
+            case 'open-roblox-game':
                 if (!args.place_id) return { success: false, error: "place_id is required" };
                 return this.proc.openGame(args.place_id as string | number, {
                     jobId: args.job_id as string | undefined,
@@ -257,7 +257,7 @@ class McpHandler {
                     experienceId: args.experience_id as string | undefined,
                 });
 
-            case 'capture_roblox_screenshot': {
+            case 'take-screenshot': {
                 const ssResult = await this.proc.performScreenshot(args.pid ? Number(args.pid) : undefined);
                 if (ssResult.error) return { success: false, error: ssResult.error };
                 if (ssResult.needsDisambiguation) {
@@ -266,7 +266,7 @@ class McpHandler {
                 return { success: true, image: `data:image/png;base64,${ssResult.imageBase64}`, pid: ssResult.pid ?? args.pid ?? null };
             }
 
-            case 'get_roblox_versions':
+            case 'get-roblox-versions':
                 return this._getRobloxVersions();
 
             default:

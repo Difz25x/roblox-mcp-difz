@@ -54,7 +54,7 @@ class ToolDefinitions {
         return [
 
             {
-                name: "disable_client_anticheat",
+                name: "disable-anticheat",
                 description: "Disables local client-side integrity mechanisms. Hooks Kick/Destroy to prevent the client from kicking itself, optionally disables local scripts matching known integrity validation patterns, blocks teleport-based kicks, and enables an anti-AFK loop.",
                 inputSchema: {
                     type: "object",
@@ -72,7 +72,7 @@ class ToolDefinitions {
 
 
             {
-                name: "recursive_tree_walker",
+                name: "walk-tree",
                 description: "Walks the Roblox instance tree recursively starting from a given root, returning instances that match the specified filters. Supports configurable maximum depth to prevent runaway traversal, class-name filtering (e.g. only 'Part' or 'Model'), and name-based filtering with wildcard or regex patterns. Results include the full hierarchy path for each matched instance and the total count of nodes visited.",
                 inputSchema: {
                     "type": "object",
@@ -135,7 +135,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "service_discoverer",
+                name: "get-services",
                 description: "Enumerates all Roblox engine services currently instantiated under the DataModel. Services are singleton instances that provide engine-level functionality (Workspace, Players, ReplicatedStorage, etc.). Returns each service's name, ClassName, and current status (loaded/not loaded). Optionally discovers children within each service to reveal the default structure of the game environment.",
                 inputSchema: {
                     "type": "object",
@@ -167,7 +167,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "class_instance_collector",
+                name: "get-instances-by-class",
                 description: "Collects every instance of a specified Roblox class (and optionally its subclasses) throughout the entire game or within a scoped root. This is the primary tool for finding all Parts, all Scripts, all LocalScripts, all Models, etc. in one operation. Returns the full path, ClassName, and a configurable set of property values for each matched instance.",
                 inputSchema: {
                     "type": "object",
@@ -218,7 +218,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "path_resolver",
+                name: "resolve-path",
                 description: "Resolves a dot-delimited or slash-delimited instance path string (like 'game.Workspace.Baseplate' or 'Players/Player1/Backpack') into a concrete instance reference. Handles both absolute paths starting from 'game', 'workspace', 'players', etc., and relative paths from a given base. Returns the resolved instance path, ClassName, and any ambiguity if multiple instances match the same name at any level.",
                 inputSchema: {
                     "type": "object",
@@ -250,7 +250,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "sibling_enumerator",
+                name: "get-siblings",
                 description: "Enumerates sibling instances around a given instance path within the same parent container. Useful for understanding the layout of objects at the same hierarchy level, such as all tools in a Toolbox folder, all enemies in an EnemySpawner, or all parts in a Model. Can return siblings before, after, or including the target instance, and optionally include index/order information.",
                 inputSchema: {
                     "type": "object",
@@ -294,7 +294,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "attribute_seeker",
+                name: "find-by-attribute",
                 description: "Searches the instance tree for instances that have specific attributes set (via Instance:SetAttribute). Attributes are custom key-value pairs that developers attach to instances for game logic. Supports matching by attribute name (exact or pattern), attribute value (with type-aware comparison), or the mere presence of an attribute regardless of value. Narrows search scope with a root path and class filter for performance.",
                 inputSchema: {
                     "type": "object",
@@ -353,7 +353,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "tag_collector",
+                name: "find-by-tag",
                 description: "Finds all instances that have been tagged with one or more CollectionService tags. CollectionService provides a lightweight tagging system for grouping arbitrary instances without modifying the hierarchy. Supports 'any' mode (instances matching at least one tag) and 'all' mode (instances matching every specified tag). Critical for understanding game systems that use tag-based discovery rather than hierarchy.",
                 inputSchema: {
                     "type": "object",
@@ -404,7 +404,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "child_watcher",
+                name: "get-children",
                 description: "Sets up monitoring on a specific instance to observe child additions, removals, and reorderings. Returns a snapshot of current children followed by a log of changes that occur within the observation window. This is the tool for understanding dynamic game behavior, such as detecting when new enemies spawn into a folder, when tools are added to a player's Backpack, or when parts are created/destroyed during gameplay.",
                 inputSchema: {
                     "type": "object",
@@ -454,7 +454,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "nil_realm_scanner",
+                name: "scan-nil-instances",
                 description: "Scans for instances that are parented to nil (i.e. not present in the active DataModel tree) but still referenced by scripts or other objects. This is critical for finding hidden, orphaned, or cached objects that game developers have temporarily removed from the tree or that leaked due to reference retention. Can also scan for objects directly parented to the DataModel's top level that may be intentionally hidden from normal traversal.",
                 inputSchema: {
                     "type": "object",
@@ -491,7 +491,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "property_value_seeker",
+                name: "find-by-property",
                 description: "Searches the instance tree for instances where a specific property has a given value. Supports exact match, numeric range match, and pattern match for string properties. For example, finding all Parts where 'Transparency' equals 0.5, all BaseParts where 'Material' equals 'Neon', or all instances where 'Visible' is false. Uses the scoped root and class filter to keep searches efficient on large games.",
                 inputSchema: {
                     "type": "object",
@@ -557,7 +557,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "spatial_proximity_scanner",
+                name: "scan-proximity",
                 description: "Finds instances within a specified 3D radius around a given world position. Only works on spatial instances (BasePart subclasses and Attachments that have a world-space position). Critical for security testing tasks like finding all parts near a player's character, detecting nearby pickups/collectibles, locating spawned enemies around a coordinate, or identifying teleport-pad triggers. Results can be sorted by distance and filtered by class.",
                 inputSchema: {
                     "type": "object",
@@ -626,7 +626,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "class_subtree_enumerator",
+                name: "get-instances-by-subclass",
                 description: "Enumerates all instances of a given Roblox Lua class AND all of its subclass types by walking the class inheritance tree. Unlike class_instance_collector which matches only the exact class, this tool includes every derived class. For example, enumerating 'Instance' returns every single object in the game, 'BasePart' returns Parts, MeshParts, WedgeParts, CornerWedgeParts, etc., and 'PVInstance' returns all Models and BaseParts. Accepts a scope root to limit search range.",
                 inputSchema: {
                     "type": "object",
@@ -679,7 +679,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "get_instance_from_path",
+                name: "get-instance",
                 description: "Resolve any arbitrary game path string and return its properties. Useful when you know the path to an object and want to inspect it without scanning the whole tree.",
                 inputSchema: {
                     "type": "object",
@@ -710,7 +710,7 @@ class ToolDefinitions {
 
 
             {
-                name: "property_bulk_reader",
+                name: "read-properties",
                 description: "Reads one or more named properties from any Roblox Instance in a single operation. Accepts an array of property names and returns a map of property names to their current values. Supports nested property paths using dot notation (e.g., 'Humanoid.WalkSpeed'). Optimized for batch reads to minimize round-trips and bypass Lua-level getter overhead when possible.",
                 inputSchema: {
                     "type": "object",
@@ -744,7 +744,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "property_deep_dive",
+                name: "inspect-property",
                 description: "Performs a deep inspection of a single property on a Roblox Instance, returning its current value alongside full metadata: Roblox data type, security context (Readable/Writable/NotReplicated status), replication flag, serialization group, and the property's default value. Additionally returns the resolved Lua type (CFrame, Vector3, BrickColor, EnumItem, etc.) when applicable. Useful for understanding property constraints before attempting to modify them.",
                 inputSchema: {
                     "type": "object",
@@ -780,7 +780,7 @@ class ToolDefinitions {
             
             
             {
-                name: "humanoid_state_extractor",
+                name: "get-humanoid-state",
                 description: "Extracts the complete detailed state of a Humanoid instance. Returns all key properties including Health, MaxHealth, WalkSpeed, JumpPower, JumpHeight, AutoJumpEnabled, AutoRotate, FloorMaterial, MoveDirection, RigType, HipHeight, NameOcclusion, DisplayDistanceType, HealthDisplayDistance, CameraOffset, SeatedPart, PlatformStand, UseJumpPower, BreakJointsOnDeath, MaxSlopeAngle, and StateType (as a human-readable string). Designed for ESP, player state overlays, and movement system analysis in compromised clients.",
                 inputSchema: {
                     "type": "object",
@@ -809,7 +809,7 @@ class ToolDefinitions {
             
             
             {
-                name: "class_blueprint_viewer",
+                name: "get-class-blueprint",
                 description: "Returns the complete reflection metadata for any Roblox Lua class as defined by the engine's internal ClassInfo registration. Output includes all Properties with their type, category, security, and replication flags; all Events with their parameter signatures; all Functions/Callbacks with their parameter types; and the class's superclass hierarchy. Supports both Instance classes (Part, Script, etc.) and enums/typedefs. Essential for understanding the full validation surface of a class when developing security tests.",
                 inputSchema: {
                     "type": "object",
@@ -843,7 +843,7 @@ class ToolDefinitions {
             
             
             {
-                name: "get_game_metadata",
+                name: "get-metadata",
                 description: "Retrieve PlaceId, UniverseId, GameId, JobId, Player count, Max players, Place name, Creator info, server time (tick), FPS, and memory stats of the current Roblox session. Returns everything in a single structured payload.",
                 inputSchema: {
                     "type": "object",
@@ -858,7 +858,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "get_local_player_data",
+                name: "get-local-player",
                 description: "Dump the LocalPlayer in depth: Backpack contents, Leaderstats, Character state, Humanoid details, active ScreenGuis, and player scripts. Gives a complete picture of the client-side player state.",
                 inputSchema: {
                     "type": "object",
@@ -898,7 +898,7 @@ class ToolDefinitions {
 
 
             {
-                name: "viewport_capture_handler",
+                name: "dump-gui",
                 description: "Captures the current game viewport as a screenshot using render-stepped injection for frame-accurate timing. Supports configurable image format, compression quality, and optional region cropping. Returns the screenshot as a base64-encoded PNG or JPEG image buffer for downstream processing or display.",
                 inputSchema: {
                     "type": "object",
@@ -957,7 +957,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "gui_hierarchy_dumper",
+                name: "dump-gui-hierarchy",
                 description: "Recursively dumps the full CoreGui layer tree including all descendant instances (ScreenGui, Frame, TextLabel, ImageLabel, TextButton, ScrollingFrame, etc.). Returns each node with its class name, instance name, absolute position, absolute size, visibility state, and a list of applied properties. Supports depth limiting, class filtering, and property whitelisting to reduce output verbosity.",
                 inputSchema: {
                     "type": "object",
@@ -1014,7 +1014,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "screen_text_extractor",
+                name: "extract-screen-text",
                 description: "Scans all visible GUI elements (TextLabel, TextButton, TextBox, TextButton, etc.) and extracts their rendered text content along with bounding box and styling information. Supports filtering by parent container, text content regex pattern matching, and deduplication. Returns the extracted text segments with screen coordinates for contextual understanding.",
                 inputSchema: {
                     "type": "object",
@@ -1060,7 +1060,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "gui_injector",
+                name: "inject-gui",
                 description: "Injects a custom ScreenGui, BillboardGui, or SurfaceGui into the game client with fully configurable properties. Supports setting size, position, background color, border, transparency, z-index behavior, and event bindings. Can optionally auto-destroy after a specified duration or on player death. Returns the instance identifier for subsequent manipulation or removal.",
                 inputSchema: {
                     "type": "object",
@@ -1113,7 +1113,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "esp_label_manager",
+                name: "manage-esp",
                 description: "Manages ESP (Extra Sensory Perception) overlay labels that attach to players, NPCs, or world objects. Supports creating, updating, and destroying billboard-style text overlays with configurable text, color, font size, transparency, and attachment offset. Labels track their target object position automatically each frame via RenderStepped. Returns an identifier for each created label for later modification.",
                 inputSchema: {
                     "type": "object",
@@ -1236,7 +1236,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "ui_change_watcher",
+                name: "watch-ui-changes",
                 description: "Initiates or stops real-time monitoring of GUI element changes within the game client. Detects and reports new child additions, property modifications (text, visibility, size, position, color), element removals, and z-order changes. Supports filtering by specific element paths, property names, or change types to reduce noise. Returns a stream of change events with timestamps and before-after snapshots.",
                 inputSchema: {
                     "type": "object",
@@ -1314,7 +1314,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "world_to_screen_converter",
+                name: "world-to-screen",
                 description: "Converts one or more 3D world-space coordinates (Vector3) into 2D screen-space pixel coordinates using the current camera's view-projection matrix. Handles off-screen detection: returns a boolean indicating whether the point is within the visible viewport. Supports batch conversion of multiple points in a single call for efficiency. Essential for drawing screen-aligned overlays, aim indicators, or distance markers on world objects.",
                 inputSchema: {
                     "type": "object",
@@ -1366,7 +1366,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "element_geometry_reader",
+                name: "get-geometry",
                 description: "Reads the geometric and visual properties of specific GUI elements identified by path, class name, or text content. Returns AbsolutePosition, AbsoluteSize, BackgroundColor3, BorderColor3, BorderSizePixel, Transparency, Rotation, ZIndex, Visible state, and ClipsDescendants. Can target a single element by full path or batch query multiple elements by class name. Returns pixel-accurate screen coordinates for click automation or overlay alignment.",
                 inputSchema: {
                     "type": "object",
@@ -1424,7 +1424,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "cursor_tracker",
+                name: "track-cursor",
                 description: "Monitors the user's mouse cursor state including absolute and GUI-relative screen position, Icon type, and mouse-button press state. Can operate in one-shot (immediate read) or continuous tracking mode (streaming updates). In continuous mode, reports cursor position deltas and click events with timestamps. Useful for implementing click automation, cursor-aware overlays, or recording user interaction patterns.",
                 inputSchema: {
                     "type": "object",
@@ -1481,7 +1481,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "notification_hider",
+                name: "hide-notifications",
                 description: "Detects, hides, or suppresses in-game UI notifications, popups, toast messages, and modal dialogs. Supports scanning for common notification patterns (by class name, text content, or parent path) and marking them as hidden, destroyed, or repositioned off-screen. Can automatically block newly spawned notifications that match filter criteria for a specified duration. Also supports restoring previously hidden notifications.",
                 inputSchema: {
                     "type": "object",
@@ -1539,7 +1539,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "camera_controller",
+                name: "control-camera",
                 description: "Provides programmatic control over the game camera including locking to a target, unlocking, orbiting around a point, zooming in/out, and setting custom CFrame or CameraType. Supports smooth transitions with configurable tween duration and easing style. Can lock the camera to follow a specific character part (Head, Torso, HumanoidRootPart) or world position. Also supports first-person toggling and field-of-view adjustments.",
                 inputSchema: {
                     "type": "object",
@@ -1706,7 +1706,7 @@ class ToolDefinitions {
 
 
             {
-                name: "mouse_move_absolute",
+                name: "move-mouse",
                 description: "Moves the mouse cursor to absolute screen coordinates (X, Y pixel position). Uses the primary monitor's coordinate system where (0,0) is the top-left corner. Supports optional smoothing and movement interpolation for more human-like cursor behavior.",
                 inputSchema: {
                     "type": "object",
@@ -1751,7 +1751,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "mouse_click_simulator",
+                name: "click-mouse",
                 description: "Simulates a full mouse button click (down followed by up) at the current cursor position. Supports LeftButton, RightButton, MiddleButton, and extended mouse buttons (XButton1, XButton2). Each click generates both a down event and an up event with a configurable inter-event delay.",
                 inputSchema: {
                     "type": "object",
@@ -1807,7 +1807,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "mouse_button_hold",
+                name: "hold-mouse-button",
                 description: "Simulates pressing and holding a mouse button down, or releasing a held button. Use this for drag-and-drop preparation, continuous selection, or any scenario requiring sustained button pressure. The hold persists until a corresponding release call or timeout.",
                 inputSchema: {
                     "type": "object",
@@ -1860,7 +1860,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "scroll_wheel_simulator",
+                name: "scroll-mouse",
                 description: "Simulates mouse scroll wheel input in both vertical and horizontal directions. Supports discrete tick increments for precise scrolling and continuous smooth scrolling for fluid page navigation. Can target a specific window region for focused scroll operations.",
                 inputSchema: {
                     "type": "object",
@@ -1904,7 +1904,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "key_press_emitter",
+                name: "press-key",
                 description: "Simulates pressing and releasing a single keyboard key identified by its KeyCode. Generates a key-down event followed by a key-up event with a configurable delay between them. Supports all standard keyboard keys including letters, numbers, function keys, modifiers, and navigation keys.",
                 inputSchema: {
                     "type": "object",
@@ -1935,7 +1935,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "key_hold_controller",
+                name: "hold-key",
                 description: "Holds a keyboard key down for a specified duration and then automatically releases it. Useful for continuous actions like walking forward (holding 'W') or charging abilities. Supports multiple simultaneous key holds with independent release tracking via a hold token.",
                 inputSchema: {
                     "type": "object",
@@ -1977,7 +1977,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "text_automated_typer",
+                name: "type-text",
                 description: "Types a string of text character-by-character with configurable per-character delay, simulating human keyboard input. Supports multi-line strings and special character handling. Can optionally press Enter after the text and randomize the typing speed profile for stealth purposes.",
                 inputSchema: {
                     "type": "object",
@@ -2020,7 +2020,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "macro_recorder",
+                name: "record-macro",
                 description: "Records a sequence of mouse and keyboard input events into a named macro for later replay. Captures event types, positions, timestamps, and relative delays between events. Supports filtering to record only specific event types and setting a maximum recording duration.",
                 inputSchema: {
                     "type": "object",
@@ -2069,7 +2069,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "macro_replayer",
+                name: "replay-macro",
                 description: "Replays a previously recorded macro sequence of mouse and keyboard events. Executes each captured event with the original timing and delays, optionally supporting speed adjustment and loop count. Can replay the macro synchronously (blocking) or asynchronously (fire-and-forget).",
                 inputSchema: {
                     "type": "object",
@@ -2124,7 +2124,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "character_motion_controller",
+                name: "move-character",
                 description: "Automates Roblox character movement by simulating directional key inputs (WASD) to navigate to specified world coordinates or waypoints. Supports sprint toggling, jump integration, and obstacle avoidance timing. Can queue multiple waypoints for path following.",
                 inputSchema: {
                     "type": "object",
@@ -2208,7 +2208,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "touch_input_simulator",
+                name: "simulate-touch",
                 description: "Simulates touch input events on Roblox ScreenGuis and 3D surfaces. Supports single-touch gestures including tap, long-press, swipe, and pinch. Uses normalized screen coordinates (0.0-1.0) matching Roblox's UDim2 scale system for device-independent positioning.",
                 inputSchema: {
                     "type": "object",
@@ -2279,7 +2279,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "ui_element_clicker",
+                name: "click-ui-element",
                 description: "Clicks at the absolute screen position of a specific GUI element by name or path identifier. Uses Roblox's GUI hierarchy to resolve element positions and dimensions before performing the click. Supports absolute offset adjustment for clicking sub-elements within larger containers.",
                 inputSchema: {
                     "type": "object",
@@ -2345,7 +2345,7 @@ class ToolDefinitions {
 
 
             {
-                name: "property_mutator_generic",
+                name: "set-properties",
                 description: "Set any writable property on any game instance resolved by path or reference. Accepts a map of property names to values supporting strings, numbers, booleans, Color3, Vector3, CFrame, UDim2, and other Roblox types via serialized notation. Validates that the target instance exists and that the property is writable before applying changes. Returns the previous values of all modified properties for easy rollback.",
                 inputSchema: {
                     "type": "object",
@@ -2380,7 +2380,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "instance_factory",
+                name: "create-instance",
                 description: "Create a new Instance of any Roblox class and optionally parent it into the game tree. Supports all class types from BasePart and BillboardGui to ScreenGui, Tool, and custom classes. Allows setting initial properties atomically at creation time. Returns the full path and ClassName of the created instance for subsequent reference.",
                 inputSchema: {
                     "type": "object",
@@ -2428,7 +2428,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "instance_terminator",
+                name: "destroy-instance",
                 description: "Destroy or remove one or more game instances from the instance hierarchy. Supports single destruction by path, bulk destruction by class filter within a container, or targeted removal of specific children. Optionally moves instances to nil instead of destroying them, allowing later recovery. Returns a confirmation of what was destroyed and the count of affected instances.",
                 inputSchema: {
                     "type": "object",
@@ -2497,7 +2497,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "instance_duplicator",
+                name: "clone-instance",
                 description: "Clone or deep-copy one or more instances in the game tree. Supports duplicating to a new parent, offsetting the clone's position (for BaseParts), renaming the copy, and optionally cloning descendant trees. Uses Roblox's built-in Clone() method for reliability. Returns the path of each newly created clone.",
                 inputSchema: {
                     "type": "object",
@@ -2569,7 +2569,7 @@ class ToolDefinitions {
             
             
             {
-                name: "chat_system_controller",
+                name: "send-chat",
                 description: "Control chat system properties including DefaultChat properties, bubble chat, chat window visibility, message filtering bypass, and ChatService configuration. Can disable chat filters, force message colors, set chat window scale, hide or show the chat UI, broadcast fake system messages, and modify BubbleChat settings. Returns current chat configuration.",
                 inputSchema: {
                     "type": "object",
@@ -2648,7 +2648,7 @@ class ToolDefinitions {
             
             
             {
-                name: "modify_local_property",
+                name: "modify-local-player",
                 description: "Instantly modify LocalPlayer or Character properties. Supports WalkSpeed, JumpPower, HipHeight, Health, MaxHealth, Noclip (walk through walls), InfiniteJump, and Workspace Gravity. Optionally revert after N seconds.",
                 inputSchema: {
                     "type": "object",
@@ -2674,7 +2674,7 @@ class ToolDefinitions {
 
 
             {
-                name: "script_source_ripper",
+                name: "get-script-source",
                 description: "Extracts the raw source code of any Roblox script object (Script, ModuleScript, LocalScript) at runtime by reading the compiled bytecode and decompiling it back to human-readable Luau source. This tool circumvents the 'Source is not available' restriction by leveraging internal VM methods such as debug.info and decompilation of loaded closure prototypes. Handles both scripts embedded in instances and scripts loaded into the Lua VM module cache. Returns the full source as a string along with metadata including the script container path, identity level, and whether the source was reconstructed from bytecode or read directly.",
                 inputSchema: {
                     "type": "object",
@@ -2716,7 +2716,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "function_interceptor_installer",
+                name: "hook-function",
                 description: "Installs a hook on any global Luau function or Instance method by overwriting its closure pointer or detouring the function's entry point in the VM. Supports pre-hooks (execute before the original), post-hooks (execute after the original), and replace-hooks (execute instead of the original). The hook callback can inspect arguments, modify return values, or conditionally call the original function. Provides automatic stack unwinding protection and identity-level spoofing to avoid detection by tamper-evident checks.",
                 inputSchema: {
                     "type": "object",
@@ -2770,7 +2770,7 @@ class ToolDefinitions {
             
             
             {
-                name: "metatable_seer",
+                name: "inspect-metatable",
                 description: "Inspects the metatable of any Roblox Instance, Lua table, or userdata object, revealing all metamethods including hidden or dynamically assigned ones. Displays each metamethod's key, value type, and a preview of its contents if it is a function. Can recursively walk metatable chains to expose inherited metamethods from parent metatables. Also detects common security patterns such as locked metatables, protected __namecall handlers, and metatable tunneling through the registry.",
                 inputSchema: {
                     "type": "object",
@@ -2816,7 +2816,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "metatable_modifier",
+                name: "modify-metatable",
                 description: "Sets, replaces, or removes specific metamethods on any object's metatable, including __index, __newindex, __call, __namecall, __tostring, __gc, and custom metamethods. Can create a new metatable on objects that do not have one, or modify an existing metatable. Includes protection override capabilities for locked metatables. Validates that the new metamethod is callable and logs any modifications for traceability. Supports atomic batch operations to set multiple metamethods in a single transaction.",
                 inputSchema: {
                     "type": "object",
@@ -2898,7 +2898,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "registry_scanner",
+                name: "scan-registry",
                 description: "Scans the Lua registry table (LUA_REGISTRYINDEX) for all stored values, including hidden and protected entries that are not normally visible through standard Luau APIs. Identifies internal Roblox entries such as the module cache, shared table storage, identity-to-actor mappings, loaded library handles, and custom userdata references. Returns a structured listing of registry keys with their value types, approximate sizes, and memory addresses. Can filter by key pattern, value type, or expected category to narrow results from the typically thousands of registry entries.",
                 inputSchema: {
                     "type": "object",
@@ -2950,7 +2950,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "debug_info_extractor",
+                name: "get-debug-info",
                 description: "Extracts comprehensive debug information from any loaded Luau function, including its source name, line numbers, upvalue names and current values, constant table entries, prototype hierarchy, and local variable liveness ranges. Uses Luau's internal debug library at the C level to access information not exposed through the sandboxed debug library. Can trace the function's origin module, its identity level, and whether it was compiled from source or constructed dynamically. Returns structured data suitable for both human inspection and programmatic analysis.",
                 inputSchema: {
                     "type": "object",
@@ -3001,7 +3001,7 @@ class ToolDefinitions {
             
             
             {
-                name: "luau_code_executor",
+                name: "execute-script",
                 description: "Executes arbitrary Luau source code in the target Roblox process with full read and write access to the global environment, registry, and DataModel. Supports configurable identity levels to control which API restrictions apply during execution, with higher identities elevating execution context. The executed code runs synchronously by default but can be scheduled asynchronously on a separate Lua thread. All standard Luau libraries are available including debug, io (if accessible), andOS-level calls depending on the identity level. Returns any values returned by the executed code, or an error message if execution fails. You can provide a `url` to fetch and execute code remotely.",
                 inputSchema: {
                     "type": "object",
@@ -3066,7 +3066,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "closure_inspector",
+                name: "inspect-closure",
                 description: "Dumps the complete internal structure of any Luau closure including its prototype tree, constants table, upvalue descriptors, debug name, line number mapping, and nested inner closures. Provides a full structural breakdown useful for understanding obfuscated or minified code without executing it. Can recursively traverse nested prototype hierarchies to reveal the complete closure tree. Reports the identity level associated with the closure, its source chunk name, and its compiled bytecode size. The output is structured as a hierarchical JSON document representing the closure's full prototype graph.",
                 inputSchema: {
                     "type": "object",
@@ -3119,7 +3119,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "sandbox_analyzer",
+                name: "analyze-sandbox",
                 description: "Analyzes the current Luau execution environment for sandbox restrictions, identity level, and security protections. Tests which APIs and globals are accessible, identifies which functions have been hooked or proxied, detects metatable locks, and checks for common tamper-evident measures such as __namecall filtering, function identity checks, and bytecode integrity verification. Produces a comprehensive sandbox profile including the current identity level, a list of blocked or restricted globals/API methods, detected hooks in core library functions, accessible debug capabilities, and recommended execution expansion vectors. Returns structured data suitable for planning further testing steps.",
                 inputSchema: {
                     "type": "object",
@@ -3168,7 +3168,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "get_loaded_modules",
+                name: "get-loaded-modules",
                 description: "List every ModuleScript currently loaded in the Lua registry. When include_source is true, attempts to read the compiled source (decompiled if the executor supports it). Critical for reverse-engineering the game internal logic.",
                 inputSchema: {
                     "type": "object",
@@ -3192,7 +3192,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "dump_constants_and_upvalues",
+                name: "get-constants-upvalues",
                 description: "Inspect a loaded function or module for its constants (strings, numbers) and upvalues (closed-over variables). Invaluable for reverse-engineering encrypted or obfuscated game logic without reading the full source.",
                 inputSchema: {
                     "type": "object",
@@ -3218,7 +3218,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "check_unc_capabilities",
+                name: "check-unc",
                 description: "Test which UNC functions are available in the executor and return the capability report. Useful for debugging why certain tools fail — the executor may not support all required UNC functions.",
                 inputSchema: {
                     "type": "object",
@@ -3232,7 +3232,7 @@ class ToolDefinitions {
 
 
             {
-                name: "remote_event_trigger",
+                name: "fire-remote",
                 description: "Fires a RemoteEvent from the client to the server using the FireServer/InvokeServer equivalent mechanism. Accepts the target remote's full path or Instance and a variable-length list of arguments to pass. Supports passing primitive types, strings, tables, CFrames, Vector3, Color3, Ray, EnumItems, and nested data structures. Automatically coerces Lua-safe values. This is the core execution primitive for triggering server-side logic from the client.",
                 inputSchema: {
                     "type": "object",
@@ -3260,7 +3260,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "remote_connection_inspector",
+                name: "inspect-remote-connections",
                 description: "Inspects all active connections, handlers, and listeners attached to a specific RemoteEvent or RemoteFunction instance. Returns the count of connected handlers, each handler's associated Lua function signature (if readable), the owning script path, and whether the connection is currently connected. This is essential for understanding what server-side or client-side logic will execute when a remote is triggered, enabling precise targeting of reverse-engineering efforts.",
                 inputSchema: {
                     "type": "object",
@@ -3288,7 +3288,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "traffic_interceptor_installer",
+                name: "install-remote-spy",
                 description: "Injects a hook into the metatable of RemoteEvent.FireServer and RemoteFunction.InvokeServer to intercept ALL outgoing remote traffic. Every call to FireServer or InvokeServer is logged with the remote path, serialized arguments, timestamp, and a unique call ID. The hook can optionally pause execution (block the call) or modify arguments before forwarding. Returns a session ID that must be used to manage or remove the hook later. This is the central surveillance tool for reverse-engineering network protocols.",
                 inputSchema: {
                     "type": "object",
@@ -3322,7 +3322,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "remote_blocker_installer",
+                name: "block-remote",
                 description: "Blocks one or more specific RemoteEvent or RemoteFunction instances from sending data to the server by short-circuiting their FireServer/InvokeServer calls. When blocked, the call returns immediately without error but no network packet is dispatched. Unblocked remotes continue functioning normally. This is used to selectively disable specific game features (anticheat checks, telemetry, analytics) without affecting other network functionality.",
                 inputSchema: {
                     "type": "object",
@@ -3359,7 +3359,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "remote_killswitch_toggler",
+                name: "toggle-remote-killswitch",
                 description: "A global killswitch that blocks ALL RemoteEvent.FireServer and RemoteFunction.InvokeServer calls across the entire client session. When enabled, no client-to-server network traffic is sent regardless of which remote is called or what script triggers it. When disabled, normal traffic flow resumes. This is the emergency override for testing, preventing telemetry leaks, or isolating network behavior. Returns the new state of the killswitch.",
                 inputSchema: {
                     "type": "object",
@@ -3390,7 +3390,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "argument_spoofer",
+                name: "spoof-remote-args",
                 description: "Installs a packet modification middleware that intercepts outgoing arguments for specified remotes and applies user-defined transformations before the data reaches the server. Supports transforming individual arguments by index, replacing entire argument tables, applying Lua functions, or injecting/deleting arguments. Transformations can be static (always replace with fixed values) or dynamic (based on context such as call count or time). This is the primary tool for testing game state validation by sending manipulated state to the server.",
                 inputSchema: {
                     "type": "object",
@@ -3460,7 +3460,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "traffic_filter_setter",
+                name: "set-remote-filter",
                 description: "Configures a global or per-remote filter that controls which remote calls are monitored, logged, or visible in the interception buffer. This tool works in conjunction with the traffic_interceptor_installer to reduce noise from high-frequency remotes (e.g., character movement, physics heartbeats) and focus on specific remotes of interest. Supports include lists (only these remotes), exclude lists (skip these remotes), and pattern-based matching using wildcards. Filter changes take effect immediately for all subsequent intercepted calls.",
                 inputSchema: {
                     "type": "object",
@@ -3506,7 +3506,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "replication_filter_checker",
+                name: "check-replication",
                 description: "Queries and analyzes the server's ReplicationFilter data to understand what objects, properties, and instances the server is replicating to the client. The ReplicationFilter controls which game data is sent over the network from server to client. Analyzing it reveals what the server intentionally hides (e.g., map boundaries, hidden NPC positions, secret doors) and what it deems irrelevant. Returns a structured breakdown of filtered classes, properties, and exclusions currently active in the replication stream.",
                 inputSchema: {
                     "type": "object",
@@ -3536,7 +3536,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "spy_remote_traffic",
+                name: "spy-remotes",
                 description: "Master tool for network traffic interception, blocking, and argument spoofing. Hooks FireServer/InvokeServer on RemoteEvent/RemoteFunction instances via __namecall metatable hook.",
                 inputSchema: {
                     "type": "object",
@@ -3601,7 +3601,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "get_network_ownership",
+                name: "get-network-ownership",
                 description: "Analyze network ownership of BasePart instances in Workspace. Returns which parts the client owns (can physics-lag exploit), which are server-owned, and which are unowned. Useful for physics authority testing.",
                 inputSchema: {
                     "type": "object",
@@ -3625,7 +3625,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "teleport_to_target",
+                name: "teleport-player",
                 description: "Instant CFrame teleportation. Supports teleporting to absolute coordinates, a named player position, a specific workspace instance by name, or the current mouse/target position. Uses CFrame manipulation so it avoids basic coordinate validation.",
                 inputSchema: {
                     "type": "object",
@@ -3684,7 +3684,7 @@ class ToolDefinitions {
                 },
             },
             {
-                name: "interact_all_proximity_prompts",
+                name: "interact-prompts",
                 description: "Trigger every ProximityPrompt within range instantly, ignoring HoldDuration and Cooldown. Useful for auto-farming interactions (pickups, doors, NPCs) or testing prompt-based mechanics.",
                 inputSchema: {
                     "type": "object",
@@ -3714,7 +3714,7 @@ class ToolDefinitions {
 
 
             {
-                name: "gui_button_clicker",
+                name: "click-button",
                 description: "Fires click signals on a GUI button using UNC firesignal. Sends Activated, MouseButton1Down, MouseButton2Down, MouseButton1Click, and MouseButton2Click signals. Requires firesignal UNC support.",
                 inputSchema: {
                     "type": "object",
@@ -3725,7 +3725,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "script_decompiler",
+                name: "decompile-script",
                 description: "Decompiles a Script, ModuleScript, or LocalScript using the decompile chain (LuaExpert to Medal to Konstant). Falls back through multiple decompile services.",
                 inputSchema: {
                     "type": "object",
@@ -3736,7 +3736,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "fire_click_detector",
+                name: "fire-click-detector",
                 description: "Fires a ClickDetector on the target instance using UNC fireclickdetector. Useful for interacting with clickable objects without physically clicking them.",
                 inputSchema: {
                     "type": "object",
@@ -3747,7 +3747,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "fire_proximity_prompt",
+                name: "fire-proximity-prompt",
                 description: "Fires a ProximityPrompt on the target instance using UNC fireproximityprompt. Triggers it instantly, ignoring HoldDuration and range checks.",
                 inputSchema: {
                     "type": "object",
@@ -3758,7 +3758,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "hidden_property_reader",
+                name: "get-hidden-property",
                 description: "Reads a hidden non-scriptable property from an instance using UNC gethiddenproperty. Accesses properties normally hidden from Lua scripts.",
                 inputSchema: {
                     "type": "object",
@@ -3770,7 +3770,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "hidden_property_writer",
+                name: "set-hidden-property",
                 description: "Writes a value to a hidden non-scriptable property on an instance using UNC sethiddenproperty.",
                 inputSchema: {
                     "type": "object",
@@ -3783,7 +3783,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "property_scriptable_toggler",
+                name: "set-scriptable",
                 description: "Makes a non-scriptable property readable and writable from Lua using UNC setscriptable.",
                 inputSchema: {
                     "type": "object",
@@ -3801,7 +3801,7 @@ class ToolDefinitions {
 
             
             {
-                name: "closure_type_checker",
+                name: "check-closure-type",
                 description: "Checks the type of a Lua closure using UNC iscclosure, islclosure, and isexecutorclosure. Returns whether a function is a C closure (engine), Lua closure (script), or executor closure (injected). Also reports checkcaller status to determine if the current code is executing in the executor's context.",
                 inputSchema: {
                     "type": "object",
@@ -3818,7 +3818,7 @@ class ToolDefinitions {
 
 
             {
-                name: "gc_scanner",
+                name: "scan-gc",
                 description: "Scans the Lua garbage collector table using UNC getgc. Returns all objects in the GC filtered by type (function, table, thread, userdata). Can search for specific function names or table patterns. Use this to find hidden functions, detect anomalies, or discover undocumented APIs.",
                 inputSchema: {
                     "type": "object",
@@ -3831,7 +3831,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "roblox_environment_viewer",
+                name: "get-roblox-env",
                 description: "Reads values from the global Roblox environment (getrenv) and the executor environment (getgenv). Compares the two to find injected functions, overridden globals, or security wrappers. Returns a diff of custom globals added by the executor.",
                 inputSchema: {
                     "type": "object",
@@ -3842,7 +3842,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "script_environment_dumper",
+                name: "get-script-env",
                 description: "Dumps a script's local environment using UNC getsenv. For a given Script or ModuleScript, returns all local variables, functions, and values defined in its scope. Useful for reverse engineering what data a script holds at runtime.",
                 inputSchema: {
                     "type": "object",
@@ -3859,7 +3859,7 @@ class ToolDefinitions {
 
 
             {
-                name: "file_reader",
+                name: "read-file",
                 description: "Reads a file from the executor's filesystem using UNC readfile. The base path is the executor's working directory. Returns the file contents as a string. Supports text files and base64-encoded binary data.",
                 inputSchema: {
                     "type": "object",
@@ -3870,7 +3870,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "file_writer",
+                name: "write-file",
                 description: "Writes content to a file in the executor's filesystem using UNC writefile. Creates the file if it does not exist, overwrites if it does. The base path is the executor's working directory.",
                 inputSchema: {
                     "type": "object",
@@ -3882,7 +3882,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "file_deleter",
+                name: "delete-file",
                 description: "Deletes a file from the executor's filesystem using UNC delfile. Also supports recursive folder deletion via delfolder. Confirms the file existed before deletion.",
                 inputSchema: {
                     "type": "object",
@@ -3894,7 +3894,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "file_lister",
+                name: "list-files",
                 description: "Lists files and folders in a directory using UNC listfiles. Returns all entries in the specified directory with their names, sizes, and whether they are files or folders.",
                 inputSchema: {
                     "type": "object",
@@ -3905,7 +3905,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "folder_creator",
+                name: "create-folder",
                 description: "Creates a folder in the executor's filesystem using UNC makefolder. Creates parent directories if they do not exist. Returns success status.",
                 inputSchema: {
                     "type": "object",
@@ -3916,7 +3916,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "custom_asset_loader",
+                name: "load-custom-asset",
                 description: "Loads a file as a Roblox custom asset using UNC getcustomasset. Returns a rbxasset:// URL that can be used anywhere Roblox accepts asset IDs. Useful for loading custom images, sounds, or meshes from the executor's filesystem.",
                 inputSchema: {
                     "type": "object",
@@ -3933,7 +3933,7 @@ class ToolDefinitions {
 
 
             {
-                name: "running_scripts_lister",
+                name: "get-running-scripts",
                 description: "Lists all currently running Lua scripts in the game using UNC getrunningscripts. Returns each script's name, class, path, thread ID, and execution status. Different from get_loaded_modules which returns ModuleScripts — this returns actively executing scripts.",
                 inputSchema: {
                     "type": "object",
@@ -3945,7 +3945,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "calling_script_finder",
+                name: "get-calling-script",
                 description: "Returns the script that called the current execution context using UNC getcallingscript. Useful for understanding the call stack, detecting which script triggered an action, or tracing execution flow.",
                 inputSchema: {
                     "type": "object",
@@ -3955,7 +3955,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "script_closure_getter",
+                name: "get-script-closure",
                 description: "Gets the main closure/function of a script using UNC getscriptclosure. Returns a reference to the script's main function that can be inspected with other debug tools. Also returns debug info about the closure.",
                 inputSchema: {
                     "type": "object",
@@ -3967,7 +3967,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "script_hash_calculator",
+                name: "get-script-hash",
                 description: "Computes the hash of a script's bytecode or source using UNC getscripthash. Useful for identifying scripts across sessions, detecting script modifications, or verifying script integrity.",
                 inputSchema: {
                     "type": "object",
@@ -3983,7 +3983,7 @@ class ToolDefinitions {
 
 
             {
-                name: "raw_metatable_setter",
+                name: "set-raw-metatable",
                 description: "Sets a raw metatable on a table or instance using UNC setrawmetatable, bypassing the __metatable field. Can wrap objects with custom __index, __newindex, __call, and other metamethods for interception and monitoring.",
                 inputSchema: {
                     "type": "object",
@@ -3995,7 +3995,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "readonly_toggler",
+                name: "toggle-readonly",
                 description: "Toggles the readonly state of a table using UNC setreadonly/isreadonly. Can make read-only tables writable or lock tables from further modification. Returns the previous readonly state.",
                 inputSchema: {
                     "type": "object",
@@ -4011,7 +4011,7 @@ class ToolDefinitions {
 
 
             {
-                name: "instance_comparer",
+                name: "compare-instances",
                 description: "Compares two Roblox instances for equality using UNC compareinstances. Handles cases where instances may have been cloned or have different references to the same object. Returns whether they refer to the same underlying instance.",
                 inputSchema: {
                     "type": "object",
@@ -4024,7 +4024,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "signal_replicator",
+                name: "fire-signal",
                 description: "Replicates a signal/event across the Roblox network using UNC replicatesignal. Can trigger remote events as if they came from the server. Use with caution — this can simulate server responses on the client.",
                 inputSchema: {
                     "type": "object",
@@ -4042,7 +4042,7 @@ class ToolDefinitions {
 
 
             {
-                name: "get_roblox_processes",
+                name: "list-roblox-processes",
                 description: "List all running RobloxPlayerBeta processes on this machine. Returns PID, process name, window title, and memory usage for each detected process. Use the PID with other tools to target a specific Roblox instance. Also returns the number of active executor sessions currently connected to this server.",
                 inputSchema: {
                     "type": "object",
@@ -4057,7 +4057,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "launch_roblox",
+                name: "launch-roblox",
                 description: "Launch the Roblox client application. If a custom path to RobloxPlayerLauncher.exe is provided, uses that; otherwise auto-discovers the installation from Windows Registry or common install paths. Returns the PID of the launched process and the path used. Errors with 'Roblox not found' if not installed.",
                 inputSchema: {
                     "type": "object",
@@ -4071,7 +4071,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "open_game",
+                name: "open-roblox-game",
                 description: "Open a Roblox game via roblox-player protocol. Requires a PlaceId. Supports joining via job ID, private server link code, or standard join URL. Constructs full launch URL with auth, tracker, locale params.",
                 inputSchema: {
                     "type": "object",
@@ -4092,7 +4092,7 @@ class ToolDefinitions {
                 }
             },
             {
-                name: "capture_roblox_screenshot",
+                name: "take-screenshot",
                 description: "Capture a screenshot of a Roblox process window on Windows. Uses PowerShell with Win32 PrintWindow by PID. If no PID provided, captures the first RobloxPlayerBeta process. Returns base64-encoded PNG data URL.",
                 inputSchema: {
                     "type": "object",
@@ -4104,7 +4104,7 @@ class ToolDefinitions {
             },
             
             {
-                name: "get_roblox_versions",
+                name: "get-roblox-versions",
                 description: "List installed Roblox versions on this machine. Scans Versions directory in Program Files and LocalAppData. Returns version string, whether launcher and player exes exist.",
                 inputSchema: {
                     "type": "object",
