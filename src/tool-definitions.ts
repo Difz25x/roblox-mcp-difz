@@ -741,7 +741,6 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
             {
                 name: "get-instance",
                 description: "Retrieve details and properties of an object using its path.",
@@ -768,11 +767,6 @@ class ToolDefinitions {
                     ]
                 },
             },
-
-
-
-
-
             {
                 name: "read-properties",
                 description: "Extract and read multiple properties from an object simultaneously.",
@@ -840,9 +834,9 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
-            
-            
+
+
+
             {
                 name: "get-humanoid-state",
                 description: "Retrieve crucial info from a Humanoid (HP, Speed, JumpPower, State).",
@@ -870,8 +864,8 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
-            
+
+
             {
                 name: "get-class-blueprint",
                 description: "Returns the complete reflection metadata for any Roblox Lua class as defined by the engine's internal ClassInfo registration. Output includes all Properties with their type, category, security, and replication flags; all Events with their parameter signatures; all Functions/Callbacks with their parameter types; and the class's superclass hierarchy. Supports both Instance classes (Part, Script, etc.) and enums/typedefs. Essential for understanding the full validation surface of a class when developing security tests.",
@@ -904,8 +898,6 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
-            
             {
                 name: "get-metadata",
                 description: "Retrieve PlaceId, UniverseId, GameId, JobId, Player count, Max players, Place name, Creator info, server time (tick), FPS, and memory stats of the current Roblox session. Returns everything in a single structured payload.",
@@ -956,11 +948,6 @@ class ToolDefinitions {
                     "required": []
                 },
             },
-
-
-
-
-
             {
                 name: "dump-gui",
                 description: "Captures the current game viewport as a screenshot using render-stepped injection for frame-accurate timing. Supports configurable image format, compression quality, and optional region cropping. Returns the screenshot as a base64-encoded PNG or JPEG image buffer for downstream processing or display.",
@@ -1376,7 +1363,6 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
             {
                 name: "world-to-screen",
                 description: "Converts one or more 3D world-space coordinates (Vector3) into 2D screen-space pixel coordinates using the current camera's view-projection matrix. Handles off-screen detection: returns a boolean indicating whether the point is within the visible viewport. Supports batch conversion of multiple points in a single call for efficiency. Essential for drawing screen-aligned overlays, aim indicators, or distance markers on world objects.",
@@ -1760,10 +1746,10 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
-            
-            
-            
+
+
+
+
 
 
 
@@ -1922,7 +1908,7 @@ class ToolDefinitions {
                     "additionalProperties": false
                 },
             },
-            
+
             {
                 name: "scroll-mouse",
                 description: "Simulates mouse scroll wheel input in both vertical and horizontal directions. Supports discrete tick increments for precise scrolling and continuous smooth scrolling for fluid page navigation. Can target a specific window region for focused scroll operations.",
@@ -2402,7 +2388,7 @@ class ToolDefinitions {
                     "additionalProperties": false
                 },
             },
-            
+
 
 
 
@@ -2624,14 +2610,14 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
-            
-            
-            
-            
-            
-            
-            
+
+
+
+
+
+
+
+
             {
                 name: "send-chat",
                 description: "Control chat system properties including DefaultChat properties, bubble chat, chat window visibility, message filtering bypass, and ChatService configuration. Can disable chat filters, force message colors, set chat window scale, hide or show the chat UI, broadcast fake system messages, and modify BubbleChat settings. Returns current chat configuration.",
@@ -2709,8 +2695,8 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
-            
+
+
             {
                 name: "modify-local-player",
                 description: "Instantly modify LocalPlayer or Character properties. Supports WalkSpeed, JumpPower, HipHeight, Health, MaxHealth, Noclip (walk through walls), InfiniteJump, and Workspace Gravity. Optionally revert after N seconds.",
@@ -2831,8 +2817,8 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
-            
+
+
             {
                 name: "inspect-metatable",
                 description: "Inspects the metatable of any Roblox Instance, Lua table, or userdata object, revealing all metamethods including hidden or dynamically assigned ones. Displays each metamethod's key, value type, and a preview of its contents if it is a function. Can recursively walk metatable chains to expose inherited metamethods from parent metatables. Also detects common security patterns such as locked metatables, protected __namecall handlers, and metatable tunneling through the registry.",
@@ -3062,8 +3048,8 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
-            
+
+
             {
                 name: "execute-script",
                 description: "Executes arbitrary Luau source code in the target Roblox process with full read and write access to the global environment, registry, and DataModel. Supports configurable identity levels to control which API restrictions apply during execution, with higher identities elevating execution context. The executed code runs synchronously by default but can be scheduled asynchronously on a separate Lua thread. All standard Luau libraries are available including debug, io (if accessible), andOS-level calls depending on the identity level. Returns any values returned by the executed code, or an error message if execution fails. You can provide a `url` to fetch and execute code remotely.",
@@ -3128,7 +3114,7 @@ class ToolDefinitions {
                     ]
                 },
             },
-            
+
             {
                 name: "inspect-closure",
                 description: "Dumps the complete internal structure of any Luau closure including its prototype tree, constants table, upvalue descriptors, debug name, line number mapping, and nested inner closures. Provides a full structural breakdown useful for understanding obfuscated or minified code without executing it. Can recursively traverse nested prototype hierarchies to reveal the complete closure tree. Reports the identity level associated with the closure, its source chunk name, and its compiled bytecode size. The output is structured as a hierarchical JSON document representing the closure's full prototype graph.",
@@ -3350,7 +3336,7 @@ class ToolDefinitions {
                     "additionalProperties": false
                 },
             },
-            
+
             {
                 name: "install-remote-spy",
                 description: "Injects a hook into the metatable of RemoteEvent.FireServer and RemoteFunction.InvokeServer to intercept ALL outgoing remote traffic. Every call to FireServer or InvokeServer is logged with the remote path, serialized arguments, timestamp, and a unique call ID. The hook can optionally pause execution (block the call) or modify arguments before forwarding. Returns a session ID that must be used to manage or remove the hook later. This is the central surveillance tool for reverse-engineering network protocols.",
@@ -3384,7 +3370,7 @@ class ToolDefinitions {
                     "additionalProperties": false
                 },
             },
-            
+
             {
                 name: "block-remote",
                 description: "Blocks one or more specific RemoteEvent or RemoteFunction instances from sending data to the server by short-circuiting their FireServer/InvokeServer calls. When blocked, the call returns immediately without error but no network packet is dispatched. Unblocked remotes continue functioning normally. This is used to selectively disable specific game features (anticheat checks, telemetry, analytics) without affecting other network functionality.",
@@ -3522,7 +3508,7 @@ class ToolDefinitions {
                     "additionalProperties": false
                 },
             },
-            
+
             {
                 name: "set-remote-filter",
                 description: "Configures a global or per-remote filter that controls which remote calls are monitored, logged, or visible in the interception buffer. This tool works in conjunction with the traffic_interceptor_installer to reduce noise from high-frequency remotes (e.g., character movement, physics heartbeats) and focus on specific remotes of interest. Supports include lists (only these remotes), exclude lists (skip these remotes), and pattern-based matching using wildcards. Filter changes take effect immediately for all subsequent intercepted calls.",
@@ -3568,7 +3554,7 @@ class ToolDefinitions {
                     "additionalProperties": false
                 },
             },
-            
+
             {
                 name: "check-replication",
                 description: "Queries and analyzes the server's ReplicationFilter data to understand what objects, properties, and instances the server is replicating to the client. The ReplicationFilter controls which game data is sent over the network from server to client. Analyzing it reveals what the server intentionally hides (e.g., map boundaries, hidden NPC positions, secret doors) and what it deems irrelevant. Returns a structured breakdown of filtered classes, properties, and exclusions currently active in the replication stream.",
@@ -3863,7 +3849,7 @@ class ToolDefinitions {
 
 
 
-            
+
             {
                 name: "check-closure-type",
                 description: "Checks the type of a Lua closure using UNC iscclosure, islclosure, and isexecutorclosure. Returns whether a function is a C closure (engine), Lua closure (script), or executor closure (injected). Also reports checkcaller status to determine if the current code is executing in the executor's context.",
@@ -3893,7 +3879,7 @@ class ToolDefinitions {
                     }
                 }
             },
-            
+
             {
                 name: "get-roblox-env",
                 description: "Reads values from the global Roblox environment (getrenv) and the executor environment (getgenv). Compares the two to find injected functions, overridden globals, or security wrappers. Returns a diff of custom globals added by the executor.",
@@ -4166,7 +4152,7 @@ class ToolDefinitions {
                     "required": []
                 }
             },
-            
+
             {
                 name: "get-roblox-versions",
                 description: "List installed Roblox versions on this machine. Scans Versions directory in Program Files and LocalAppData. Returns version string, whether launcher and player exes exist.",
