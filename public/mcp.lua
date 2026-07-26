@@ -44,56 +44,117 @@ pcall(function()
 	LocalPlayer = Players.LocalPlayer
 end)
 local getnilinstances = getnilinstances or function()
-	return {}
+	error("Unsupported with this Executor: getnilinstances is not supported.")
 end
-local fireclickdetector = fireclickdetector or function() end
-local fireproximityprompt = fireproximityprompt or function() end
-local firesignal = firesignal or function(s)
-	pcall(function()
-		s:Fire()
-	end)
-end
-local getconnections = getconnections
-	or function(i)
-		local o, r = pcall(function()
-			return i:GetConnections()
-		end)
-		return o and r or {}
+
+local fireclickdetector = fireclickdetector or function(detector)
+	if typeof(detector) == "Instance" and detector:IsA("ClickDetector") then
+		-- Fallback: Check if we have VirtualInputManager to simulate clicking on it
+		if VirtualInputManager and workspace.CurrentCamera then
+			-- This requires world to screen translation and mouse moving, which is complex.
+			-- Let's try to just fire the signal if firesignal exists
+			if typeof(firesignal) == "function" then
+				pcall(function() firesignal(detector.MouseClick, LocalPlayer) end)
+				return
+			end
+		end
 	end
-local sethiddenproperty = sethiddenproperty or function() end
-local gethiddenproperty = gethiddenproperty or function()
-	return nil
+	error("Unsupported with this Executor: fireclickdetector is missing and no fallback is available.")
 end
-local setscriptable = setscriptable or function() end
-local hookfunction = hookfunction or function() end
+
+local fireproximityprompt = fireproximityprompt or function(prompt)
+	if typeof(prompt) == "Instance" and prompt:IsA("ProximityPrompt") then
+		if prompt.Enabled and prompt.ActionText ~= "" then
+			-- Fallback: Use ProximityPrompt:InputHoldBegin() and InputHoldEnd() which are native Roblox APIs!
+			pcall(function()
+				prompt:InputHoldBegin()
+				task.wait(prompt.HoldDuration + 0.05)
+				prompt:InputHoldEnd()
+			end)
+			return
+		end
+	end
+	error("Unsupported with this Executor: fireproximityprompt is missing and fallback failed.")
+end
+
+local firesignal = firesignal or function(s, ...)
+	error("Unsupported with this Executor: firesignal is missing.")
+end
+
+local getconnections = getconnections or function(i)
+	error("Unsupported with this Executor: getconnections is missing.")
+end
+
+local sethiddenproperty = sethiddenproperty or function(...)
+	error("Unsupported with this Executor: sethiddenproperty is missing.")
+end
+
+local gethiddenproperty = gethiddenproperty or function(...)
+	error("Unsupported with this Executor: gethiddenproperty is missing.")
+end
+
+local setscriptable = setscriptable or function(...)
+	error("Unsupported with this Executor: setscriptable is missing.")
+end
+
+local hookfunction = hookfunction or function(...)
+	error("Unsupported with this Executor: hookfunction is missing.")
+end
+
 local clonefunction = clonefunction or function(f)
-	return f
+	error("Unsupported with this Executor: clonefunction is missing.")
 end
+
 local newcclosure = newcclosure or function(f)
-	return f
+	error("Unsupported with this Executor: newcclosure is missing.")
 end
-local getrawmetatable = getrawmetatable or getmetatable
-local setrawmetatable = setrawmetatable or function() end
-local setreadonly = setreadonly or function() end
-local isreadonly = isreadonly or function()
-	return false
+
+local getrawmetatable = getrawmetatable or function(...)
+	error("Unsupported with this Executor: getrawmetatable is missing.")
 end
+
+local setrawmetatable = setrawmetatable or function(...)
+	error("Unsupported with this Executor: setrawmetatable is missing.")
+end
+
+local setreadonly = setreadonly or function(...)
+	error("Unsupported with this Executor: setreadonly is missing.")
+end
+
+local isreadonly = isreadonly or function(...)
+	error("Unsupported with this Executor: isreadonly is missing.")
+end
+
 local getnamecallmethod = getnamecallmethod or function()
-	return ""
+	error("Unsupported with this Executor: getnamecallmethod is missing.")
 end
+
 local hookmetamethod = hookmetamethod or nil
 local restorefunction = restorefunction or nil
+
 local gethui = gethui or function()
+	-- Fallback for gethui: use PlayerGui if CoreGui is restricted
+	if LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") then
+		return LocalPlayer.PlayerGui
+	end
 	return CoreGui
 end
-local writefile = writefile or function() end
-local readfile = readfile or function()
-	return ""
+
+local writefile = writefile or function(...)
+	error("Unsupported with this Executor: writefile is missing.")
 end
-local isfile = isfile or function()
-	return false
+
+local readfile = readfile or function(...)
+	error("Unsupported with this Executor: readfile is missing.")
 end
-local delfile = delfile or function() end
+
+local isfile = isfile or function(...)
+	error("Unsupported with this Executor: isfile is missing.")
+end
+
+local delfile = delfile or function(...)
+	error("Unsupported with this Executor: delfile is missing.")
+end
 local WORKER_ID = nil
 if G.MCP_WORKER_ID then
 	WORKER_ID = G.MCP_WORKER_ID
