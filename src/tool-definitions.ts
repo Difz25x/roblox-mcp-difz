@@ -54,7 +54,7 @@ class ToolDefinitions {
         return [
             {
                 name: "dump-workspace-players",
-                description: "Get a list of all players in the game, including their character models, health, speed, and backpack items.",
+                description: "Ambil daftar semua pemain beserta model karakter, HP, speed, dan isi tas (backpack) mereka.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -79,7 +79,7 @@ class ToolDefinitions {
             },
             {
                 name: "dump-remote-events",
-                description: "Find all RemoteEvents and RemoteFunctions in the game. Usually looks in ReplicatedStorage and Workspace.",
+                description: "Cari semua RemoteEvent & RemoteFunction di game (biasanya di ReplicatedStorage atau Workspace).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -119,7 +119,7 @@ class ToolDefinitions {
 
             {
                 name: "disable-anticheat",
-                description: "Bypass basic client-side anticheat. Hooks Kick() so you cant be kicked, disables scripts with anticheat names, and blocks teleport bans.",
+                description: "Bypass anticheat client. Cegah Kick(), matiin script yang namanya mencurigakan, dan blokir ban via teleport.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -137,7 +137,7 @@ class ToolDefinitions {
 
             {
                 name: "walk-tree",
-                description: "Search through the game hierarchy. You can filter by name, class type (like Part or Model), and set a max search depth.",
+                description: "Cari object di dalam game. Bisa filter berdasarkan nama, tipe object, dan batas kedalaman folder.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -200,7 +200,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-services",
-                description: "List all Roblox services currently running in the game (Workspace, Players, Lighting, etc).",
+                description: "List semua servis inti Roblox yang lagi jalan (kayak Workspace, Players, Lighting).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -232,7 +232,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-instances-by-class",
-                description: "Find every object of a specific type (e.g. all Scripts or all Parts) in the game or inside a specific folder.",
+                description: "Kumpulin semua object dengan tipe tertentu (contoh: cari semua LocalScript atau Part).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -283,7 +283,7 @@ class ToolDefinitions {
             },
             {
                 name: "resolve-path",
-                description: "Convert a string path like 'workspace.Model.Part' into the actual object reference.",
+                description: "Ubah string path kayak \"workspace.Model.Part\" jadi referensi object sungguhan.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -315,7 +315,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-siblings",
-                description: "List all objects that share the same parent as your target object.",
+                description: "List semua object yang ada di dalam folder/parent yang sama dengan targetmu.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -359,7 +359,7 @@ class ToolDefinitions {
             },
             {
                 name: "find-by-attribute",
-                description: "Search for objects that have a specific custom attribute.",
+                description: "Cari object yang punya custom attribute tertentu.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -418,7 +418,7 @@ class ToolDefinitions {
             },
             {
                 name: "find-by-tag",
-                description: "Find objects that have a specific CollectionService tag.",
+                description: "Cari object yang punya tag CollectionService tertentu.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -469,7 +469,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-children",
-                description: "List all the immediate children of an object.",
+                description: "List semua anak langsung (children) dari sebuah object.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -519,7 +519,7 @@ class ToolDefinitions {
             },
             {
                 name: "scan-nil-instances",
-                description: "Find objects that have no parent (nil). Good for finding hidden anticheat scripts or hidden remote events.",
+                description: "Cari object yang disembunyikan di nil (tanpa parent). Sangat berguna buat nyari script anticheat atau remote rahasia.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -556,7 +556,7 @@ class ToolDefinitions {
             },
             {
                 name: "find-by-property",
-                description: "Search for objects that have a specific property value (e.g. finding all parts where Transparency == 1).",
+                description: "Cari object yang punya nilai properti tertentu (misalnya cari part yang Transparansi-nya 1).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -622,7 +622,7 @@ class ToolDefinitions {
             },
             {
                 name: "scan-proximity",
-                description: "Find objects within a certain radius of a 3D coordinate.",
+                description: "Cari object apa aja yang ada di radius dekat koordinat tertentu.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -691,7 +691,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-instances-by-subclass",
-                description: "Find all objects of a class and its subclasses (e.g. searching BasePart returns Parts, MeshParts, WedgeParts).",
+                description: "Cari semua object dari suatu class beserta turunannya (misal BasePart bakal mengembalikan Part, MeshPart, dll).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -744,7 +744,7 @@ class ToolDefinitions {
             
             {
                 name: "get-instance",
-                description: "Get the details and properties of a specific object using its path.",
+                description: "Ambil detail dan properti dari sebuah object pakai path-nya.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -775,7 +775,7 @@ class ToolDefinitions {
 
             {
                 name: "read-properties",
-                description: "Read the value of multiple properties from an object at once.",
+                description: "Bongkar dan baca beberapa properti dari object sekaligus.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -809,7 +809,7 @@ class ToolDefinitions {
             },
             {
                 name: "inspect-property",
-                description: "Get detailed info about a specific property (its value type, default value, and security level).",
+                description: "Cek detail sebuah properti (tipe nilainya, nilai default, dan level keamanannya).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -845,7 +845,7 @@ class ToolDefinitions {
             
             {
                 name: "get-humanoid-state",
-                description: "Get all important stats from a player or NPC Humanoid (Health, Speed, JumpPower, State).",
+                description: "Ambil info krusial dari Humanoid (HP, Speed, JumpPower, State).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -874,7 +874,7 @@ class ToolDefinitions {
             
             {
                 name: "get-class-blueprint",
-                description: "View the default properties and structure of a Roblox class.",
+                description: "Liat default blueprint / struktur asli dari sebuah class Roblox.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -908,7 +908,7 @@ class ToolDefinitions {
             
             {
                 name: "get-metadata",
-                description: "Get general info about the game (PlaceId, JobId, player count, server time).",
+                description: "Ambil info umum game (PlaceId, JobId, jumlah pemain).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -923,7 +923,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-local-player",
-                description: "Get the local players data and character stats.",
+                description: "Ambil data player mu sendiri beserta karakter nya.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -963,7 +963,7 @@ class ToolDefinitions {
 
             {
                 name: "dump-gui",
-                description: "Dump the entire screen UI tree, including positions, colors, and text.",
+                description: "Dump seluruh pohon UI yang ada di layar (posisi, warna, text).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1022,7 +1022,7 @@ class ToolDefinitions {
             },
             {
                 name: "dump-gui-hierarchy",
-                description: "Get a simplified tree view of all GUIs without the heavy property data.",
+                description: "Liat struktur UI secara ringkas tanpa data properti berat.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1079,7 +1079,7 @@ class ToolDefinitions {
             },
             {
                 name: "extract-screen-text",
-                description: "Extract all readable text currently visible on the screen.",
+                description: "Ambil semua teks yang saat ini kebaca di layar game.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1125,7 +1125,7 @@ class ToolDefinitions {
             },
             {
                 name: "inject-gui",
-                description: "Create and insert a custom GUI (ScreenGui, SurfaceGui) into the game.",
+                description: "Suntik custom UI (ScreenGui, SurfaceGui) buatan sendiri ke dalam game.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1178,7 +1178,7 @@ class ToolDefinitions {
             },
             {
                 name: "manage-esp",
-                description: "Create or modify ESP text labels that stick to players or objects in the world.",
+                description: "Bikin atau modif teks ESP yang nempel di atas player/object.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1301,7 +1301,7 @@ class ToolDefinitions {
             },
             {
                 name: "watch-ui-changes",
-                description: "Monitor the UI for real-time changes (e.g. watching a health bar or money counter change).",
+                description: "Pantau perubahan UI secara real-time (contoh: mantau darah atau duit).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1379,7 +1379,7 @@ class ToolDefinitions {
             
             {
                 name: "world-to-screen",
-                description: "Convert a 3D world coordinate into 2D screen pixels.",
+                description: "Ubah koordinat 3D di map jadi koordinat 2D pixel di layar.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1431,7 +1431,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-geometry",
-                description: "Get the bounding box size and CFrame of an object.",
+                description: "Ambil ukuran bounding box dan CFrame dari sebuah object.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1489,7 +1489,7 @@ class ToolDefinitions {
             },
             {
                 name: "track-cursor",
-                description: "Get the current X/Y position of the players mouse on the screen.",
+                description: "Lacak posisi X/Y mouse lu di layar.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1546,7 +1546,7 @@ class ToolDefinitions {
             },
             {
                 name: "hide-notifications",
-                description: "Hide or destroy all Roblox core notifications on the screen.",
+                description: "Sembunyiin atau hapus semua notifikasi bawaan Roblox.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1604,7 +1604,7 @@ class ToolDefinitions {
             },
             {
                 name: "control-camera",
-                description: "Read or change the players camera position and field of view.",
+                description: "Baca atau ubah posisi dan field of view kamera.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1771,7 +1771,7 @@ class ToolDefinitions {
 
             {
                 name: "move-mouse",
-                description: "Simulate moving the mouse to specific coordinates.",
+                description: "Gerakin mouse otomatis ke koordinat spesifik.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1816,7 +1816,7 @@ class ToolDefinitions {
             },
             {
                 name: "click-mouse",
-                description: "Simulate a physical mouse click.",
+                description: "Simulasiin klik kiri/kanan mouse fisik.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1872,7 +1872,7 @@ class ToolDefinitions {
             },
             {
                 name: "hold-mouse-button",
-                description: "Simulate holding or releasing a mouse button.",
+                description: "Simulasiin nahan atau lepas tombol mouse.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1925,7 +1925,7 @@ class ToolDefinitions {
             
             {
                 name: "scroll-mouse",
-                description: "Simulate scrolling the mouse wheel.",
+                description: "Simulasiin scroll wheel mouse.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -1969,7 +1969,7 @@ class ToolDefinitions {
             },
             {
                 name: "press-key",
-                description: "Simulate pressing and releasing a keyboard key.",
+                description: "Simulasiin mencet satu tombol keyboard.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2000,7 +2000,7 @@ class ToolDefinitions {
             },
             {
                 name: "hold-key",
-                description: "Simulate holding down or releasing a keyboard key.",
+                description: "Simulasiin nahan satu tombol keyboard.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2042,7 +2042,7 @@ class ToolDefinitions {
             },
             {
                 name: "type-text",
-                description: "Simulate typing a string of text.",
+                description: "Simulasiin ngetik string panjang otomatis.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2085,7 +2085,7 @@ class ToolDefinitions {
             },
             {
                 name: "record-macro",
-                description: "Record mouse and keyboard inputs to replay later.",
+                description: "Rekam pergerakan mouse dan keyboard buat di-replay nanti.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2134,7 +2134,7 @@ class ToolDefinitions {
             },
             {
                 name: "replay-macro",
-                description: "Replay a previously recorded input macro.",
+                description: "Putar ulang rekaman macro (input otomatis).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2189,7 +2189,7 @@ class ToolDefinitions {
             },
             {
                 name: "move-character",
-                description: "Force the players character to walk to a specific 3D location.",
+                description: "Paksa karakter lu jalan ke suatu koordinat 3D.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2273,7 +2273,7 @@ class ToolDefinitions {
             },
             {
                 name: "simulate-touch",
-                description: "Simulate mobile touch screen inputs.",
+                description: "Simulasi sentuhan layar (touch screen).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2344,7 +2344,7 @@ class ToolDefinitions {
             },
             {
                 name: "click-ui-element",
-                description: "Force click a UI button using its path.",
+                description: "Paksa klik tombol UI berdasarkan path-nya.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2410,7 +2410,7 @@ class ToolDefinitions {
 
             {
                 name: "set-properties",
-                description: "Change multiple properties of an object at once.",
+                description: "Ubah banyak properti dari sebuah object sekaligus.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2445,7 +2445,7 @@ class ToolDefinitions {
             },
             {
                 name: "create-instance",
-                description: "Create a new object and set its properties.",
+                description: "Bikin object baru ke dalam game.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2493,7 +2493,7 @@ class ToolDefinitions {
             },
             {
                 name: "destroy-instance",
-                description: "Destroy an object from the game.",
+                description: "Hapus object dari game secara permanen.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2562,7 +2562,7 @@ class ToolDefinitions {
             },
             {
                 name: "clone-instance",
-                description: "Clone an object and optionally put it somewhere else.",
+                description: "Duplikat object dan taro di tempat lain.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2634,7 +2634,7 @@ class ToolDefinitions {
             
             {
                 name: "send-chat",
-                description: "Send a message in the game chat.",
+                description: "Kirim pesan ke chat in-game.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2713,7 +2713,7 @@ class ToolDefinitions {
             
             {
                 name: "modify-local-player",
-                description: "Give yourself cheats like WalkSpeed, JumpPower, Health, or Noclip.",
+                description: "Nge-cheat stats karakter lu (WalkSpeed, JumpPower, Godmode, Noclip).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2739,7 +2739,7 @@ class ToolDefinitions {
 
             {
                 name: "get-script-source",
-                description: "Get the original source code or bytecode of a script.",
+                description: "Bongkar script buat dapet source code aslinya atau bytecode nya.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2781,7 +2781,7 @@ class ToolDefinitions {
             },
             {
                 name: "hook-function",
-                description: "Intercept a Lua function to change its behavior or see what arguments it gets.",
+                description: "Palsuin fungsi lua (hook) biar jalannya beda atau nyolong argumennya.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2835,7 +2835,7 @@ class ToolDefinitions {
             
             {
                 name: "inspect-metatable",
-                description: "Check what metamethods (__index, __namecall) exist on an objects metatable.",
+                description: "Ngintip metamethod apa aja (__index, __namecall) yang ada di metatable object.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2881,7 +2881,7 @@ class ToolDefinitions {
             },
             {
                 name: "modify-metatable",
-                description: "Change or replace the metatable of an object.",
+                description: "Ganti atau manipulasi metatable dari object.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -2963,7 +2963,7 @@ class ToolDefinitions {
             },
             {
                 name: "scan-registry",
-                description: "Search through the Lua registry to find stored functions or tables.",
+                description: "Bongkar Lua Registry buat nyari fungsi/table yang disembunyiin.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3015,7 +3015,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-debug-info",
-                description: "Get debug info about a function (source line, parameters, upvalues).",
+                description: "Ambil info debug dari fungsi (ada di baris berapa, argumennya apa).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3066,7 +3066,7 @@ class ToolDefinitions {
             
             {
                 name: "execute-script",
-                description: "Run raw Luau code or execute a script from a URL.",
+                description: "Jalanin raw script Luau atau eksekusi dari URL.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3131,7 +3131,7 @@ class ToolDefinitions {
             
             {
                 name: "inspect-closure",
-                description: "Look inside a function to see its upvalues and constants.",
+                description: "Bongkar fungsi buat ngeliat upvalues dan constants-nya.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3184,7 +3184,7 @@ class ToolDefinitions {
             },
             {
                 name: "analyze-sandbox",
-                description: "Check what exploit capabilities (like getgc or hookfunction) are currently supported by the executor.",
+                description: "Cek kapabilitas eksekutor lu (apakah support getgc, hookfunction, dll).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3233,7 +3233,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-loaded-modules",
-                description: "List all ModuleScripts that have been required and loaded.",
+                description: "List semua ModuleScript yang udah keload.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3257,7 +3257,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-constants-upvalues",
-                description: "Dump all upvalues and constants from a function.",
+                description: "Dump semua upvalue dan constant dari suatu fungsi.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3283,7 +3283,7 @@ class ToolDefinitions {
             },
             {
                 name: "check-unc",
-                description: "Check the executors UNC compatibility score (which exploit functions it supports).",
+                description: "Cek tingkat kompabilitas eksekutor lu sama standard UNC.",
                 inputSchema: {
                     "type": "object",
                     "properties": { "json_data": { "type": "string", "description": "JSON stringified object data" } },
@@ -3297,7 +3297,7 @@ class ToolDefinitions {
 
             {
                 name: "fire-remote",
-                description: "Fire a RemoteEvent or RemoteFunction with custom arguments to send data to the server.",
+                description: "Tembak RemoteEvent/Function pakai custom argumen ke server.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3325,7 +3325,7 @@ class ToolDefinitions {
             },
             {
                 name: "inspect-remote-connections",
-                description: "See what scripts are listening to a RemoteEvents OnClientEvent.",
+                description: "Ngintip script mana aja yang dengerin suatu RemoteEvent.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3353,7 +3353,7 @@ class ToolDefinitions {
             
             {
                 name: "install-remote-spy",
-                description: "Turn on the Remote Spy to log all traffic between the client and server.",
+                description: "Nyalain Remote Spy buat nge-log semua komunikasi client <-> server.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3387,7 +3387,7 @@ class ToolDefinitions {
             
             {
                 name: "block-remote",
-                description: "Block a specific RemoteEvent from sending data to the server.",
+                description: "Blokir RemoteEvent tertentu biar nggak bisa ngirim data ke server.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3424,7 +3424,7 @@ class ToolDefinitions {
             },
             {
                 name: "toggle-remote-killswitch",
-                description: "Enable or disable a killswitch that blocks ALL remote traffic.",
+                description: "Nyalain killswitch buat ngeblokir SEMUA aktivitas remote ke server.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3455,7 +3455,7 @@ class ToolDefinitions {
             },
             {
                 name: "spoof-remote-args",
-                description: "Intercept and change the arguments of a remote call before it reaches the server.",
+                description: "Cegat remote dan palsuin argumennya sebelum nyampe ke server.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3525,7 +3525,7 @@ class ToolDefinitions {
             
             {
                 name: "set-remote-filter",
-                description: "Only log remote events that match a specific name.",
+                description: "Filter log remote spy buat nampilin nama remote tertentu aja.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3571,7 +3571,7 @@ class ToolDefinitions {
             
             {
                 name: "check-replication",
-                description: "Check if an object is owned by the client or the server (network ownership).",
+                description: "Cek siapa yang megang kontrol fisik (Network Ownership) suatu part.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3601,7 +3601,7 @@ class ToolDefinitions {
             },
             {
                 name: "spy-remotes",
-                description: "Manage the Remote Spy (start, stop, clear logs, read logs).",
+                description: "Atur Remote Spy (start, stop, clear log, baca log).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3666,7 +3666,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-network-ownership",
-                description: "Find out who controls the physics of a part (client or server).",
+                description: "Liat sapa yang megang physics suatu object (client apa server).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3690,7 +3690,7 @@ class ToolDefinitions {
             },
             {
                 name: "teleport-player",
-                description: "Instantly teleport the player to specific coordinates or another player.",
+                description: "Teleport karakter lu ke koordinat atau ke player lain langsung.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3749,7 +3749,7 @@ class ToolDefinitions {
             },
             {
                 name: "interact-prompts",
-                description: "Instantly trigger all ProximityPrompts around you.",
+                description: "Pencet semua ProximityPrompt (tombol E) di deket lu sekaligus.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3779,7 +3779,7 @@ class ToolDefinitions {
 
             {
                 name: "click-button",
-                description: "Find and click a button on the screen.",
+                description: "Cari dan klik tombol di layar.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3790,7 +3790,7 @@ class ToolDefinitions {
             },
             {
                 name: "decompile-script",
-                description: "Attempt to convert a scripts bytecode back into readable Lua code.",
+                description: "Translate bytecode script balik ke Lua yang bisa dibaca.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3801,7 +3801,7 @@ class ToolDefinitions {
             },
             {
                 name: "fire-click-detector",
-                description: "Trigger a ClickDetector block.",
+                description: "Tembak ClickDetector di suatu blok.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3812,7 +3812,7 @@ class ToolDefinitions {
             },
             {
                 name: "fire-proximity-prompt",
-                description: "Trigger a ProximityPrompt (like opening a door or pressing E).",
+                description: "Tembak ProximityPrompt tertentu.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3823,7 +3823,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-hidden-property",
-                description: "Read a hidden Roblox property that doesnt show up in the normal properties list.",
+                description: "Baca properti rahasia Roblox yang disembunyiin.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3835,7 +3835,7 @@ class ToolDefinitions {
             },
             {
                 name: "set-hidden-property",
-                description: "Change a hidden Roblox property.",
+                description: "Ganti nilai properti rahasia Roblox.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3848,7 +3848,7 @@ class ToolDefinitions {
             },
             {
                 name: "set-scriptable",
-                description: "Make a locked property readable and writable by scripts.",
+                description: "Buka kunci properti yang gak bisa diganti lewat script.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3866,7 +3866,7 @@ class ToolDefinitions {
             
             {
                 name: "check-closure-type",
-                description: "Check if a function is a C closure, Lua closure, or executor closure.",
+                description: "Cek ini fungsi asalnya darimana (C closure, Lua, atau dari Executor).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3883,7 +3883,7 @@ class ToolDefinitions {
 
             {
                 name: "scan-gc",
-                description: "Scan the Lua Garbage Collector to find hidden objects or tables.",
+                description: "Scan daleman Garbage Collector buat nyari table/fungsi curian.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3896,7 +3896,7 @@ class ToolDefinitions {
             
             {
                 name: "get-roblox-env",
-                description: "Dump the global Roblox environment (the `_G` or shared table).",
+                description: "Dump environment gede (kyk _G atau shared).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3907,7 +3907,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-script-env",
-                description: "Get the environment table of a specific script.",
+                description: "Dump isi environment dari script spesifik.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3924,7 +3924,7 @@ class ToolDefinitions {
 
             {
                 name: "read-file",
-                description: "Read the contents of a file from your computers workspace folder.",
+                description: "Baca isi file dari folder workspace eksekutor.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3935,7 +3935,7 @@ class ToolDefinitions {
             },
             {
                 name: "write-file",
-                description: "Save text to a file in your workspace folder.",
+                description: "Bikin atau overwrite file ke folder workspace.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3947,7 +3947,7 @@ class ToolDefinitions {
             },
             {
                 name: "delete-file",
-                description: "Delete a file from your workspace folder.",
+                description: "Hapus file dari folder workspace.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3959,7 +3959,7 @@ class ToolDefinitions {
             },
             {
                 name: "list-files",
-                description: "List all files saved in your workspace folder.",
+                description: "Cek ada file apa aja di workspace folder.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3970,7 +3970,7 @@ class ToolDefinitions {
             },
             {
                 name: "create-folder",
-                description: "Create a new folder in your workspace directory.",
+                description: "Bikin folder baru.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3981,7 +3981,7 @@ class ToolDefinitions {
             },
             {
                 name: "load-custom-asset",
-                description: "Load a local file (like an image or sound) so Roblox can use it via rbxasset://",
+                description: "Load gambar/audio lokal biar bisa dipake di Roblox.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -3998,7 +3998,7 @@ class ToolDefinitions {
 
             {
                 name: "get-running-scripts",
-                description: "Get a list of all currently running scripts in the game.",
+                description: "Ambil daftar semua script yang lagi jalan sekarang.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4010,7 +4010,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-calling-script",
-                description: "Find out which script called your hooked function.",
+                description: "Nyari tau script apa yang manggil fungsi yang lagi lu hook.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4020,7 +4020,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-script-closure",
-                description: "Get the raw function closure of a script.",
+                description: "Ambil raw fungsi (closure) dari script.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4032,7 +4032,7 @@ class ToolDefinitions {
             },
             {
                 name: "get-script-hash",
-                description: "Get the unique bytecode hash of a script (useful for anticheat bypassing).",
+                description: "Ambil hash bytecode script buat nge-bypass anticheat.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4048,7 +4048,7 @@ class ToolDefinitions {
 
             {
                 name: "set-raw-metatable",
-                description: "Forcefully overwrite the metatable of an object.",
+                description: "Paksain nimpah metatable dari sebuah object.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4060,7 +4060,7 @@ class ToolDefinitions {
             },
             {
                 name: "toggle-readonly",
-                description: "Make a table or metatable writable (setreadonly(false)).",
+                description: "Ubah metatable biar bisa diedit (setreadonly false).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4076,7 +4076,7 @@ class ToolDefinitions {
 
             {
                 name: "compare-instances",
-                description: "Check if two object references point to the exact same thing in memory.",
+                description: "Cek apakah 2 referensi object nunjuk ke alamat memory yang sama.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4089,7 +4089,7 @@ class ToolDefinitions {
             },
             {
                 name: "fire-signal",
-                description: "Manually trigger a Roblox signal (like MouseButton1Click or Changed).",
+                description: "Pancing signal secara manual (kayak Changed atau MouseClick).",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4107,7 +4107,7 @@ class ToolDefinitions {
 
             {
                 name: "list-roblox-processes",
-                description: "List all running Roblox processes on your computer.",
+                description: "Liat semua proses Roblox yang lagi kebuka di PC lu.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4122,7 +4122,7 @@ class ToolDefinitions {
             },
             {
                 name: "launch-roblox",
-                description: "Launch a fresh instance of the Roblox Player.",
+                description: "Buka aplikasi Roblox fresh dari komputer lu.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4136,7 +4136,7 @@ class ToolDefinitions {
             },
             {
                 name: "open-roblox-game",
-                description: "Open Roblox and directly join a specific Place ID.",
+                description: "Join langsung ke Place ID Roblox tanpa lewat web.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4157,7 +4157,7 @@ class ToolDefinitions {
             },
             {
                 name: "take-screenshot",
-                description: "Take a screenshot of the active Roblox window.",
+                description: "Ambil screenshot dari jendela Roblox lu.",
                 inputSchema: {
                     "type": "object",
                     "properties": {
@@ -4169,7 +4169,7 @@ class ToolDefinitions {
             
             {
                 name: "get-roblox-versions",
-                description: "Get the currently installed Roblox version on your PC.",
+                description: "Cek versi Roblox yang keinstall sekarang.",
                 inputSchema: {
                     "type": "object",
                     "properties": { "json_data": { "type": "string", "description": "JSON stringified object data" } },
