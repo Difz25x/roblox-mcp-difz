@@ -2499,121 +2499,6 @@ local function handleESP(args)
 	}
 end
 
-local function handleLightingConfig(args)
-	local lighting = game:GetService("Lighting")
-	local properties = (args.property_map or args.property_list or args.properties) or {}
-	for k, v in pairs(properties) do
-		pcall(function()
-			lighting[k] = v
-		end)
-	end
-	return { success = true, applied = properties }
-end
-
-local function handleTerrainBrush(args)
-	local action = args.action or "read"
-	local terrain = workspace:FindFirstChildOfClass("Terrain")
-	if not terrain then
-		return { success = false, error = "No Terrain" }
-	end
-	if action == "read" then
-		return { success = true, material = tostring(terrain.Material), materialColors = {} }
-	end
-	if action == "fill" and args.material then
-		local region = args.region or { -256, 0, -256, 256, 64, 256 }
-		pcall(function()
-			terrain:FillRegion(
-				Region3.new(Vector3.new(region[1], region[2], region[3]), Vector3.new(region[4], region[5], region[6])),
-				tonumber(args.material) or Enum.Material.Grass
-			)
-		end)
-		return { success = true }
-	end
-	return { success = false, error = "Unknown action" }
-end
-
-local function handleSoundControl(args)
-	local action = args.action or "list"
-	if action == "list" then
-		local results = {}
-		for _, c in ipairs(workspace:GetDescendants()) do
-			if c:IsA("Sound") then
-				table.insert(results, {
-					Name = c.Name,
-					Path = getFullPath(c),
-					playing = c.Playing,
-					volume = c.Volume,
-					timeLength = c.TimeLength,
-					soundId = c.SoundId,
-				})
-			end
-		end
-		return { success = true, count = #results, sounds = results }
-	end
-	if action == "play" and args.sound_path then
-		local inst = resolvePath(args.sound_path)
-		if inst then
-			pcall(function()
-				inst:Play()
-			end)
-		end
-		return { success = true }
-	end
-	return { success = false, error = "Unknown action" }
-end
-
-local function handlePhysicsTune(args)
-	local properties = (args.property_map or args.property_list or args.properties) or {}
-	local ws = workspace
-	for k, v in pairs(properties) do
-		pcall(function()
-			ws[k] = v
-		end)
-	end
-	return { success = true, applied = properties }
-end
-
-local function handleCharacterAppearance(args)
-	local action = args.action or "get"
-	if not LocalPlayer or not LocalPlayer.Character then
-		return { success = false, error = "No character" }
-	end
-	if action == "get" then
-		local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-		local appearance = { characterName = LocalPlayer.Character.Name, className = LocalPlayer.Character.ClassName }
-		if humanoid then
-			appearance.displayName = humanoid.DisplayName
-			appearance.bodyTypeScale = humanoid.BodyTypeScale
-			appearance.widthScale = humanoid.WidthScale
-			appearance.heightScale = humanoid.HeightScale
-			appearance.headScale = humanoid.HeadScale
-		end
-		return { success = true, appearance = appearance }
-	end
-	return { success = false, error = "Unknown action" }
-end
-
-local function handleSpawnManage(args)
-	local action = args.action or "list"
-	if action == "list" then
-		local sp = {}
-		for _, c in ipairs(workspace:GetDescendants()) do
-			if c:IsA("SpawnLocation") then
-				table.insert(sp, {
-					Name = c.Name,
-					Path = getFullPath(c),
-					duration = c.Duration,
-					neutral = c.Neutral,
-					allowTeamChange = c.AllowTeamChange,
-					teamColor = tostring(c.TeamColor),
-				})
-			end
-		end
-		return { success = true, count = #sp, spawns = sp }
-	end
-	return { success = false, error = "Unknown action" }
-end
-
 local function handleChatSystem(args)
 	local action = args.action or "say"
 	if action == "say" and LocalPlayer then
@@ -2626,37 +2511,6 @@ local function handleChatSystem(args)
 		end
 	end
 	return { success = false, error = "Cannot chat" }
-end
-
-local function handleTeamColors(args)
-	local results = {}
-	for _, c in ipairs(workspace:GetDescendants()) do
-		if c:IsA("Team") then
-			table.insert(results, { Name = c.Name, color = tostring(c.TeamColor), autoAssignable = c.AutoAssignable })
-		end
-	end
-	return { success = true, count = #results, teams = results }
-end
-
-local function handleMaterialOverride(args)
-	local partPath = args.part_path or ""
-	local material = args.material or ""
-	if partPath == "" then
-		return { success = false, error = "part_path required" }
-	end
-	local inst, err = resolvePath(partPath)
-	if not inst then
-		return { success = false, error = err }
-	end
-	if material ~= "" then
-		local matEnum = Enum.Material[material]
-		if matEnum then
-			pcall(function()
-				inst.Material = matEnum
-			end)
-		end
-	end
-	return { success = true, part = inst.Name, material = material }
 end
 
 local function handleUiChangeWatcher(args)
@@ -2987,7 +2841,7 @@ local function handleDisableAntiCheat(args)
 
 		local acPatterns = {
 			"anticheat",
-			"ac",
+			
 			"adonis",
 			"anti-cheat",
 			"cheat",
@@ -3309,15 +3163,7 @@ local HANDLERS = {
 	end,
 
 	esp_label_manager = handleESP,
-	lighting_configurator = handleLightingConfig,
-	terrain_brush_controller = handleTerrainBrush,
-	sound_effect_manager = handleSoundControl,
-	physics_engine_tuner = handlePhysicsTune,
-	character_appearance_modifier = handleCharacterAppearance,
-	spawn_location_manager = handleSpawnManage,
 	chat_system_controller = handleChatSystem,
-	team_color_manager = handleTeamColors,
-	material_override_tool = handleMaterialOverride,
 
 	property_mutator_generic = function(a)
 		local inst = resolvePath(a.instance_path or "")
