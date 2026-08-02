@@ -385,7 +385,7 @@ async function recordVideo(pid?: number, duration: number = 5): Promise<Screensh
     if (pid !== undefined) {
         targets = windows.filter((w) => w.pid === pid);
         if (targets.length === 0) {
-            return { error: `No Roblox window for PID ${pid}. Available:\n` + windows.map((w) => `  PID ${w.pid} - "${w.title}"`).join("\n") };
+            return { error: `No Roblox window for PID ${pid}. Available:` + windows.map((w) => `  PID ${w.pid} - "${w.title}"`).join("") };
         }
     }
     if (targets.length > 1) {
@@ -394,40 +394,11 @@ async function recordVideo(pid?: number, duration: number = 5): Promise<Screensh
 
     try {
         const targetPid = targets[0].pid;
-        const targetTitle = targets[0].title;
+
         const outFile = path.join(os.tmpdir(), `roblox_rec_${targetPid}_${Date.now()}.mp4`);
         const durationSecs = Math.min(Math.max(1, duration), 30);
 
         const targetFps = 30;
-
-        let hasFfmpeg = true;
-        try { require('child_process').execSync("ffmpeg -version", { stdio: 'ignore', windowsHide: true }); } catch { hasFfmpeg = false; }
-
-        if (hasFfmpeg) {
-            // Restore window if minimized
-            const psRestore = `
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class WinCapture {
-    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-}
-"@
-$hwnd = [IntPtr]::new([long]${targets[0].hwnd})
-if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
-[WinCapture]::SetForegroundWindow($hwnd) | Out-Null
-Start-Sleep -Milliseconds 100
-`;
-            const encodedRestore = Buffer.from(psRestore, 'utf16le').toString('base64');
-            require('child_process').execSync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedRestore}"`, { windowsHide: true });
-
-            // Run gdigrab natively (very fast, doesn't freeze the window)
-            require('child_process').execSync(`ffmpeg -y -f gdigrab -framerate ${targetFps} -i title="${targetTitle}" -t ${durationSecs} -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
-            return { pid: targetPid, filePath: outFile };
-        }
 
         const ps = `
 Add-Type -TypeDefinition @"
@@ -457,7 +428,7 @@ $rect = New-Object WinCapture+RECT
 $w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
 if ($w -le 0 -or $h -le 0) { Write-Error "Zero size"; exit 1 }
 
-$pt = New-Object System.Drawing.Point(0, 0)
+$pt = New-Object WinCapture+POINT
 [WinCapture]::ClientToScreen($hwnd, [ref]$pt) | Out-Null
 
 $duration = ${durationSecs}
@@ -478,12 +449,10 @@ for ($i = 0; $i -lt $frames; $i++) {
     $gfx.CopyFromScreen($pt.X, $pt.Y, 0, 0, $bmp.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
     $gfx.Dispose()
 
-    # Formatted file name (e.g., frame_0001.jpg) ensures FFmpeg reads them in perfect numerical order
     $fileName = StringFormat "frame_{0:D4}.jpg" $i
     $bmp.Save((Join-Path $outFolder $fileName), [System.Drawing.Imaging.ImageFormat]::Jpeg)
     $bmp.Dispose()
 
-    # Dynamic sleep: subtract the time it took to capture/save from the target frame delay
     $elapsed = $sw.ElapsedMilliseconds - $loopStart
     $sleepTime = $frameDelayMs - $elapsed
     if ($sleepTime -gt 0) {
@@ -495,7 +464,7 @@ Write-Output $outFolder
         `;
 
         const encodedScript = Buffer.from(ps, 'utf16le').toString('base64');
-        const psResult = execSync(
+        const psResult = require('child_process').execSync(
             `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedScript}"`,
             { encoding: "utf-8", timeout: (durationSecs * 1000) + 15000, windowsHide: true }
         );
@@ -505,7 +474,17 @@ Write-Output $outFolder
             return { error: "Failed to record video frames." };
         }
 
-        return { pid: targetPid, filePath: frameFolder, error: "ffmpeg not installed. Raw frames saved to folder instead of video." };
+        let hasFfmpeg = true;
+        try { require('child_process').execSync("ffmpeg -version", { stdio: 'ignore', windowsHide: true }); } catch { hasFfmpeg = false; }
+
+        if (hasFfmpeg) {
+            // Pad width and height to be divisible by 2 for yuv420p compliance
+            require('child_process').execSync(`ffmpeg -y -framerate ${targetFps} -i "${path.join(frameFolder, 'frame_%04d.jpg')}" -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
+            try { fs.rmSync(frameFolder, { recursive: true, force: true }); } catch { }
+            return { pid: targetPid, filePath: outFile };
+        } else {
+            return { pid: targetPid, filePath: frameFolder, error: "ffmpeg not installed. Raw frames saved to folder instead of video." };
+        }
     } catch (err: any) {
         return { error: `Failed to record window: ${err.message}` };
     }
