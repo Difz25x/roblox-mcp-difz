@@ -413,10 +413,13 @@ using System.Runtime.InteropServices;
 public class WinCapture {
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 }
 "@
 $hwnd = [IntPtr]::new([long]${targets[0].hwnd})
 if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
+[WinCapture]::SetForegroundWindow($hwnd) | Out-Null
+Start-Sleep -Milliseconds 100
 `;
             const encodedRestore = Buffer.from(psRestore, 'utf16le').toString('base64');
             require('child_process').execSync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedRestore}"`, { windowsHide: true });
