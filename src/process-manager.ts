@@ -322,7 +322,7 @@ $rect = New-Object WinCapture+RECT
 $w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
 if ($w -le 0 -or $h -le 0) { Write-Error "Zero size"; exit 1 }
 
-$pt = New-Object System.Drawing.Point(0, 0)
+$pt = New-Object WinCapture+POINT
 [WinCapture]::ClientToScreen($hwnd, [ref]$pt) | Out-Null
 
 $bmp = New-Object System.Drawing.Bitmap($w, $h)
@@ -427,21 +427,22 @@ if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Nu
         }
 
         const ps = `
-Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class WinCapture {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
-    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref System.Drawing.Point lpPoint);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 }
 "@
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 
 $hwnd = [IntPtr]::new([long]${targets[0].hwnd})
 if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
