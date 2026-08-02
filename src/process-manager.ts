@@ -422,7 +422,7 @@ if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Nu
             require('child_process').execSync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedRestore}"`, { windowsHide: true });
 
             // Run gdigrab natively (very fast, doesn't freeze the window)
-            require('child_process').execSync(`ffmpeg -y -f gdigrab -framerate ${targetFps} -i title="${targetTitle}" -t ${durationSecs} -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
+            require('child_process').execSync(`ffmpeg -y -f gdigrab -framerate ${targetFps} -i title="${targetTitle}" -t ${durationSecs} -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
             return { pid: targetPid, filePath: outFile };
         }
 
