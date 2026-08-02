@@ -324,51 +324,51 @@ This MCP server comes with over 100 tools. Below are some of the most commonly u
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        AI Client                                  │
+│                            AI Client                             │
 │  (Claude Code / Claude Desktop / Cursor / Windsurf / Cline /     │
 │   Continue.dev / any MCP-compatible client)                      │
 └─────────────────────────┬────────────────────────────────────────┘
                           │ MCP JSON-RPC 2.0 (HTTP POST /mcp)
                           ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                    Node.js MCP Server (:28429)                    │
-│                                                                   │
+│                   Node.js MCP Server (:28429)                    │
+│                                                                  │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────┐  │
-│  │ MCP Handler  │  │ Queue Manager│  │ WebSocket Server (WS)   │  │
-│  │ (JSON-RPC)   │──│ (Task Queue) │──│ /ws                     │  │
+│  │ MCP Handler │  │ Queue Manager│  │ WebSocket Server (WS)   │  │
+│  │ (JSON-RPC)  │──│ (Task Queue) │──│ /ws                     │  │
 │  └─────────────┘  └──────────────┘  └───────────┬─────────────┘  │
-│                                                  │                │
-│  ┌─────────────┐  ┌──────────────┐               │                │
-│  │Tool Defs    │  │Session Mgr   │               │                │
-│  │(151 tools)  │  │(workers)     │               │                │
-│  └─────────────┘  └──────────────┘               │                │
-│                                                  │                │
-│  ┌──────────────────────────────────────────────┐│                │
-│  │ Server-Side Tools (Process Manager)          ││                │
-│  │ get_roblox_processes, launch_roblox,          ││                │
-│  │ open_game, capture_roblox_screenshot,         ││                │
-│  │ get_roblox_versions                           ││                │
-│  └──────────────────────────────────────────────┘│                │
-└──────────────────────────────────────────────────┼────────────────┘
-                                                   │ WebSocket
-                                                   ▼
+│                                                 │                │
+│  ┌─────────────┐  ┌──────────────┐              │                │
+│  │Tool Defs    │  │Session Mgr   │              │                │
+│  │(106 tools)  │  │(workers)     │              │                │
+│  └─────────────┘  └──────────────┘              │                │
+│                                                 │                │
+│  ┌──────────────────────────────────────────────┐                │
+│  │ Server-Side Tools (Process Manager)          │                │
+│  │ get_roblox_processes, launch_roblox,         │                │
+│  │ open_game, capture_roblox_screenshot,        │                │
+│  │ get_roblox_versions                          │                │
+│  └──────────────────────────────────────────────┘                │
+└─────────────────────────────────────────────────┼────────────────┘
+                                                  │ WebSocket
+                                                  ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                  Roblox Executor (mcp.lua)                        │
-│                                                                   │
+│                    Roblox Executor (mcp.lua)                     │
+│                                                                  │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────┐  │
-│  │ WS Client    │  │ Task Router   │  │ Handler Registry        │  │
-│  │ (connect)    │──│ (wsPoll)     │──│ (150+ handlers)         │  │
+│  │ WS Client   │  │ Task Router  │  │ Handler Registry        │  │
+│  │ (connect)   │──│ (wsPoll)     │──│ (106+ handlers)         │  │
 │  └─────────────┘  └──────────────┘  └─────────────────────────┘  │
-│                                           │                       │
-│  ┌────────────────────────────────────────┘                       │
-│  │  UNC Compatibility Layer                                       │
-│  │  (getnilinstances, hookfunction, loadstring, getreg,           │
-│  │   getgc, getconnections, firesignal, readfile, writefile,      │
-│  │   gethiddenproperty, sethiddenproperty, getrawmetatable, ...)  │
-│  └────────────────────────────────────────────────────────────────┘
-│                                                                   │
-│                     Roblox DataModel                              │
-│  (Players, Workspace, Lighting, ReplicatedStorage, CoreGui, ...)  │
+│                                           │                      │
+│  ┌────────────────────────────────────────┘                      │
+│  │  UNC Compatibility Layer                                      │
+│  │  (getnilinstances, hookfunction, loadstring, getreg,          │
+│  │   getgc, getconnections, firesignal, readfile, writefile,     │
+│  │   gethiddenproperty, sethiddenproperty, getrawmetatable, ...) │
+│  └───────────────────────────────────────────────────────────────┘
+│                                                                  │
+│                     Roblox DataModel                             │
+│  (Players, Workspace, Lighting, ReplicatedStorage, CoreGui, ...) │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
