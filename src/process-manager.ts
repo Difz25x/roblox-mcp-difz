@@ -449,7 +449,7 @@ for ($i = 0; $i -lt $frames; $i++) {
     $gfx.CopyFromScreen($pt.X, $pt.Y, 0, 0, $bmp.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
     $gfx.Dispose()
 
-    $fileName = StringFormat "frame_{0:D4}.jpg" $i
+    $fileName = "frame_{0:D4}.jpg" -f $i
     $bmp.Save((Join-Path $outFolder $fileName), [System.Drawing.Imaging.ImageFormat]::Jpeg)
     $bmp.Dispose()
 
