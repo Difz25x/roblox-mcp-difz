@@ -394,11 +394,37 @@ async function recordVideo(pid?: number, duration: number = 5): Promise<Screensh
 
     try {
         const targetPid = targets[0].pid;
+        const targetTitle = targets[0].title;
         const outFile = path.join(os.tmpdir(), `roblox_rec_${targetPid}_${Date.now()}.mp4`);
         const durationSecs = Math.min(Math.max(1, duration), 30);
 
-        // 15 FPS is a safer sweet spot when writing raw images directly to disk
         const targetFps = 30;
+
+        let hasFfmpeg = true;
+        try { require('child_process').execSync("ffmpeg -version", { stdio: 'ignore', windowsHide: true }); } catch { hasFfmpeg = false; }
+
+        if (hasFfmpeg) {
+            // Restore window if minimized
+            const psRestore = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class WinCapture {
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+$hwnd = [IntPtr]::new([long]${targets[0].hwnd})
+if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
+`;
+            const encodedRestore = Buffer.from(psRestore, 'utf16le').toString('base64');
+            require('child_process').execSync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedRestore}"`, { windowsHide: true });
+
+            // Run gdigrab natively (very fast, doesn't freeze the window)
+            require('child_process').execSync(`ffmpeg -y -f gdigrab -framerate ${targetFps} -i title="${targetTitle}" -t ${durationSecs} -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
+            return { pid: targetPid, filePath: outFile };
+        }
 
         const ps = `
 Add-Type -AssemblyName System.Drawing
@@ -475,16 +501,7 @@ Write-Output $outFolder
             return { error: "Failed to record video frames." };
         }
 
-        let hasFfmpeg = true;
-        try { execSync("ffmpeg -version", { stdio: 'ignore', windowsHide: true }); } catch { hasFfmpeg = false; }
-
-        if (hasFfmpeg) {
-            execSync(`ffmpeg -y -framerate ${targetFps} -i "${path.join(frameFolder, 'frame_%04d.jpg')}" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
-            try { fs.rmSync(frameFolder, { recursive: true, force: true }); } catch { }
-            return { pid: targetPid, filePath: outFile };
-        } else {
-            return { pid: targetPid, filePath: frameFolder, error: "ffmpeg not installed. Raw frames saved to folder instead of video." };
-        }
+        return { pid: targetPid, filePath: frameFolder, error: "ffmpeg not installed. Raw frames saved to folder instead of video." };
     } catch (err: any) {
         return { error: `Failed to record window: ${err.message}` };
     }
