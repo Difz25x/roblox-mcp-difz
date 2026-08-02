@@ -307,11 +307,11 @@ class McpHandler {
         return {
             result: {
                 resources: [
-                    { uri: 'mcp://roblox/game/metadata', name: 'Game Metadata', mimeType: 'application/json' },
-                    { uri: 'mcp://roblox/game/players', name: 'Active Players', mimeType: 'application/json' },
-                    { uri: 'mcp://roblox/game/remotes', name: 'Remote Events & Functions', mimeType: 'application/json' },
-                    { uri: 'mcp://roblox/game/workspace', name: 'Workspace Objects', mimeType: 'application/json' },
-                    { uri: 'mcp://roblox/game/console', name: 'Console Logs', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/metadata', name: 'Game Metadata', description: 'Current game session metadata', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/players', name: 'Active Players', description: 'Real-time player data', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/remotes', name: 'Remote Events & Functions', description: 'All detected remotes', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/workspace', name: 'Workspace Objects', description: '3D object tree', mimeType: 'application/json' },
+                    { uri: 'mcp://roblox/game/console', name: 'Console Logs', description: 'Recent LogService output', mimeType: 'application/json' },
                 ],
             },
         };
