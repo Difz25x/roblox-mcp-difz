@@ -45,3 +45,4 @@ win-unpacked/
 yarn-debug.log*
 yarn-error.log*
 publish.js
+CLAUDE.md
