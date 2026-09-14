@@ -50,6 +50,13 @@ interface ProcessManager {
         imageBase64?: string;
         pid?: number;
     }>;
+    recordVideo(pid?: number, duration?: number): Promise<{
+        error?: string;
+        needsDisambiguation?: boolean;
+        windows?: Array<{ pid: number; hwnd: string; title: string }>;
+        filePath?: string;
+        pid?: number;
+    }>;
 }
 
 interface McpMessage {
@@ -72,6 +79,7 @@ const SERVER_SIDE_TOOLS = new Set<string>([
     'launch-roblox',
     'open-roblox-game',
     'take-screenshot',
+    'record-roblox-video',
     'get-roblox-versions',
 ]);
 
@@ -266,6 +274,18 @@ class McpHandler {
                 return { success: true, image: `data:image/png;base64,${ssResult.imageBase64}`, pid: ssResult.pid ?? args.pid ?? null };
             }
 
+            case 'record-roblox-video': {
+                const vidResult = await this.proc.recordVideo(
+                    args.pid ? Number(args.pid) : undefined,
+                    args.duration_seconds ? Number(args.duration_seconds) : 5
+                );
+                if (vidResult.error) return { success: false, error: vidResult.error };
+                if (vidResult.needsDisambiguation) {
+                    return { success: true, needsDisambiguation: true, windows: vidResult.windows };
+                }
+                return { success: true, file_path: vidResult.filePath, pid: vidResult.pid ?? args.pid ?? null };
+            }
+
             case 'get-roblox-versions':
                 return this._getRobloxVersions();
 
@@ -320,11 +340,11 @@ class McpHandler {
     private async _handleResourcesRead(params?: Record<string, unknown>): Promise<McpResult> {
         const uri = (params?.uri as string) || '';
         const RESOURCE_MAP: Record<string, string> = {
-            'mcp://roblox/game/metadata': 'get_game_metadata',
-            'mcp://roblox/game/players': 'dump_workspace_players',
-            'mcp://roblox/game/remotes': 'dump_remote_events',
+            'mcp://roblox/game/metadata': 'get-metadata',
+            'mcp://roblox/game/players': 'dump-workspace-players',
+            'mcp://roblox/game/remotes': 'dump-remote-events',
             'mcp://roblox/game/workspace': 'get_workspace_objects',
-            'mcp://roblox/game/console': 'get_console_logs',
+            'mcp://roblox/game/console': 'get-console-logs',
         };
 
         const toolName = RESOURCE_MAP[uri];

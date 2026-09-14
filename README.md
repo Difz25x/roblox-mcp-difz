@@ -4,7 +4,7 @@
 
 It works with **any MCP-compatible AI client** like Claude Code, Cursor, Windsurf, or whatever else you use. 
 
-I packed it with 150+ tools. It can traverse the DataModel, inspect properties, fire remotes, run raw Lua, hook functions, intercept network traffic, and simulate user input. Basically, if you can do it in an executor, the AI can do it now.
+I packed it with 108 tools. It can traverse the DataModel, inspect properties, fire remotes, run raw Lua, hook functions, intercept network traffic, and simulate user input. Basically, if you can do it in an executor, the AI can do it now.
 
 ---
 
@@ -16,7 +16,7 @@ I packed it with 150+ tools. It can traverse the DataModel, inspect properties, 
 - [MCP Client Configuration](#mcp-client-configuration)
 - [Commands](#commands)
 - [UNC Compatibility (Executor Support)](#unc-compatibility-executor-support)
-- [Tools (106 tools in total)](#tools-106-tools-in-total)
+- [Tools (108 tools in total)](#tools-108-tools-in-total)
 - [How It Actually Works](#how-it-actually-works)
 - [Multi-Instance Support](#multi-instance-support)
 - [When Things Break (Troubleshooting)](#when-things-break-troubleshooting)
@@ -100,7 +100,7 @@ You can also fetch `/mcp.luau` (same content) if your executor prefers that exte
 
 ### 3. Verify connection
 
-The server logs the registration with the game name, place ID, and job ID. Use the `check_unc_capabilities` tool to verify which UNC functions your executor supports.
+The server logs the registration with the game name, place ID, and job ID. Use the `check-unc` tool to verify which UNC functions your executor supports.
 
 ### getgenv() Configuration
 
@@ -253,53 +253,53 @@ The client script (mcp.lua) uses **Universal Compatibility (UNC)** functions to 
 
 | UNC Function | Category | Dependent Tools | Fallback |
 |---|---|---|---|
-| `getnilinstances` | Instance Tree Traversal | `nil_realm_scanner`, `get_nil_instances` | Returns empty array |
-| `getconnections` | Remote E&F | `remote_connection_inspector`, `get_remote_connections` | `instance:GetConnections()` |
-| `loadstring` | Code Execution, Script Analysis, Closure Analysis, Function Hooking | `luau_code_executor`, `execute_custom_luau`, `script_decompiler`, `closure_inspector`, `closure_upvalue_editor`, `function_interceptor_installer`, `function_hook_installer` | None (core requirement) |
-| `gethiddenproperty` | Hidden Properties | `hidden_property_reader` | Returns nil |
-| `sethiddenproperty` | Hidden Properties | `hidden_property_writer` | No-op |
-| `setscriptable` | Hidden Properties | `property_scriptable_toggler` | No-op |
-| `gethui` | GUI Manipulation | `gui_hierarchy_dumper`, `screen_text_extractor`, `notification_hider`, `clean_gui_traces`, `gui_button_clicker` | Returns CoreGui |
-| `firesignal` | GUI Manipulation, Instance Lifecycle | `gui_button_clicker`, `signal_replicator` | `signal:Fire()` |
-| `readfile` | File System | `file_reader` | Returns empty string |
-| `writefile` | File System | `file_writer` | No-op |
-| `delfile` | File System | `file_deleter` | No-op |
-| `listfiles` | File System | `file_lister` | No-op |
-| `isfile` | File System | `file_lister` | Returns false |
-| `makefolder` | File System | `folder_creator` | No-op |
-| `getcustomasset` | File System | `custom_asset_loader` | Fails with error |
-| `getloadedmodules` | Script & Module Analysis | `get_loaded_modules`, `module_registry_scanner` | Error reported |
-| `getrunningscripts` | Script & Module Analysis | `running_scripts_lister` | Error reported |
-| `getscriptbytecode` | Script & Module Analysis | `script_source_ripper`, `script_decompiler`, `bytecode_disassembler` | Error reported |
-| `getscriptclosure` | Script & Module Analysis, Closure Analysis | `script_closure_getter`, `closure_type_checker` | Error reported |
-| `getscripthash` | Script & Module Analysis | `script_hash_calculator` | Error reported |
-| `getcallingscript` | Script & Module Analysis | `calling_script_finder` | Error reported |
-| `getsenv` | Script & Module Analysis | `script_environment_dumper` | Error reported |
-| `getrenv` | Script & Module Analysis | `roblox_environment_viewer` | Error reported |
-| `getthreadidentity` | Script & Module Analysis | `sandbox_analyzer` | Returns 0 |
-| `isexecutorclosure` | Script & Module Analysis, Closure Analysis | `sandbox_analyzer`, `closure_type_checker` | Returns false |
-| `getgc` | Script & Module Analysis, Registry & GC | `gc_scanner`, `sandbox_analyzer` | Error reported |
-| `getreg` | Script & Module Analysis, Registry & GC | `registry_scanner`, `registry_reader`, `sandbox_analyzer` | Error reported |
-| `iscclosure` | Closure Analysis | `closure_type_checker` | Error reported |
-| `islclosure` | Closure Analysis | `closure_type_checker` | Error reported |
-| `getrawmetatable` | Metatable Manipulation | `metatable_seer`, `metatable_modifier`, `readonly_toggler` | Falls to `getmetatable` |
-| `setrawmetatable` | Metatable Manipulation | `metatable_modifier`, `raw_metatable_setter` | No-op |
-| `setreadonly` | Metatable Manipulation | `readonly_toggler` | No-op |
-| `isreadonly` | Metatable Manipulation | `metatable_seer`, `readonly_toggler` | Returns false |
-| `hookfunction` | Function Hooking, Script Analysis, Network Traffic | `function_interceptor_installer`, `function_hook_installer`, `spy_remote_traffic`, `traffic_interceptor_installer`, `remote_blocker_installer`, `argument_spoofer`, `response_interceptor` | No-op |
-| `hookmetamethod` | Function Hooking | `namecall_spy` | Error reported |
-| `getnamecallmethod` | Function Hooking | `namecall_spy` | Returns empty string |
-| `fireclickdetector` | Instance Lifecycle | `fire_click_detector` | No-op |
-| `fireproximityprompt` | Instance Lifecycle | `fire_proximity_prompt`, `interact_all_proximity_prompts` | No-op |
-| `compareinstances` | Instance Lifecycle | `instance_comparer` | Lua `==` operator |
+| `getnilinstances` | Instance Tree Traversal | `scan-nil-instances` | Returns empty array |
+| `getconnections` | Remote E&F | `inspect-remote-connections` | `instance:GetConnections()` |
+| `loadstring` | Code Execution, Script Analysis, Closure Analysis, Function Hooking | `execute-script`, `decompile-script`, `inspect-closure`, `hook-function` | None (core requirement) |
+| `gethiddenproperty` | Hidden Properties | `get-hidden-property` | Returns nil |
+| `sethiddenproperty` | Hidden Properties | `set-hidden-property` | No-op |
+| `setscriptable` | Hidden Properties | `set-scriptable` | No-op |
+| `gethui` | GUI Manipulation | `dump-gui-hierarchy`, `extract-screen-text`, `hide-notifications`, `click-ui-element` | Returns CoreGui |
+| `firesignal` | GUI Manipulation, Instance Lifecycle | `click-button`, `fire-signal` | `signal:Fire()` |
+| `readfile` | File System | `read-file` | Returns empty string |
+| `writefile` | File System | `write-file` | No-op |
+| `delfile` | File System | `delete-file` | No-op |
+| `listfiles` | File System | `list-files` | No-op |
+| `isfile` | File System | `list-files` | Returns false |
+| `makefolder` | File System | `create-folder` | No-op |
+| `getcustomasset` | File System | `load-custom-asset` | Fails with error |
+| `getloadedmodules` | Script & Module Analysis | `get-loaded-modules` | Error reported |
+| `getrunningscripts` | Script & Module Analysis | `get-running-scripts` | Error reported |
+| `getscriptbytecode` | Script & Module Analysis | `get-script-source`, `decompile-script` | Error reported |
+| `getscriptclosure` | Script & Module Analysis, Closure Analysis | `get-script-closure`, `check-closure-type` | Error reported |
+| `getscripthash` | Script & Module Analysis | `get-script-hash` | Error reported |
+| `getcallingscript` | Script & Module Analysis | `get-calling-script` | Error reported |
+| `getsenv` | Script & Module Analysis | `get-script-env` | Error reported |
+| `getrenv` | Script & Module Analysis | `get-roblox-env` | Error reported |
+| `getthreadidentity` | Script & Module Analysis | `analyze-sandbox` | Returns 0 |
+| `isexecutorclosure` | Script & Module Analysis, Closure Analysis | `analyze-sandbox`, `check-closure-type` | Returns false |
+| `getgc` | Script & Module Analysis, Registry & GC | `scan-gc`, `analyze-sandbox` | Error reported |
+| `getreg` | Script & Module Analysis, Registry & GC | `scan-registry`, `analyze-sandbox` | Error reported |
+| `iscclosure` | Closure Analysis | `check-closure-type` | Error reported |
+| `islclosure` | Closure Analysis | `check-closure-type` | Error reported |
+| `getrawmetatable` | Metatable Manipulation | `inspect-metatable`, `modify-metatable`, `toggle-readonly` | Falls to `getmetatable` |
+| `setrawmetatable` | Metatable Manipulation | `modify-metatable`, `set-raw-metatable` | No-op |
+| `setreadonly` | Metatable Manipulation | `toggle-readonly` | No-op |
+| `isreadonly` | Metatable Manipulation | `inspect-metatable`, `toggle-readonly` | Returns false |
+| `hookfunction` | Function Hooking, Script Analysis, Network Traffic | `hook-function`, `spy-remotes`, `install-remote-spy`, `block-remote`, `spoof-remote-args` | No-op |
+| `hookmetamethod` | Function Hooking | `spy-remotes` | Error reported |
+| `getnamecallmethod` | Function Hooking | `spy-remotes` | Returns empty string |
+| `fireclickdetector` | Instance Lifecycle | `fire-click-detector` | No-op |
+| `fireproximityprompt` | Instance Lifecycle | `fire-proximity-prompt`, `interact-prompts` | No-op |
+| `compareinstances` | Instance Lifecycle | `compare-instances` | Lua `==` operator |
 | `cloneref` | Internal | All tools (service references) | Identity function |
 | `getpid` | Internal | Multi-instance targeting | nil |
 
-> **Note:** `loadstring` is the only hard requirement — every other UNC function has a graceful fallback. Use the `check_unc_capabilities` tool at runtime to see exactly what your executor supports.
+> **Note:** `loadstring` is the only hard requirement — every other UNC function has a graceful fallback. Use the `check-unc` tool at runtime to see exactly what your executor supports.
 
 ---
 
-## Tools (106 tools in total)
+## Tools (108 tools in total)
 
 This MCP server comes with over 100 tools. Below are some of the most commonly used tools. For the complete list and detailed descriptions, refer to `src/tool-definitions.ts`.
 
@@ -316,7 +316,7 @@ This MCP server comes with over 100 tools. Below are some of the most commonly u
 | `disable-anticheat` | Bypass client-side anticheat. Prevents Kick(), disables suspiciously named scripts, and blocks teleport bans. |
 | `take-screenshot` | Capture a screenshot of a Roblox process window on Windows. Returns base64-encoded PNG data URL. |
 
-> **Note:** There are 96 other tools covering GUI manipulation, instance cloning/destroying, camera control, mouse/keyboard simulation, metatable manipulation, closure inspection, and more!
+> **Note:** There are 98 other tools covering GUI manipulation, instance cloning/destroying, camera control, mouse/keyboard simulation, metatable manipulation, closure inspection, and more!
 
 ---
 
@@ -340,14 +340,14 @@ This MCP server comes with over 100 tools. Below are some of the most commonly u
 │                                                 │                │
 │  ┌─────────────┐  ┌──────────────┐              │                │
 │  │Tool Defs    │  │Session Mgr   │              │                │
-│  │(106 tools)  │  │(workers)     │              │                │
+│  │(108 tools)  │  │(workers)     │              │                │
 │  └─────────────┘  └──────────────┘              │                │
 │                                                 │                │
 │  ┌──────────────────────────────────────────────┐                │
 │  │ Server-Side Tools (Process Manager)          │                │
-│  │ get_roblox_processes, launch_roblox,         │                │
-│  │ open_game, capture_roblox_screenshot,        │                │
-│  │ get_roblox_versions                          │                │
+│  │ list-roblox-processes, launch-roblox,        │                │
+│  │ open-roblox-game, take-screenshot,           │                │
+│  │ record-roblox-video, get-roblox-versions     │                │
 │  └──────────────────────────────────────────────┘                │
 └─────────────────────────────────────────────────┼────────────────┘
                                                   │ WebSocket
@@ -357,7 +357,7 @@ This MCP server comes with over 100 tools. Below are some of the most commonly u
 │                                                                  │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────┐  │
 │  │ WS Client   │  │ Task Router  │  │ Handler Registry        │  │
-│  │ (connect)   │──│ (wsPoll)     │──│ (106+ handlers)         │  │
+│  │ (connect)   │──│ (wsPoll)     │──│ (108+ handlers)         │  │
 │  └─────────────┘  └──────────────┘  └─────────────────────────┘  │
 │                                           │                      │
 │  ┌────────────────────────────────────────┘                      │
@@ -402,7 +402,7 @@ This MCP server comes with over 100 tools. Below are some of the most commonly u
 {
   "type": "task",
   "id": "task-uuid",
-  "tool": "execute_custom_luau",
+  "tool": "execute-script",
   "args": { "code": "print('hello')" },
   "pid": 1234,
   "workerId": "target-worker"
@@ -426,13 +426,13 @@ Each executor registers with a unique `worker_id`. Tools can target a specific R
 
 ```json
 {
-  "name": "get_roblox_processes",
+  "name": "list-roblox-processes",
   "arguments": {}
 }
 // Returns [{ pid: 1234, name: "RobloxPlayerBeta", windowTitle: "Game Name" }]
 
 {
-  "name": "execute_custom_luau",
+  "name": "execute-script",
   "arguments": {
     "pid": 1234,
     "code": "print('hello from instance 1234')"
@@ -475,7 +475,7 @@ The client script (mcp.lua) includes a full compatibility layer that adapts to t
 
 ### Decompilation Chain
 
-The `script_decompiler` tool automatically falls through three decompile services:
+The `decompile-script` tool automatically falls through three decompile services:
 1. **LuaExpert** (api.lua.expert) — primary
 2. **Medal** (medal.upio.dev) — fallback 1
 3. **Konstant** (api.plusgiant5.com) — fallback 2
@@ -489,7 +489,7 @@ The `script_decompiler` tool automatically falls through three decompile service
 Always start by checking what your executor supports:
 
 ```
-Tool: check_unc_capabilities
+Tool: check-unc
 ```
 
 This returns a complete support matrix showing which of the 37 UNC functions your executor provides, making it immediately clear which tools will work and which will report errors.
@@ -499,10 +499,10 @@ This returns a complete support matrix showing which of the 37 UNC functions you
 Some executors block certain UNC functions (especially `hookfunction`, `getgc`, `getreg`, `loadstring` with restricted environments).
 
 **Solutions:**
-1. Run `check_unc_capabilities` to identify which functions are blocked
+1. Run `check-unc` to identify which functions are blocked
 2. Try a different `identity_level` (use identity 8 for maximum access):
    ```
-   Tool: luau_code_executor
+   Tool: execute-script
    Arguments: { "code": "...", "identity_level": 8 }
    ```
 3. If your executor blocks `loadstring`, most advanced tools (code execution, hooks, closure analysis) will not work. Look for an executor with better UNC support
@@ -529,7 +529,7 @@ This occurs when the MCP server is running but no Roblox executor has connected 
 ### WebSocket Connection Issues
 
 **Executor won't connect:**
-1. Confirm the Roblox executor supports `WebSocket.connect` (check `check_unc_capabilities`)
+1. Confirm the Roblox executor supports `WebSocket.connect` (check `check-unc`)
 2. Try HTTP fallback transport:
    ```lua
    getgenv().MCP_TRANSPORT = "http"
@@ -609,9 +609,9 @@ console.log(`Total tools: ${allTools.length}`);
 
 - **The server listens on all interfaces (`0.0.0.0`) by default.** If you only need local access, consider binding to `127.0.0.1` via your firewall or a reverse proxy.
 - **There is no authentication.** Anyone who can reach the server port can invoke any tool. Do not expose the server to untrusted networks.
-- **Code execution tools (`luau_code_executor`, `execute_custom_luau`) provide full Lua VM access** within the Roblox process, including the ability to call any API, hook any function, and modify any instance. Use with extreme caution.
-- **The server-side tools** (`get_roblox_processes`, `launch_roblox`, `open_game`, `capture_roblox_screenshot`) execute on the Node.js host machine and can launch processes or enumerate running applications.
-- **Network interception tools** (`argument_spoofer`, `response_interceptor`, `remote_killswitch_toggler`) can modify or block game network traffic, potentially violating terms of service.
+- **Code execution tools (`execute-script`) provide full Lua VM access** within the Roblox process, including the ability to call any API, hook any function, and modify any instance. Use with extreme caution.
+- **The server-side tools** (`list-roblox-processes`, `launch-roblox`, `open-roblox-game`, `take-screenshot`, `record-roblox-video`) execute on the Node.js host machine and can launch processes or enumerate running applications.
+- **Network interception tools** (`spoof-remote-args`, `install-remote-spy`, `toggle-remote-killswitch`) can modify or block game network traffic, potentially violating terms of service.
 - **This tool is for educational and research purposes only.** Unauthorized use against games you do not own or have explicit permission to test may violate Roblox Terms of Service.
 
 ---

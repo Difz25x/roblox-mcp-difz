@@ -78,7 +78,7 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
 
   const RESOURCE_MAP: Record<string, string> = {
     'mcp://roblox/game/metadata': 'get-metadata',
-    'mcp://roblox/game/players': 'get-local-player',
+    'mcp://roblox/game/players': 'dump-workspace-players',
     'mcp://roblox/game/remotes': 'dump-remote-events',
     'mcp://roblox/game/workspace': 'get_workspace_objects',
     'mcp://roblox/game/console': 'get-console-logs',

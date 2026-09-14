@@ -178,6 +178,31 @@ async function cmdStart(isDaemon: boolean = false): Promise<void> {
     });
 }
 
+async function cmdStdio(): Promise<void> {
+    let createApp: any;
+    let initMcpServer: any;
+    let StdioServerTransport: any;
+
+    try {
+        ({ createApp } = require('./server-core'));
+        ({ initMcpServer, StdioServerTransport } = require('./mcp-server'));
+    } catch (err: any) {
+        process.stderr.write(`  \x1b[31m✖ Cannot start MCP stdio transport: ${err.message}\x1b[0m\n`);
+        process.stderr.write(`  \x1b[2mInstall dependencies first: npm install\x1b[0m\n`);
+        process.exit(1);
+    }
+
+    const PORT = getPort();
+    const { app, queue, tools, sessions, processManager } = createApp();
+
+    const mcpServer = initMcpServer(queue, tools, sessions, processManager);
+    await mcpServer.connect(new StdioServerTransport());
+
+    app.listen(PORT, () => {
+        process.stderr.write(`  \x1b[2m[rblx-mcp] MCP stdio transport ready — WS/HTTP listening on port ${PORT}\x1b[0m\n`);
+    });
+}
+
 function showPostStartMenu(port: number, pid: number): void {
     const items: MenuItem[] = [
         {
@@ -703,12 +728,13 @@ async function main(): Promise<void> {
 
     if (cmd === 'start') { await cmdStart(false); return; }
     if (cmd === 'daemon') { await cmdStart(true); return; }
+    if (cmd === 'stdio') { await cmdStdio(); return; }
     if (cmd === 'setup') { await cmdSetup(); return; }
     if (cmd === 'update') { await cmdUpdate(); return; }
     if (cmd === 'stop') { await cmdStop(); return; }
 
     console.log(`  \x1b[33m⚠ Unknown: "${cmd}"\x1b[0m`);
-    console.log(`  \x1b[2mAvailable: start, setup, update, stop\x1b[0m\n`);
+    console.log(`  \x1b[2mAvailable: start, stdio, setup, update, stop\x1b[0m\n`);
     await showInteractiveMenu();
 }
 

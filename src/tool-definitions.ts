@@ -4154,6 +4154,33 @@ class ToolDefinitions {
             },
 
             {
+                name: "record-roblox-video",
+                description: "Record a video of a Roblox process window on Windows. Captures the window at 30 FPS for the given duration and saves it as an MP4 file. If no PID provided, records the first RobloxPlayerBeta process. Returns the path of the saved video file.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "pid": { "type": "number", "description": "PID of the Roblox process to record. Omit for first found." },
+                        "duration_seconds": { "type": "number", "description": "Recording duration in seconds.", "default": 5, "maximum": 30 }
+                    },
+                    "required": []
+                }
+            },
+
+            {
+                name: "get-workspace-objects",
+                description: "Traverse game.Workspace and return a flat list of instances. Each entry contains the instance Name, ClassName, and full Path. Supports depth limiting, result caps, and ClassName filtering.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "max_depth": { "type": "number", "description": "Maximum recursion depth when walking Workspace.", "default": 20 },
+                        "max_results": { "type": "number", "description": "Maximum number of objects to return.", "default": 500 },
+                        "class_filter": { "type": "string", "description": "Only include instances whose ClassName matches this value." }
+                    },
+                    "required": []
+                }
+            },
+
+            {
                 name: "get-roblox-versions",
                 description: "List installed Roblox versions on this machine. Scans Versions directory in Program Files and LocalAppData. Returns version string, whether launcher and player exes exist.",
                 inputSchema: {

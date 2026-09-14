@@ -7,23 +7,72 @@ local G = {}
 pcall(function()
 	G = getgenv and getgenv() or _G
 end)
-if G.MCP_RUNNING then
+-- genv can be a proxy userdata on some executors; rawget/rawset below require a real table.
+if type(G) ~= "table" then
+	G = {}
+end
+-- Safe genv accessors. rawget/rawset never invoke __index/__newindex, so they cannot
+-- throw and allocate no closure -- important because G_GET is called on hot paths
+-- (e.g. every FireServer while the remote spy is installed).
+local function G_GET(k)
+	return rawget(G, k)
+end
+local function G_SET(k, v)
+	rawset(G, k, v)
+	return v
+end
+-- loadstring is nil on some executors. Hoisted so the typed `pcall` generic stays
+-- happy and the nil guard lives in one place.
+local function safeLoad(code)
+	local ls = loadstring
+	if type(ls) ~= "function" then
+		return nil, "loadstring unavailable"
+	end
+	return ls(code)
+end
+if G_GET("MCP_RUNNING") then
 	pcall(function()
-		if G.MCP_WS then
-			G.MCP_WS:Close()
+		local prevWS = G_GET("MCP_WS")
+		if prevWS then
+			prevWS:Close()
 		end
 	end)
-	if G.MCP_SPY_ON and type(hookmetamethod) == "function" then
-		if G.MCP_SPY_ORIG then
-			pcall(hookmetamethod, game, "__namecall", G.MCP_SPY_ORIG)
+	G_SET("MCP_WS", nil)
+	if G_GET("MCP_SPY_ACTIVE") then
+		local hooks = G_GET("MCP_SPY_HOOKS")
+		if hooks then
+			pcall(function()
+				if hooks.Namecall then
+					if type(hookmetamethod) == "function" then
+						hookmetamethod(game, "__namecall", hooks.Namecall)
+					elseif type(hookfunction) == "function" then
+						hookfunction(getrawmetatable(game).__namecall, hooks.Namecall)
+					end
+				end
+			end)
+			pcall(function()
+				if hooks.FireServer and type(hookfunction) == "function" then
+					hookfunction(Instance.new("RemoteEvent").FireServer, hooks.FireServer)
+				end
+			end)
+			pcall(function()
+				if hooks.InvokeServer and type(hookfunction) == "function" then
+					hookfunction(Instance.new("RemoteFunction").InvokeServer, hooks.InvokeServer)
+				end
+			end)
+			pcall(function()
+				if hooks.UnreliableFireServer and type(hookfunction) == "function" then
+					hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, hooks.UnreliableFireServer)
+				end
+			end)
 		end
-		if G.MCP_SPY_NI_ORIG then
-			pcall(hookmetamethod, game, "__newindex", G.MCP_SPY_NI_ORIG)
-		end
+		G_SET("MCP_SPY_ACTIVE", false)
+		G_SET("MCP_SPY_HOOKS", nil)
+		G_SET("MCP_SPY_LOGS", nil)
 	end
 end
-local HOST = G.MCP_HOST or "127.0.0.1"
-local PORT = G.MCP_PORT or 28429
+local HOST = G_GET("MCP_HOST") or "127.0.0.1"
+local PORT = G_GET("MCP_PORT") or 28429
 local WS_URL = "ws://" .. HOST .. ":" .. PORT .. "/ws"
 local cloneref = cloneref or function(x)
 	return x
@@ -72,8 +121,9 @@ local readfile = readfile
 local isfile = isfile
 local delfile = delfile
 local WORKER_ID = nil
-if G.MCP_WORKER_ID then
-	WORKER_ID = G.MCP_WORKER_ID
+local savedWorkerId = G_GET("MCP_WORKER_ID")
+if savedWorkerId then
+	WORKER_ID = savedWorkerId
 else
 	local ok, guid = pcall(function()
 		return HttpService:GenerateGuid(false)
@@ -229,18 +279,7 @@ end
 
 local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
 local WS_GOT_PONG = true
-local MCP_SPY_ACTIVE = false
-local MCP_SPY_LOG = {}
-local MCP_SPY_ORIGINAL = nil
-local MCP_SPY_HOOKED_REF = nil
-local MCP_SPY_MT = nil
-local MCP_SPY_CONNECTIONS = {}
-local MCP_SPY_NEWINDEX = nil
-local MCP_SPY_NEWINDEX_ORIG = nil
-local MCP_BLOCKED = {}
-local MCP_IGNORED = {}
-local MCP_BLOCK_ALL = false
-local MCP_SPOOF = {}
+
 local RECONNECT_DELAY = 3
 
 local MCP_CAPABILITIES = {}
@@ -275,6 +314,7 @@ pcall(function()
 			"getloadedmodules",
 			"getrunningscripts",
 			"getscriptbytecode",
+				"decompile",
 			"getscriptclosure",
 			"getscripthash",
 			"getcallingscript",
@@ -296,7 +336,7 @@ pcall(function()
 			local ok, found = pcall(function()
 				local v = _G[name]
 				if type(v) ~= "function" then
-					local lsOk, lsFn = pcall(loadstring, "return " .. name)
+					local lsOk, lsFn = pcall(safeLoad, "return " .. name)
 					if lsOk then
 						v = lsFn()
 					end
@@ -342,9 +382,25 @@ local function wsReconnect()
 	if not ok or not s then
 		return false, tostring(s)
 	end
+	-- A socket can come back from connect() while the handshake is already dead
+	-- (power cut / network drop). Such a socket has no event signals, and touching
+	-- them is what produced "attempt to index nil with 'Connect'". Validate first.
+	local evOk, hasEvents = pcall(function()
+		return s.OnMessage ~= nil and s.OnClose ~= nil
+	end)
+	if not evOk or not hasEvents then
+		pcall(function()
+			s:Close()
+		end)
+		return false, "socket has no event signals"
+	end
+
+	-- Capture the socket NOW. GetProductInfo below is a network call inside pcall,
+	-- and pcall is yieldable in Luau -- WS could be swapped during that yield, which
+	-- would send the register packet on the wrong socket.
+	local savedWS = s
 	WS = s
-	WS_CONNECTED = true
-	G.MCP_WS = s
+	G_SET("MCP_WS", s)
 	local placeName = ""
 	pcall(function()
 		local pi = MarketplaceService:GetProductInfo(game.PlaceId)
@@ -363,40 +419,56 @@ local function wsReconnect()
 		capabilities = MCP_CAPABILITIES,
 	}
 	local ok, sent = pcall(function()
-		WS:Send(HttpService:JSONEncode(regData))
+		savedWS:Send(HttpService:JSONEncode(regData))
 	end)
 	if not ok then
 		WS = nil
 		WS_CONNECTED = false
+		G_SET("MCP_WS", nil)
 		return false, "Register send failed"
 	end
-	local savedWS = WS
-	WS.OnMessage:Connect(function(msg)
-		if WS ~= savedWS then
-			return
-		end
-		print("[MCP] >> " .. msg)
-		local ok, d = pcall(function()
-			return HttpService:JSONDecode(msg)
-		end)
-		if ok and d then
-			if d.type == "pong" then
-				WS_GOT_PONG = true
+	local hookOk, hookErr = pcall(function()
+		savedWS.OnMessage:Connect(function(msg)
+			if WS ~= savedWS then
+				return
 			end
-			if d.type == "task" then
-				if d.workerId and d.workerId ~= WORKER_ID then
-					return
+			local ok, d = pcall(function()
+				return HttpService:JSONDecode(msg)
+			end)
+			if ok and d then
+				if d.type == "pong" then
+					WS_GOT_PONG = true
 				end
-				table.insert(WS_BUFFER, d)
+				if d.type == "task" then
+					if d.workerId and d.workerId ~= WORKER_ID then
+						return
+					end
+					table.insert(WS_BUFFER, d)
+				end
 			end
-		end
+		end)
+		savedWS.OnClose:Connect(function()
+			if WS == savedWS then
+				WS_CONNECTED = false
+				WS = nil
+				-- Clear the genv copy too, otherwise a dead socket lingers there
+				-- forever and gets closed again on the next injection.
+				G_SET("MCP_WS", nil)
+			end
+		end)
 	end)
-	WS.OnClose:Connect(function()
-		if WS == savedWS then
-			WS_CONNECTED = false
-			WS = nil
-		end
-	end)
+	if not hookOk then
+		pcall(function()
+			savedWS:Close()
+		end)
+		WS = nil
+		WS_CONNECTED = false
+		G_SET("MCP_WS", nil)
+		return false, "Failed to attach socket handlers: " .. tostring(hookErr)
+	end
+	-- Only mark connected once the handlers are attached; if anything above failed we
+	-- would otherwise leave the main loop thinking it has a live socket.
+	WS_CONNECTED = true
 	return true
 end
 
@@ -581,7 +653,7 @@ local function handleCodeExec(args)
 	end
 
 	local envOverrides = jsonDecode(args.environment_overrides)
-	local ok, fn = pcall(loadstring, code)
+	local ok, fn = pcall(safeLoad, code)
 	if not ok then
 		return { success = false, error = "Compile error: " .. tostring(fn) }
 	end
@@ -635,7 +707,7 @@ local function handleCodeExecFile(args)
 	end
 
 	local envOverrides = jsonDecode(args.environment_overrides)
-	local ok, fn = pcall(loadstring, code)
+	local ok, fn = pcall(safeLoad, code)
 	if not ok then
 		return { success = false, error = "Compile error: " .. tostring(fn) }
 	end
@@ -1241,7 +1313,7 @@ local function handleSandboxExec(args)
 	if code == "" then
 		return { success = false, error = "code required" }
 	end
-	local ok, fn = pcall(loadstring, code)
+	local ok, fn = pcall(safeLoad, code)
 	if not ok then
 		return { success = false, error = "Compile: " .. tostring(fn) }
 	end
@@ -1427,22 +1499,32 @@ local function handleScriptDecompiler(args)
 	if not inst then
 		return { success = false, error = err }
 	end
-	local ok, bc = pcall(getscriptbytecode, inst)
-	if not ok then
-		return { success = false, error = "Cannot read bytecode" }
+	local decompilerFn = decompile or (_G and _G.decompile)
+	if type(decompilerFn) == "function" then
+		local okDec, decSrc = pcall(decompilerFn, inst)
+		if okDec and type(decSrc) == "string" and decSrc ~= "" then
+			return {
+				success = true,
+				name = inst.Name,
+				decompiled = true,
+				source = decSrc,
+				engine = "unc_decompile",
+			}
+		end
 	end
-	local fn, compErr = loadstring(bc)
-	if not fn then
-		return { success = true, bytecodeSize = #(bc or ""), decompiled = false, compileError = tostring(compErr) }
+	if type(getscriptbytecode) == "function" then
+		local ok, bc = pcall(getscriptbytecode, inst)
+		if ok and type(bc) == "string" then
+			return {
+				success = true,
+				name = inst.Name,
+				decompiled = false,
+				bytecodeSize = #bc,
+				message = "Bytecode retrieved. UNC decompile() not supported on this executor.",
+			}
+		end
 	end
-	local sourceInfo = debug and debug.getinfo and { pcall(function()
-		return debug.getinfo(fn, "S")
-	end) }
-	local source = ""
-	if sourceInfo and sourceInfo[1] then
-		source = sourceInfo[1].source or ""
-	end
-	return { success = true, name = inst.Name, bytecodeSize = #(bc or ""), hasFunction = fn ~= nil, source = source }
+	return { success = false, error = "Decompilation not supported on this executor" }
 end
 
 local function handleSandboxAnalysis(args)
@@ -1514,7 +1596,10 @@ local function handleMetatableModifier(args)
 	end
 	local action = args.action or "read"
 	if action == "set_readonly" then
-		local state = args.state == nil and false or args.state
+		local state = args.state
+		if state == nil then
+			state = false
+		end
 		local ok2 = pcall(setreadonly, getrawmetatable(inst), state)
 		if not ok2 then
 			return { success = false, error = "setreadonly failed" }
@@ -1544,7 +1629,7 @@ local function handleFuncInterceptor(args)
 		target = inst
 		isInstance = true
 	else
-		local ok, fn = pcall(loadstring, "return " .. funcPath)
+		local ok, fn = pcall(safeLoad, "return " .. funcPath)
 		if ok and type(fn) == "function" then
 			local ok2, resolved = pcall(fn)
 			if ok2 then
@@ -1558,7 +1643,7 @@ local function handleFuncInterceptor(args)
 	local hookCode = args.hook_code or ""
 	local hookFn = nil
 	if hookCode ~= "" then
-		local ok3, compiled = pcall(loadstring, hookCode)
+		local ok3, compiled = pcall(safeLoad, hookCode)
 		if not ok3 then
 			return { success = false, error = "Failed to compile hook: " .. tostring(compiled) }
 		end
@@ -1582,7 +1667,7 @@ local function handleClosureType(args)
 	if path == "" then
 		return { success = false, error = "closure_path required" }
 	end
-	local ok, fn = pcall(loadstring, "return " .. path)
+	local ok, fn = pcall(safeLoad, "return " .. path)
 	if not ok or type(fn) ~= "function" then
 		local inst = resolvePath(path)
 		if inst then
@@ -1662,7 +1747,7 @@ local function handleClosureInspect(args)
 	if path == "" then
 		return { success = false, error = "closure_path required" }
 	end
-	local ok, fn = pcall(loadstring, "return " .. path)
+	local ok, fn = pcall(safeLoad, "return " .. path)
 	if not ok or type(fn) ~= "function" then
 		return { success = false, error = "Cannot resolve closure" }
 	end
@@ -1705,7 +1790,7 @@ local function handleDumpConstants(args)
 	if path == "" then
 		return { success = false, error = "function_path required" }
 	end
-	local ok, fn = pcall(loadstring, "return " .. path)
+	local ok, fn = pcall(safeLoad, "return " .. path)
 	if not ok or type(fn) ~= "function" then
 		return { success = false, error = "Cannot resolve function" }
 	end
@@ -1747,7 +1832,7 @@ local function handleDebugInfo(args)
 	if path == "" then
 		return { success = false, error = "function_path required" }
 	end
-	local ok, fn = pcall(loadstring, "return " .. path)
+	local ok, fn = pcall(safeLoad, "return " .. path)
 	if not ok or type(fn) ~= "function" then
 		return { success = false, error = "Cannot resolve function" }
 	end
@@ -1758,25 +1843,42 @@ local function handleDebugInfo(args)
 	local info = {}
 	local stack = {}
 	pcall(function()
-		local di = debug.getinfo(resolved, "SLfna")
-		if di then
+		if type(debug) == "table" and type(debug.info) == "function" then
+			local src, line, name = debug.info(resolved, "sln")
+			local nparams, isvar = debug.info(resolved, "a")
 			info = {
-				name = di.name,
-				source = di.source,
-				linedefined = di.linedefined,
-				lastlinedefined = di.lastlinedefined,
-				nups = di.nups,
-				func = di.func ~= nil,
-				isVararg = di.isvararg,
+				name = name or "?",
+				source = src or "?",
+				currentline = line,
+				numParams = nparams,
+				isVararg = isvar,
+				func = true,
 			}
+		elseif type(debug) == "table" and type(rawget(debug, "getinfo")) == "function" then
+			local okGi, di = pcall(rawget(debug, "getinfo"), resolved)
+			if okGi and type(di) == "table" then
+				info = {
+					name = di.name,
+					source = di.source,
+					currentline = di.currentline,
+					linedefined = di.linedefined,
+					func = di.func ~= nil,
+					isVararg = di.isvararg,
+				}
+			end
 		end
 	end)
 	pcall(function()
-		for i = 1, 20 do
-			local ok3, si = pcall(debug.getinfo, i, "Slnf")
-			if ok3 and si then
-				table.insert(stack, { name = si.name or "?", source = si.source or "?", line = si.currentline })
+		if type(debug) == "table" and type(debug.info) == "function" then
+			for i = 1, 20 do
+				local src, line, name = debug.info(i, "sln")
+				if not src and not line then
+					break
+				end
+				table.insert(stack, { name = name or "?", source = src or "?", line = line or 0 })
 			end
+		elseif type(debug) == "table" and type(debug.traceback) == "function" then
+			table.insert(stack, { traceback = debug.traceback("", 2) })
 		end
 	end)
 	return { success = true, info = info, stackTrace = stack }
@@ -1792,17 +1894,64 @@ local function handleRemoteSpy(args)
 	local maxLog = args.max_log_entries or args.max_logs or 500
 
 	-- Initialize global state
-	if not G.MCP_SPY_INIT then
-		G.MCP_SPY_INIT = true
-		G.MCP_SPY_LOGS = {} -- only outgoing for remotespy.lua
-		G.MCP_SPY_BLACKLIST = {} -- By DebugId or Name
-		G.MCP_SPY_BLOCKLIST = {} -- By DebugId or Name
-		G.MCP_SPY_ACTIVE = false
-		G.MCP_SPY_LOGCHECKCALLER = false
+	if not G_GET("MCP_SPY_INIT") then
+		G_SET("MCP_SPY_INIT", true)
+		G_SET("MCP_SPY_LOGS", {}) -- only outgoing for remotespy.lua
+		G_SET("MCP_SPY_BLACKLIST", {}) -- by instance Name or full path
+		G_SET("MCP_SPY_BLOCKLIST", {}) -- by instance Name or full path
+		G_SET("MCP_SPY_ACTIVE", false)
+		G_SET("MCP_SPY_LOGCHECKCALLER", false)
+		G_SET("MCP_SPY_BLOCK_ALL", false)
+		G_SET("MCP_SPY_FILTER_INCLUDE", {})
+		G_SET("MCP_SPY_FILTER_EXCLUDE", {})
+		G_SET("MCP_SPY_SPOOF", {})
+	end
+
+	-- Hot-path caches. ProcessOutgoing runs on EVERY FireServer/InvokeServer, so it
+	-- must not pay for G_GET lookups. These locals close over the same tables that
+	-- live in genv, and the action branches below write through them -- so
+	-- block/unblock/ignore/clear stay in sync without re-reading genv.
+	local spyLogs = G_GET("MCP_SPY_LOGS")
+	local spyBlocklist = G_GET("MCP_SPY_BLOCKLIST")
+	local spyBlacklist = G_GET("MCP_SPY_BLACKLIST")
+	local spySpoof = G_GET("MCP_SPY_SPOOF")
+	local spyFilterInclude = G_GET("MCP_SPY_FILTER_INCLUDE")
+	local spyFilterExclude = G_GET("MCP_SPY_FILTER_EXCLUDE")
+	local spyLogCheckCaller = G_GET("MCP_SPY_LOGCHECKCALLER")
+	local spyBlockAll = G_GET("MCP_SPY_BLOCK_ALL")
+
+	-- Returns the value that was written, and also refreshes the local caches so the
+	-- hot path never reads a stale reference after a table is replaced wholesale.
+	local function spyReplaceLogs()
+		spyLogs = {}
+		G_SET("MCP_SPY_LOGS", spyLogs)
+		return spyLogs
+	end
+
+	local function globMatch(pattern, text)
+		if type(pattern) ~= "string" or pattern == "" then
+			return false
+		end
+		if pattern == "*" then
+			return true
+		end
+		-- Translate a glob (* and ?) into a Lua pattern.
+		local escaped = pattern:gsub("([%^%$%(%)%%%.%[%]%+%-])", "%%%1")
+		escaped = escaped:gsub("%*", ".*"):gsub("%?", ".")
+		return text:find("^" .. escaped .. "$") ~= nil
+	end
+
+	local function matchesAny(patterns, name, path)
+		for _, pat in ipairs(patterns) do
+			if globMatch(pat, name) or globMatch(pat, path) then
+				return true
+			end
+		end
+		return false
 	end
 
 	local function GetDebugId(inst)
-		if not G.MCP_SPY_DEBUG_HANDLER then
+		if not G_GET("MCP_SPY_DEBUG_HANDLER") then
 			local b = Instance.new("BindableFunction")
 			b.OnInvoke = function(obj)
 				local ok, id = pcall(game.GetDebugId, game, obj)
@@ -1811,9 +1960,9 @@ local function handleRemoteSpy(args)
 				end
 				return "unknown"
 			end
-			G.MCP_SPY_DEBUG_HANDLER = b
+			G_SET("MCP_SPY_DEBUG_HANDLER", b)
 		end
-		return G.MCP_SPY_DEBUG_HANDLER:Invoke(inst)
+		return G_GET("MCP_SPY_DEBUG_HANDLER"):Invoke(inst)
 	end
 
 	local function IsCyclicTable(tbl)
@@ -1843,11 +1992,12 @@ local function handleRemoteSpy(args)
 	end
 
 	if action == "install" or action == "ensure-remote-spy" then
-		if G.MCP_SPY_ACTIVE then
+		if G_GET("MCP_SPY_ACTIVE") then
 			return { success = true, status = "already_loaded" }
 		end
 
-		local oth = syn and syn.oth
+		local synTbl = rawget(G, "syn") or rawget(_G, "syn")
+		local oth = synTbl and synTbl.oth
 		local hook = oth and oth.hook
 		local unhook = oth and oth.unhook
 
@@ -1868,52 +2018,78 @@ local function handleRemoteSpy(args)
 			return { success = false, error = "hookmetamethod / hookfunction not supported" }
 		end
 
-		local function deepclone(t, copies)
-			copies = copies or {}
-			local copy = nil
-			if type(t) == "table" then
-				if copies[t] then
-					copy = copies[t]
-				else
-					copy = {}
-					copies[t] = copy
-					for i, v in next, t do
-						copy[deepclone(i, copies)] = deepclone(v, copies)
+		local function ProcessOutgoing(method, inst, callArgs)
+			if not spyLogCheckCaller and checkcaller and checkcaller() then
+				return false
+			end
+
+			local rName = "Unknown"
+			local rPath = "Unknown"
+			pcall(function()
+				rName = inst.Name
+				rPath = getFullPath(inst)
+			end)
+
+			-- Match on Name *or* full path: block-remote sends full paths while
+			-- spy-remotes block sends a name, and both must work.
+			local blockcheck = spyBlocklist[rName] or spyBlocklist[rPath] or spyBlockAll
+			local ignorecheck = spyBlacklist[rName] or spyBlacklist[rPath]
+
+			-- Include/exclude glob filters (set-remote-filter). Exclude wins.
+			if not ignorecheck and not matchesAny(spyFilterExclude, rName, rPath) then
+				local included = true
+				if #spyFilterInclude > 0 then
+					included = matchesAny(spyFilterInclude, rName, rPath)
+				end
+
+				if not included then
+					ignorecheck = true
+				end
+			end
+
+			-- Argument spoofing (spoof-remote-args): rewrite in place before the call
+			-- proceeds. Rules are keyed by Name or full path.
+			local spoofRules = spySpoof[rPath] or spySpoof[rName]
+			if spoofRules and type(callArgs) == "table" then
+				for idx, rule in pairs(spoofRules) do
+					local i = tonumber(idx)
+					if i and i >= 1 and i <= #callArgs then
+						if rule.mode == "replace" then
+							callArgs[i] = rule.value
+						elseif rule.mode == "delete" then
+							table.remove(callArgs, i)
+						end
 					end
 				end
-			elseif typeof(t) == "Instance" then
-				copy = cloneref(t)
-			else
-				copy = t
-			end
-			return copy
-		end
-
-		local function ProcessOutgoing(method, inst, callArgs)
-			if not G.MCP_SPY_LOGCHECKCALLER and checkcaller and checkcaller() then
-				return false -- Do not intercept, let it pass
 			end
 
-			local id = GetDebugId(inst)
-			local blockcheck = G.MCP_SPY_BLOCKLIST[id] or G.MCP_SPY_BLOCKLIST[inst.Name]
-			local ignorecheck = G.MCP_SPY_BLACKLIST[id] or G.MCP_SPY_BLACKLIST[inst.Name]
-
-			if not ignorecheck and not IsCyclicTable(callArgs) then
-				if #G.MCP_SPY_LOGS < maxLog then
-					pcall(function()
-						local logEntry = {
-							remote = inst.Name,
-							remotePath = getFullPath(inst),
-							method = method,
-							direction = "outgoing",
-							args = serialize(deepclone(callArgs)),
-							timestamp = tick(),
-							blocked = blockcheck and true or false,
-							infofunc = debug.info(3, "f") or "unknown",
-							source = debug.info(3, "s") or "unknown",
-							line = debug.info(3, "l") or 0,
-						}
-						table.insert(G.MCP_SPY_LOGS, 1, logEntry)
+			if not ignorecheck and not blockcheck then
+				if #spyLogs < maxLog then
+					task.defer(function()
+						pcall(function()
+							local logEntry = {
+								remote = rName,
+								remotePath = rPath,
+								method = method,
+								direction = "outgoing",
+								args = serialize(callArgs),
+								timestamp = tick(),
+								blocked = false,
+								source = "unknown",
+								line = 0,
+							}
+							pcall(function()
+								local s, l = debug.info(4, "sl")
+								if s then
+									logEntry.source = tostring(s)
+									logEntry.line = tonumber(l) or 0
+								end
+							end)
+							table.insert(spyLogs, 1, logEntry)
+							if #spyLogs > maxLog then
+								table.remove(spyLogs)
+							end
+						end)
 					end)
 				end
 			end
@@ -2006,26 +2182,26 @@ local function handleRemoteSpy(args)
 			)
 		end
 
-		G.MCP_SPY_HOOKS = {
+		G_SET("MCP_SPY_HOOKS", {
 			Namecall = origNamecall,
 			FireServer = origFireServer,
 			InvokeServer = origInvokeServer,
 			UnreliableFireServer = origUnreliableFireServer,
-		}
+		})
 
-		G.MCP_SPY_ACTIVE = true
+		G_SET("MCP_SPY_ACTIVE", true)
 
 		return { success = true, status = "loaded", message = "RemoteSpy loaded successfully." }
 	end
 
 	if action == "get_log" or action == "list" then
-		if not G.MCP_SPY_ACTIVE then
+		if not G_GET("MCP_SPY_ACTIVE") then
 			return { success = false, error = "Spy not loaded" }
 		end
 		local max = args.max_results or 500
 		local results = {}
 		local count = 0
-		for _, entry in ipairs(G.MCP_SPY_LOGS) do
+		for _, entry in ipairs(spyLogs) do
 			if filter == "" or entry.remote:lower():find(filter:lower(), 1, true) then
 				table.insert(results, entry)
 				count = count + 1
@@ -2038,78 +2214,164 @@ local function handleRemoteSpy(args)
 	end
 
 	if action == "clear" then
-		G.MCP_SPY_LOGS = {}
+		spyReplaceLogs()
 		return { success = true }
 	end
 
 	if action == "block" then
 		local p = args.remoteName or args.remote_paths
 		if type(p) == "table" then
-			p = p[1]
+			for _, path in ipairs(p) do
+				spyBlocklist[path] = true
+			end
+			return { success = true, blocked = p }
 		end
-		G.MCP_SPY_BLOCKLIST[p] = true
+		spyBlocklist[p] = true
 		return { success = true, blocked = p }
 	end
 
 	if action == "unblock" then
 		local p = args.remoteName or args.remote_paths
 		if type(p) == "table" then
-			p = p[1]
+			for _, path in ipairs(p) do
+				spyBlocklist[path] = nil
+			end
+			return { success = true, unblocked = p }
 		end
-		G.MCP_SPY_BLOCKLIST[p] = nil
+		spyBlocklist[p] = nil
 		return { success = true, unblocked = p }
+	end
+
+	if action == "block_all" then
+		spyBlockAll = true
+		G_SET("MCP_SPY_BLOCK_ALL", true)
+		return { success = true, blockAll = true }
+	end
+
+	if action == "unblock_all" then
+		spyBlockAll = false
+		G_SET("MCP_SPY_BLOCK_ALL", false)
+		-- A killswitch release should not leave per-remote blocks behind.
+		for k in pairs(spyBlocklist) do
+			spyBlocklist[k] = nil
+		end
+		return { success = true, blockAll = false }
 	end
 
 	if action == "ignore" then
 		local p = args.remoteName or args.remote_paths
 		if type(p) == "table" then
-			p = p[1]
+			for _, path in ipairs(p) do
+				spyBlacklist[path] = true
+			end
+			return { success = true, ignored = p }
 		end
-		G.MCP_SPY_BLACKLIST[p] = true
+		spyBlacklist[p] = true
 		return { success = true, ignored = p }
 	end
 
 	if action == "unignore" then
 		local p = args.remoteName or args.remote_paths
 		if type(p) == "table" then
-			p = p[1]
+			for _, path in ipairs(p) do
+				spyBlacklist[path] = nil
+			end
+			return { success = true, unignored = p }
 		end
-		G.MCP_SPY_BLACKLIST[p] = nil
+		spyBlacklist[p] = nil
 		return { success = true, unignored = p }
 	end
 
+	if action == "set_filter" then
+		local inc = args.include_patterns or {}
+		local exc = args.exclude_patterns or {}
+		for k in pairs(spyFilterInclude) do
+			spyFilterInclude[k] = nil
+		end
+		for k in pairs(spyFilterExclude) do
+			spyFilterExclude[k] = nil
+		end
+		if type(inc) == "table" then
+			for _, pat in ipairs(inc) do
+				table.insert(spyFilterInclude, pat)
+			end
+		end
+		if type(exc) == "table" then
+			for _, pat in ipairs(exc) do
+				table.insert(spyFilterExclude, pat)
+			end
+		end
+		return { success = true, include = inc, exclude = exc }
+	end
+
+	if action == "spoof" then
+		local targets = args.remote_paths
+		if type(targets) ~= "table" then
+			targets = { args.spoof_remote or args.remoteName }
+		end
+		local rules = {}
+		local transforms = args.transformations or {}
+		if type(transforms) == "table" then
+			for _, t in ipairs(transforms) do
+				local idx = tonumber(t.argument_index)
+				if idx and idx >= 1 and t.mode and t.mode ~= "inject" and t.mode ~= "mutate" then
+					table.insert(rules, { index = idx, mode = t.mode, value = t.fixed_value })
+				end
+			end
+		end
+		-- Keep rules ordered by argument index so deletes do not shift later targets.
+		table.sort(rules, function(a, b)
+			return a.index < b.index
+		end)
+		for _, target in ipairs(targets) do
+			if target then
+				spySpoof[target] = rules
+			end
+		end
+		return { success = true, spoofed = targets, rules = #rules }
+	end
+
 	if action == "logcheckcaller" then
-		G.MCP_SPY_LOGCHECKCALLER = args.state == nil and true or args.state
-		return { success = true, state = G.MCP_SPY_LOGCHECKCALLER }
+		spyLogCheckCaller = args.state == nil and true or args.state
+		G_SET("MCP_SPY_LOGCHECKCALLER", spyLogCheckCaller)
+		return { success = true, state = spyLogCheckCaller }
 	end
 
 	if action == "uninstall" or action == "remove" then
-		if not G.MCP_SPY_ACTIVE then
+		if not G_GET("MCP_SPY_ACTIVE") then
 			return { success = true }
 		end
 
-		local oth = syn and syn.oth
+		-- `syn` is a global that may not exist, and reading it off G would trip the
+		-- analyzer's sealed-table check -- go through rawget on both tables.
+		local synTbl = rawget(G, "syn") or rawget(_G, "syn")
+		local oth = synTbl and synTbl.oth
 		local unhook = oth and oth.unhook
+		local hooks = G_GET("MCP_SPY_HOOKS") or {}
 
 		if unhook then
-			pcall(unhook, getrawmetatable(game).__namecall, G.MCP_SPY_HOOKS.Namecall)
-			pcall(unhook, Instance.new("RemoteEvent").FireServer, G.MCP_SPY_HOOKS.FireServer)
-			pcall(unhook, Instance.new("RemoteFunction").InvokeServer, G.MCP_SPY_HOOKS.InvokeServer)
-			pcall(unhook, Instance.new("UnreliableRemoteEvent").FireServer, G.MCP_SPY_HOOKS.UnreliableFireServer)
+			pcall(unhook, getrawmetatable(game).__namecall, hooks.Namecall)
+			pcall(unhook, Instance.new("RemoteEvent").FireServer, hooks.FireServer)
+			pcall(unhook, Instance.new("RemoteFunction").InvokeServer, hooks.InvokeServer)
+			pcall(unhook, Instance.new("UnreliableRemoteEvent").FireServer, hooks.UnreliableFireServer)
 		else
 			if hookmetamethod then
-				pcall(hookmetamethod, game, "__namecall", G.MCP_SPY_HOOKS.Namecall)
+				pcall(hookmetamethod, game, "__namecall", hooks.Namecall)
 			else
-				pcall(hookfunction, getrawmetatable(game).__namecall, G.MCP_SPY_HOOKS.Namecall)
+				pcall(hookfunction, getrawmetatable(game).__namecall, hooks.Namecall)
 			end
-			pcall(hookfunction, Instance.new("RemoteEvent").FireServer, G.MCP_SPY_HOOKS.FireServer)
-			pcall(hookfunction, Instance.new("RemoteFunction").InvokeServer, G.MCP_SPY_HOOKS.InvokeServer)
-			pcall(hookfunction, Instance.new("UnreliableRemoteEvent").FireServer, G.MCP_SPY_HOOKS.UnreliableFireServer)
+			pcall(hookfunction, Instance.new("RemoteEvent").FireServer, hooks.FireServer)
+			pcall(hookfunction, Instance.new("RemoteFunction").InvokeServer, hooks.InvokeServer)
+			pcall(hookfunction, Instance.new("UnreliableRemoteEvent").FireServer, hooks.UnreliableFireServer)
 		end
 
-		G.MCP_SPY_ACTIVE = false
-		G.MCP_SPY_LOGS = {}
-		G.MCP_SPY_HOOKS = {}
+		G_SET("MCP_SPY_ACTIVE", false)
+		spyReplaceLogs()
+		G_SET("MCP_SPY_HOOKS", {})
+		spyBlockAll = false
+		G_SET("MCP_SPY_BLOCK_ALL", false)
+		spySpoof = {}
+		G_SET("MCP_SPY_SPOOF", {})
 		return { success = true, action = "RemoteSpy unloaded successfully" }
 	end
 
@@ -2285,26 +2547,14 @@ local function handleGuiButtonClick(args)
 			return { success = false, error = err }
 		end
 		local activated = false
-		local ok1 = pcall(function()
-			inst:Click()
-		end)
-		if ok1 then
-			activated = true
-		end
-		if not activated then
-			local ok2 = pcall(function()
-				firesignal(inst.MouseButton1Click)
-			end)
-			if ok2 then
-				activated = true
+		if type(firesignal) == "function" then
+			if inst:IsA("GuiButton") and inst.Activated then
+				local okA = pcall(firesignal, inst.Activated)
+				if okA then activated = true end
 			end
-		end
-		if not activated then
-			local ok3 = pcall(function()
-				firesignal(inst.Activated)
-			end)
-			if ok3 then
-				activated = true
+			if not activated and inst.MouseButton1Click then
+				local okM = pcall(firesignal, inst.MouseButton1Click)
+				if okM then activated = true end
 			end
 		end
 		return { success = true, buttonPath = path, activated = activated }
@@ -2312,9 +2562,9 @@ local function handleGuiButtonClick(args)
 	local root = gethui()
 	local function findBtn(inst)
 		if inst:IsA("TextButton") or inst:IsA("ImageButton") then
-			pcall(function()
-				inst:Click()
-			end)
+			if type(firesignal) == "function" then
+				pcall(firesignal, inst.Activated)
+			end
 			return { Name = inst.Name, Path = getFullPath(inst) }
 		end
 		for _, c in ipairs(inst:GetChildren()) do
@@ -2323,6 +2573,7 @@ local function handleGuiButtonClick(args)
 				return r
 			end
 		end
+		return nil
 	end
 	local btn = findBtn(root)
 	if not btn then
@@ -2857,8 +3108,8 @@ local function handleDisableAntiCheat(args)
 		end)
 	end
 
-	if not disableScripts and G.MCP_DISABLED_SCRIPTS and #G.MCP_DISABLED_SCRIPTS > 0 then
-		for _, scriptRef in ipairs(G.MCP_DISABLED_SCRIPTS) do
+	if not disableScripts and G_GET("MCP_DISABLED_SCRIPTS") and #G_GET("MCP_DISABLED_SCRIPTS") > 0 then
+		for _, scriptRef in ipairs(G_GET("MCP_DISABLED_SCRIPTS")) do
 			pcall(function()
 				if type(setscriptable) == "function" then
 					setscriptable(scriptRef, "Disabled", true)
@@ -2867,13 +3118,13 @@ local function handleDisableAntiCheat(args)
 			end)
 			results.scripts_restored = results.scripts_restored + 1
 		end
-		G.MCP_DISABLED_SCRIPTS = {}
+		G_SET("MCP_DISABLED_SCRIPTS", {})
 		results.scripts_disabled = 0
 	end
 
 	if disableScripts then
-		if not G.MCP_DISABLED_SCRIPTS then
-			G.MCP_DISABLED_SCRIPTS = {}
+		if not G_GET("MCP_DISABLED_SCRIPTS") then
+			G_SET("MCP_DISABLED_SCRIPTS", {})
 		end
 
 		local acPatterns = {
@@ -2904,7 +3155,7 @@ local function handleDisableAntiCheat(args)
 								setscriptable(inst, "Disabled", true)
 							end
 							inst.Disabled = true
-							table.insert(G.MCP_DISABLED_SCRIPTS, inst)
+							table.insert(G_GET("MCP_DISABLED_SCRIPTS"), inst)
 							results.detection_attempts = results.detection_attempts + 1
 						end)
 						results.scripts_disabled = results.scripts_disabled + 1
@@ -2955,16 +3206,16 @@ local function handleDisableAntiCheat(args)
 	end
 
 	if antiAFK then
-		if G.MCP_AFK_ACTIVE then
-			G.MCP_AFK_INTERVAL = afkInterval
+		if G_GET("MCP_AFK_ACTIVE") then
+			G_SET("MCP_AFK_INTERVAL", afkInterval)
 		else
-			G.MCP_AFK_ACTIVE = true
-			G.MCP_AFK_INTERVAL = afkInterval
+			G_SET("MCP_AFK_ACTIVE", true)
+			G_SET("MCP_AFK_INTERVAL", afkInterval)
 			task.spawn(function()
-				while G.MCP_AFK_ACTIVE do
-					local interval = G.MCP_AFK_INTERVAL or 30
+				while G_GET("MCP_AFK_ACTIVE") do
+					local interval = G_GET("MCP_AFK_INTERVAL") or 30
 					task.wait(interval)
-					if not G.MCP_AFK_ACTIVE then
+					if not G_GET("MCP_AFK_ACTIVE") then
 						break
 					end
 					pcall(function()
@@ -2985,12 +3236,12 @@ local function handleDisableAntiCheat(args)
 						end
 					end)
 				end
-				G.MCP_AFK_ACTIVE = false
+				G_SET("MCP_AFK_ACTIVE", false)
 			end)
 		end
 		results.anti_afk_active = true
 	else
-		G.MCP_AFK_ACTIVE = false
+		G_SET("MCP_AFK_ACTIVE", false)
 		results.anti_afk_active = false
 	end
 
@@ -3071,7 +3322,7 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["get-metad
 		return handleRemoteSpy(a)
 	end,	["toggle-remote-killswitch"] = function(a)
 		return handleRemoteSpy({ action = (a.enabled and "block_all" or "unblock_all") })
-	end,	["spoof-remote-args"] = handleRemoteSpy,	["set-remote-filter"] = handleRemoteSpy,	["check-replication"] = handleNetworkOwnership,	["compare-instances"] = handleInstanceComparer,	["get-siblings"] = handleSiblingEnum,	["find-by-property"] = handlePropertySeeker,
+	end,	["spoof-remote-args"] = function(x)		x.action = "spoof"		return handleRemoteSpy(x)	end,	["set-remote-filter"] = function(x)		x.action = "set_filter"		return handleRemoteSpy(x)	end,	["check-replication"] = handleNetworkOwnership,	["compare-instances"] = handleInstanceComparer,	["get-siblings"] = handleSiblingEnum,	["find-by-property"] = handlePropertySeeker,
 	data_model_explorer = handleDataModelExplore,	["get-humanoid-state"] = handleHumanoidState,	["interact-prompts"] = handleInteractAllPrompts,	["click-button"] = handleGuiButtonClick,	["fire-signal"] = function(a)
 		if a.signal_path then
 			local inst = resolvePath(a.signal_path)
@@ -3208,11 +3459,13 @@ proxyToServer = function(toolName, args)
 	}
 end
 
-G.MCP_RUNNING = true
+G_SET("MCP_RUNNING", true)
 print("[MCP] Starting: " .. WS_URL)
 local PING_INTERVAL = 15
 local PONG_TIMEOUT = 30
 local lastSentPing = tick()
+local currentBackoff = RECONNECT_DELAY
+local MAX_BACKOFF = 30
 WS_GOT_PONG = true
 while true do
 	if not WS_CONNECTED or not WS then
@@ -3222,10 +3475,12 @@ while true do
 			print("[MCP] Connected | Worker: " .. WORKER_ID)
 			WS_GOT_PONG = true
 			lastSentPing = tick()
+			currentBackoff = RECONNECT_DELAY -- reset on successful connect
 		else
 			local reason = (not pok) and tostring(connOk) or tostring(connErr)
-			print("[MCP] Connect failed: " .. reason .. " (retry in " .. RECONNECT_DELAY .. "s)")
-			task.wait(RECONNECT_DELAY)
+			print("[MCP] Connect failed: " .. reason .. " (retry in " .. currentBackoff .. "s)")
+			task.wait(currentBackoff)
+			currentBackoff = math.min(MAX_BACKOFF, currentBackoff * 2)
 		end
 	end
 	if WS_CONNECTED and WS and tick() - lastSentPing >= PING_INTERVAL then
