@@ -8,12 +8,14 @@ interface SessionInfo {
     firstSeen: number;
     lastSeen: number;
     status: string;
+    transport?: 'ws' | 'stream';
     capabilities?: Record<string, any>;
 }
 
 interface RegisterInfo {
     pid?: string | number;
     name?: string;
+    transport?: 'ws' | 'stream';
     capabilities?: Record<string, any>;
 }
 
@@ -49,9 +51,31 @@ class SessionManager {
             firstSeen: existing ? existing.firstSeen : Date.now(),
             lastSeen: Date.now(),
             status: 'active',
+            transport: info?.transport ?? existing?.transport ?? 'ws',
             capabilities: info?.capabilities ?? existing?.capabilities,
         });
         return { workerId, isNew };
+    }
+
+    touch(workerId: string): boolean {
+        const session = this.sessions.get(workerId);
+        if (session) {
+            session.lastSeen = Date.now();
+            session.status = 'active';
+            return true;
+        }
+        return false;
+    }
+
+    countByTransport(): { ws: number; stream: number } {
+        let ws = 0, stream = 0;
+        for (const s of this.sessions.values()) {
+            if (s.status === 'active') {
+                if (s.transport === 'stream') stream++;
+                else ws++;
+            }
+        }
+        return { ws, stream };
     }
 
     unregister(workerId: string): void {

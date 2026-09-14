@@ -26,7 +26,16 @@ const { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSch
         ListResourcesRequestSchema, ReadResourceRequestSchema, ListPromptsRequestSchema,
         GetPromptRequestSchema } = loadSdk();
 
-const SERVER_SIDE_TOOLS = new Set(['list-roblox-processes', 'launch-roblox', 'open-roblox-game', 'take-screenshot', 'record-roblox-video', 'get-roblox-versions']);
+const SERVER_SIDE_TOOLS = new Set([
+  'list-roblox-processes',
+  'launch-roblox',
+  'open-roblox-game',
+  'take-screenshot',
+  'record-roblox-video',
+  'get-roblox-versions',
+  'get-transport-status',
+  'set-transport-mode',
+]);
 
 function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
   const server = new Server(
@@ -148,6 +157,18 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
         return { success: true, file_path: vd.filePath, pid: vd.pid ?? args?.pid ?? null, note: "Video saved to file. You can download or view it via external media." };
     }
     case 'get-roblox-versions': return getRobloxVersions();
+    case 'get-transport-status': {
+        const counts = sessions.countByTransport ? sessions.countByTransport() : { ws: 0, stream: 0 };
+        return {
+            success: true,
+            mode: 'auto',
+            activeTransport: counts.stream > 0 ? 'stream' : 'ws',
+            streamWorkers: counts.stream,
+            wsWorkers: counts.ws,
+            activeSessions: sessions.listActive ? sessions.listActive() : [],
+        };
+    }
+    case 'set-transport-mode': return { success: true, mode: args?.mode || 'auto' };
     default: return { success: false, error: `Unknown: ${name}` };
   }
 }

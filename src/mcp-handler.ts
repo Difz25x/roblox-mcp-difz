@@ -21,6 +21,13 @@ interface QueueManager {
 
 interface SessionManager {
     readonly activeCount: number;
+    listActive?(): unknown[];
+    countByTransport?(): { ws: number; stream: number };
+}
+
+interface TransportControl {
+    getMode(): 'auto' | 'ws' | 'stream';
+    setMode(m: 'auto' | 'ws' | 'stream'): void;
 }
 
 interface ProcessManager {
@@ -81,6 +88,8 @@ const SERVER_SIDE_TOOLS = new Set<string>([
     'take-screenshot',
     'record-roblox-video',
     'get-roblox-versions',
+    'get-transport-status',
+    'set-transport-mode',
 ]);
 
 class McpHandler {
@@ -88,14 +97,22 @@ class McpHandler {
     private tools: ToolDefInstance;
     private sessions: SessionManager;
     private proc: ProcessManager;
+    private transportControl?: TransportControl;
     private serverInfo: { name: string; version: string; description: string };
     private initialized: boolean;
 
-    constructor(queue: QueueManager, tools: ToolDefInstance, sessions: SessionManager, processManager: ProcessManager) {
+    constructor(
+        queue: QueueManager,
+        tools: ToolDefInstance,
+        sessions: SessionManager,
+        processManager: ProcessManager,
+        transportControl?: TransportControl
+    ) {
         this.queue = queue;
         this.tools = tools;
         this.sessions = sessions;
         this.proc = processManager;
+        this.transportControl = transportControl;
         this.serverInfo = {
             name: 'roblox-difz-server',
             version: '1.0.0',
@@ -288,6 +305,32 @@ class McpHandler {
 
             case 'get-roblox-versions':
                 return this._getRobloxVersions();
+
+            case 'get-transport-status': {
+                const counts = this.sessions.countByTransport ? this.sessions.countByTransport() : { ws: 0, stream: 0 };
+                const mode = this.transportControl ? this.transportControl.getMode() : 'auto';
+                const activeTransport = counts.stream > 0 ? 'stream' : (counts.ws > 0 ? 'ws' : (mode === 'auto' ? 'ws' : mode));
+                return {
+                    success: true,
+                    mode,
+                    activeTransport,
+                    streamWorkers: counts.stream,
+                    wsWorkers: counts.ws,
+                    activeSessions: this.sessions.listActive ? this.sessions.listActive() : [],
+                    queueStats: this.queue.getStats(),
+                };
+            }
+
+            case 'set-transport-mode': {
+                const mode = String(args.mode || '').toLowerCase() as 'auto' | 'ws' | 'stream';
+                if (!['auto', 'ws', 'stream'].includes(mode)) {
+                    return { success: false, error: "mode must be 'auto', 'ws', or 'stream'" };
+                }
+                if (this.transportControl) {
+                    this.transportControl.setMode(mode);
+                }
+                return { success: true, mode };
+            }
 
             default:
                 return { success: false, error: `Unknown server tool: ${name}` };

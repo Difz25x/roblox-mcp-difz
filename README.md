@@ -4,7 +4,7 @@
 
 It works with **any MCP-compatible AI client** like Claude Code, Cursor, Windsurf, or whatever else you use. 
 
-I packed it with 108 tools. It can traverse the DataModel, inspect properties, fire remotes, run raw Lua, hook functions, intercept network traffic, and simulate user input. Basically, if you can do it in an executor, the AI can do it now.
+I packed it with 110 tools. It can traverse the DataModel, inspect properties, fire remotes, run raw Lua, hook functions, intercept network traffic, and simulate user input. Basically, if you can do it in an executor, the AI can do it now.
 
 ---
 
@@ -16,7 +16,8 @@ I packed it with 108 tools. It can traverse the DataModel, inspect properties, f
 - [MCP Client Configuration](#mcp-client-configuration)
 - [Commands](#commands)
 - [UNC Compatibility (Executor Support)](#unc-compatibility-executor-support)
-- [Tools (108 tools in total)](#tools-108-tools-in-total)
+- [Tools (110 tools in total)](#tools-110-tools-in-total)
+- [Dual Transport (WebSocket & Stream)](#dual-transport-websocket--stream)
 - [How It Actually Works](#how-it-actually-works)
 - [Multi-Instance Support](#multi-instance-support)
 - [When Things Break (Troubleshooting)](#when-things-break-troubleshooting)
@@ -299,7 +300,7 @@ The client script (mcp.lua) uses **Universal Compatibility (UNC)** functions to 
 
 ---
 
-## Tools (108 tools in total)
+## Tools (110 tools in total)
 
 This MCP server comes with over 100 tools. Below are some of the most commonly used tools. For the complete list and detailed descriptions, refer to `src/tool-definitions.ts`.
 
@@ -340,7 +341,7 @@ This MCP server comes with over 100 tools. Below are some of the most commonly u
 │                                                 │                │
 │  ┌─────────────┐  ┌──────────────┐              │                │
 │  │Tool Defs    │  │Session Mgr   │              │                │
-│  │(108 tools)  │  │(workers)     │              │                │
+│  │(110 tools)  │  │(workers)     │              │                │
 │  └─────────────┘  └──────────────┘              │                │
 │                                                 │                │
 │  ┌──────────────────────────────────────────────┐                │
@@ -443,6 +444,66 @@ Each executor registers with a unique `worker_id`. Tools can target a specific R
 If no PID is specified, tasks are broadcast to ALL connected executors. To use multi-instance with custom IDs, set `getgenv().MCP_WORKER_ID = "my-instance"` before injecting mcp.lua.
 
 ---
+
+## Dual Transport (WebSocket & Stream)
+
+The server speaks **two interchangeable transports**. Both carry the exact same task/result JSON, so every tool works identically over either one.
+
+| Transport | Direction | Endpoint | Best for |
+|---|---|---|---|
+| **WebSocket** | Bidirectional push | `ws://localhost:28429/ws` | Executors with working UNC `WebSocket.connect` |
+| **Stream** | HTTP long-poll | `http://localhost:28429/stream/*` | Executors where WebSocket is blocked, missing, or broken |
+
+### Transport Modes
+
+Set with `set-transport-mode` (or `POST /api/transport`):
+
+- **`auto`** *(default)* — try WebSocket first; if it keeps failing, automatically fall back to Stream.
+- **`ws`** — WebSocket only.
+- **`stream`** — Stream only. Use this on executors like **Real** where the WebSocket object exposes non-standard events.
+
+### How mcp.lua Chooses
+
+On startup `mcp.lua` calls `GET /api/transport` to learn which mode the server wants, then:
+
+1. `stream` → runs the Stream worker immediately.
+2. `ws` → runs the WebSocket loop.
+3. `auto` → runs the WebSocket loop, and switches to Stream once the reconnect backoff hits its ceiling.
+
+### Stream Endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /stream/register` | Register an executor as a stream worker |
+| `GET /stream/poll?worker_id=…&timeout=…` | Long-poll for the next task (returns `task: null` on timeout) |
+| `POST /stream/result` | Return a task result |
+| `POST /stream/ping` | Keepalive / session touch |
+
+### Inspecting Transport State
+
+Two server-side tools (no executor needed):
+
+- **`get-transport-status`** — current mode, active transport, per-transport worker counts, active sessions, queue stats.
+- **`set-transport-mode`** — switch mode at runtime (`auto` / `ws` / `stream`).
+
+```jsonc
+// get-transport-status
+{
+  "success": true,
+  "mode": "auto",
+  "activeTransport": "stream",
+  "streamWorkers": 1,
+  "wsWorkers": 0
+}
+```
+
+### Why Stream Exists
+
+Some executors expose the WebSocket as a plain table with instance-backed binds (`__on_message_bind`) instead of the UNC-standard `OnMessage` signal, which breaks the normal handshake. Stream mode bypasses WebSocket entirely by using `request` / `http_request` (falling back to `game:HttpGet` and `HttpService:PostAsync`), so those executors still work.
+
+---
+
+## UNC Compatibility Layer
 
 ## UNC Compatibility Layer
 

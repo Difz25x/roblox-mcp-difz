@@ -46,7 +46,10 @@ if G_GET("MCP_RUNNING") then
 					if type(hookmetamethod) == "function" then
 						hookmetamethod(game, "__namecall", hooks.Namecall)
 					elseif type(hookfunction) == "function" then
-						hookfunction(getrawmetatable(game).__namecall, hooks.Namecall)
+						local gmt = getrawmetatable(game)
+						if gmt and gmt.__namecall then
+							hookfunction(gmt.__namecall, hooks.Namecall)
+						end
 					end
 				end
 			end)
@@ -314,7 +317,9 @@ pcall(function()
 			"getloadedmodules",
 			"getrunningscripts",
 			"getscriptbytecode",
-				"decompile",
+			"decompile",
+			"request",
+			"http_request",
 			"getscriptclosure",
 			"getscripthash",
 			"getcallingscript",
@@ -382,17 +387,123 @@ local function wsReconnect()
 	if not ok or not s then
 		return false, tostring(s)
 	end
-	-- A socket can come back from connect() while the handshake is already dead
-	-- (power cut / network drop). Such a socket has no event signals, and touching
-	-- them is what produced "attempt to index nil with 'Connect'". Validate first.
-	local evOk, hasEvents = pcall(function()
-		return s.OnMessage ~= nil and s.OnClose ~= nil
-	end)
-	if not evOk or not hasEvents then
+	if type(s) == "string" then
+		return false, s
+	end
+	if type(s) == "boolean" then
+		return false, "WebSocket.connect returned false"
+	end
+	if type(s) == "table" and s.error then
+		return false, tostring(s.error)
+	end
+
+	-- Find the message event/signal. Do not strictly require OnClose, because some
+	-- executors (or fallback wrappers) do not provide OnClose.
+	--
+	-- Real (and similar executors) expose the socket as a plain table where the
+	-- message event is an Instance-backed bindable: __on_message_bind (an Instance
+	-- whose .Event is the signal) rather than a direct OnMessage signal. Probe all
+	-- the shapes we know about before giving up.
+	local function resolveSignal(container, names, instanceFields)
+		if container == nil then
+			return nil
+		end
+		local found = nil
+		for _, n in ipairs(names) do
+			local ok, v = pcall(function()
+				return container[n]
+			end)
+			if ok and v ~= nil then
+				if type(v) == "table" and v.Connect then
+					return v
+				end
+				if type(v) == "userdata" then
+					return v
+				end
+				if typeof(v) == "Instance" then
+					local ev = nil
+					pcall(function()
+						ev = v.Event
+					end)
+					if ev ~= nil then
+						return ev
+					end
+				end
+				if not found then
+					found = v
+				end
+			end
+		end
+		-- __on_message_bind style: an Instance whose .Event is the real signal.
+		for _, f in ipairs(instanceFields) do
+			local ok, inst = pcall(function()
+				return container[f]
+			end)
+			if ok and inst ~= nil and typeof(inst) == "Instance" then
+				local ev = nil
+				pcall(function()
+					ev = inst.Event
+				end)
+				if ev ~= nil then
+					return ev
+				end
+			end
+		end
+		return nil
+	end
+
+	local MSG_NAMES = {
+		"OnMessage", "onMessage", "onmessage", "Message", "message",
+		"On_Message", "on_message", "Receive", "receive", "OnText", "onText",
+	}
+	local CLOSE_NAMES = { "OnClose", "onClose", "onclose", "Close", "Closed", "OnClosed", "on_closed" }
+
+	local onMsg = resolveSignal(s, MSG_NAMES, { "__on_message_bind", "__onMessageBind", "__message_bind" })
+
+	-- If s is a wrapper table holding an inner socket, descend into it once.
+	if not onMsg and type(s) == "table" then
+		pcall(function()
+			for _, key in ipairs({ "ws", "socket", "connection", "client", "inner", "_ws", "Socket", "Ws" }) do
+				local inner = s[key]
+				if inner then
+					local innerOnMsg = resolveSignal(inner, MSG_NAMES, { "__on_message_bind", "__onMessageBind", "__message_bind" })
+					if innerOnMsg then
+						s = inner
+						onMsg = innerOnMsg
+						break
+					end
+				end
+			end
+		end)
+	end
+	if not onMsg then
+		local keys = {}
+		pcall(function()
+			for k, v in pairs(s) do
+				table.insert(keys, tostring(k) .. ":" .. typeof(v))
+			end
+		end)
+		local mt = getmetatable(s)
+		local mtInfo = ""
+		if type(mt) == "table" then
+			local mtList = {}
+			for k, v in pairs(mt) do
+				table.insert(mtList, tostring(k) .. ":" .. typeof(v))
+			end
+			if type(mt.__index) == "table" then
+				for k, v in pairs(mt.__index) do
+					table.insert(mtList, "__index." .. tostring(k) .. ":" .. typeof(v))
+				end
+			end
+			mtInfo = " mt=[" .. table.concat(mtList, ", ") .. "]"
+		elseif mt ~= nil then
+			mtInfo = " mt=" .. typeof(mt)
+		end
+		local desc = tostring(s)
 		pcall(function()
 			s:Close()
 		end)
-		return false, "socket has no event signals"
+		return false, "WebSocket has no OnMessage (type=" .. typeof(s) .. " keys=[" .. table.concat(keys, ", ") .. "]" .. mtInfo .. ")"
 	end
 
 	-- Capture the socket NOW. GetProductInfo below is a network call inside pcall,
@@ -422,40 +533,49 @@ local function wsReconnect()
 		savedWS:Send(HttpService:JSONEncode(regData))
 	end)
 	if not ok then
+		pcall(function()
+			savedWS:Close()
+		end)
 		WS = nil
 		WS_CONNECTED = false
 		G_SET("MCP_WS", nil)
 		return false, "Register send failed"
 	end
 	local hookOk, hookErr = pcall(function()
-		savedWS.OnMessage:Connect(function(msg)
-			if WS ~= savedWS then
-				return
-			end
-			local ok, d = pcall(function()
-				return HttpService:JSONDecode(msg)
-			end)
-			if ok and d then
-				if d.type == "pong" then
-					WS_GOT_PONG = true
+		if onMsg and type(onMsg.Connect) == "function" then
+			onMsg:Connect(function(msg)
+				if WS ~= savedWS then
+					return
 				end
-				if d.type == "task" then
-					if d.workerId and d.workerId ~= WORKER_ID then
-						return
+				local okDecode, d = pcall(function()
+					return HttpService:JSONDecode(msg)
+				end)
+				if okDecode and d then
+					if d.type == "pong" then
+						WS_GOT_PONG = true
 					end
-					table.insert(WS_BUFFER, d)
+					if d.type == "task" then
+						if d.workerId and d.workerId ~= WORKER_ID then
+							return
+						end
+						table.insert(WS_BUFFER, d)
+					end
 				end
-			end
-		end)
-		savedWS.OnClose:Connect(function()
-			if WS == savedWS then
-				WS_CONNECTED = false
-				WS = nil
-				-- Clear the genv copy too, otherwise a dead socket lingers there
-				-- forever and gets closed again on the next injection.
-				G_SET("MCP_WS", nil)
-			end
-		end)
+			end)
+		end
+
+		local onClose = resolveSignal(s, CLOSE_NAMES, { "__on_close_bind", "__onCloseBind", "__close_bind" })
+		if onClose and type(onClose.Connect) == "function" then
+			onClose:Connect(function()
+				if WS == savedWS then
+					WS_CONNECTED = false
+					WS = nil
+					-- Clear the genv copy too, otherwise a dead socket lingers there
+					-- forever and gets closed again on the next injection.
+					G_SET("MCP_WS", nil)
+				end
+			end)
+		end
 	end)
 	if not hookOk then
 		pcall(function()
@@ -507,6 +627,170 @@ local function wsSend(id, data, err, taskPid)
 			WS:Send(errResponse)
 		end)
 	end
+end
+
+-- ── HTTP helper (executor request → HttpGet/HttpPost fallback) ──────────────
+
+local function httpFetch(opts)
+	local url = opts.Url or opts.url
+	local method = (opts.Method or opts.method or "GET"):upper()
+	local body = opts.Body or opts.body
+	local headers = opts.Headers or opts.headers or {}
+
+	local reqFn = request or http_request or (syn and syn.request) or (http and http.request)
+	if type(reqFn) ~= "function" then
+		local ok, v = pcall(function()
+			return _G.request or _G.http_request
+		end)
+		if ok and type(v) == "function" then
+			reqFn = v
+		end
+	end
+
+	if type(reqFn) == "function" then
+		local ok, res = pcall(reqFn, {
+			Url = url,
+			Method = method,
+			Body = body,
+			Headers = headers,
+		})
+		if ok and type(res) == "table" then
+			return {
+				ok = res.Success ~= false and (res.StatusCode or 0) >= 200 and (res.StatusCode or 0) < 300,
+				status = res.StatusCode or 0,
+				body = res.Body or "",
+			}
+		end
+		return { ok = false, status = 0, body = tostring(res) }
+	end
+
+	-- Fallback: Roblox's own HTTP APIs (subject to HttpService.HttpEnabled).
+	if method == "GET" and type(game.HttpGet) == "function" then
+		local ok, res = pcall(function()
+			return game:HttpGet(url, true)
+		end)
+		return { ok = ok, status = ok and 200 or 0, body = ok and res or tostring(res) }
+	end
+	if method == "POST" and HttpService and type(HttpService.PostAsync) == "function" then
+		local ok, res = pcall(function()
+			return HttpService:PostAsync(
+				url,
+				body or "",
+				Enum.HttpContentType.ApplicationJson,
+				false,
+				headers
+			)
+		end)
+		return { ok = ok, status = ok and 200 or 0, body = ok and res or tostring(res) }
+	end
+
+	return { ok = false, status = 0, body = "No HTTP request function available" }
+end
+
+-- ── Stream transport (HTTP long-polling) ────────────────────────────────────
+--
+-- Used when WebSocket is unavailable, blocked, or broken on the executor. The
+-- executor registers over HTTP, then long-polls /stream/poll for tasks and
+-- POSTs results to /stream/result. Both sides speak the same task/result JSON
+-- shape as the WebSocket transport, so HANDLERS need no changes.
+
+local STREAM_BASE = "http://" .. HOST .. ":" .. PORT
+local STREAM_ACTIVE = false
+local STREAM_LAST_PONG = 0
+
+local function streamRegister()
+	local regData = {
+		worker_id = WORKER_ID,
+		username = LocalPlayer and LocalPlayer.Name or "Unknown",
+		userId = LocalPlayer and LocalPlayer.UserId or 0,
+		pid = getPid(),
+		placeId = game.PlaceId,
+		jobId = game.JobId,
+		placeName = game.Name,
+		capabilities = MCP_CAPABILITIES,
+	}
+	local res = httpFetch({
+		Url = STREAM_BASE .. "/stream/register",
+		Method = "POST",
+		Body = HttpService:JSONEncode(regData),
+		Headers = { ["Content-Type"] = "application/json" },
+	})
+	if not res.ok then
+		return false, "Register failed (status " .. tostring(res.status) .. ")"
+	end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(res.body)
+	end)
+	if not ok or not data or not data.success then
+		return false, "Register rejected"
+	end
+	return true
+end
+
+local function streamPoll(timeoutMs)
+	local res = httpFetch({
+		Url = STREAM_BASE .. "/stream/poll?worker_id=" .. WORKER_ID .. "&timeout=" .. tostring(timeoutMs or 20000),
+		Method = "GET",
+	})
+	if not res.ok then
+		return nil, "poll failed (status " .. tostring(res.status) .. ")"
+	end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(res.body)
+	end)
+	if not ok or not data then
+		return nil, "poll decode failed"
+	end
+	if data.task then
+		local t = data.task
+		return {
+			type = t.tool or t.type,
+			id = t.id,
+			args = t.args or {},
+			pid = t.pid or t.targetPid,
+		}
+	end
+	return nil
+end
+
+local function streamSend(id, data, err, taskPid)
+	local payload = {
+		id = id,
+		data = data,
+		error = err,
+		worker_id = WORKER_ID,
+		pid = taskPid or getPid(),
+	}
+	local okEnc, encoded = pcall(function()
+		return HttpService:JSONEncode(payload)
+	end)
+	if not okEnc then
+		encoded = HttpService:JSONEncode({
+			id = id,
+			data = { success = false },
+			error = "Failed to serialize result",
+			worker_id = WORKER_ID,
+		})
+	end
+	local res = httpFetch({
+		Url = STREAM_BASE .. "/stream/result",
+		Method = "POST",
+		Body = encoded,
+		Headers = { ["Content-Type"] = "application/json" },
+	})
+	return res.ok
+end
+
+local function streamPing()
+	pcall(function()
+		httpFetch({
+			Url = STREAM_BASE .. "/stream/ping",
+			Method = "POST",
+			Body = HttpService:JSONEncode({ worker_id = WORKER_ID }),
+			Headers = { ["Content-Type"] = "application/json" },
+		})
+	end)
+	STREAM_LAST_PONG = tick()
 end
 
 local function handleGetMetadata(args)
@@ -1723,7 +2007,9 @@ local function handleGCScan(args)
 	local includeTables = args.include_tables or false
 	local filterType = args.filter_type or ""
 	local max = args.max_results or 200
-	local ok, objects = pcall(getgc, includeTables)
+	local ok, objects = pcall(function()
+		return getgc(includeTables)
+	end)
 	if not ok then
 		return { success = false, error = "getgc not supported" }
 	end
@@ -1855,7 +2141,13 @@ local function handleDebugInfo(args)
 				func = true,
 			}
 		elseif type(debug) == "table" and type(rawget(debug, "getinfo")) == "function" then
-			local okGi, di = pcall(rawget(debug, "getinfo"), resolved)
+			local okGi, di = pcall(function()
+				local gi = rawget(debug, "getinfo")
+				if type(gi) == "function" then
+					return gi(resolved)
+				end
+				return nil
+			end)
 			if okGi and type(di) == "table" then
 				info = {
 					name = di.name,
@@ -2162,7 +2454,10 @@ local function handleRemoteSpy(args)
 		end
 
 		if oth and hook then
-			origNamecall = hook(getrawmetatable(game).__namecall, clonefunction(newcclosure(newNamecall)))
+			local gmt = getrawmetatable(game)
+			if gmt and gmt.__namecall then
+				origNamecall = hook(gmt.__namecall, clonefunction(newcclosure(newNamecall)))
+			end
 			origFireServer = hook(Instance.new("RemoteEvent").FireServer, clonefunction(newcclosure(newFireServer)))
 			origInvokeServer =
 				hook(Instance.new("RemoteFunction").InvokeServer, clonefunction(newcclosure(newInvokeServer)))
@@ -2349,16 +2644,19 @@ local function handleRemoteSpy(args)
 		local unhook = oth and oth.unhook
 		local hooks = G_GET("MCP_SPY_HOOKS") or {}
 
+		local gmt = getrawmetatable(game)
 		if unhook then
-			pcall(unhook, getrawmetatable(game).__namecall, hooks.Namecall)
+			if gmt and gmt.__namecall then
+				pcall(unhook, gmt.__namecall, hooks.Namecall)
+			end
 			pcall(unhook, Instance.new("RemoteEvent").FireServer, hooks.FireServer)
 			pcall(unhook, Instance.new("RemoteFunction").InvokeServer, hooks.InvokeServer)
 			pcall(unhook, Instance.new("UnreliableRemoteEvent").FireServer, hooks.UnreliableFireServer)
 		else
 			if hookmetamethod then
 				pcall(hookmetamethod, game, "__namecall", hooks.Namecall)
-			else
-				pcall(hookfunction, getrawmetatable(game).__namecall, hooks.Namecall)
+			elseif gmt and gmt.__namecall then
+				pcall(hookfunction, gmt.__namecall, hooks.Namecall)
 			end
 			pcall(hookfunction, Instance.new("RemoteEvent").FireServer, hooks.FireServer)
 			pcall(hookfunction, Instance.new("RemoteFunction").InvokeServer, hooks.InvokeServer)
@@ -3460,6 +3758,35 @@ proxyToServer = function(toolName, args)
 end
 
 G_SET("MCP_RUNNING", true)
+
+-- Runs one task through HANDLERS and returns the serializable result.
+local function dispatchTask(tsk)
+	local handler = HANDLERS[tsk.type]
+	if not handler then
+		return proxyToServer(tsk.type, tsk.args or {})
+	end
+	local ok2, res = pcall(handler, tsk.args or {})
+	if ok2 then
+		return res
+	end
+	return { success = false, error = "Handler: " .. tostring(res) }
+end
+
+-- Ask the server which transport it wants us to use.
+local function resolveTransport()
+	local res = httpFetch({ Url = STREAM_BASE .. "/api/transport", Method = "GET" })
+	if not res.ok then
+		return nil
+	end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(res.body)
+	end)
+	if ok and type(data) == "table" and type(data.mode) == "string" then
+		return data.mode, data
+	end
+	return nil
+end
+
 print("[MCP] Starting: " .. WS_URL)
 local PING_INTERVAL = 15
 local PONG_TIMEOUT = 30
@@ -3467,6 +3794,58 @@ local lastSentPing = tick()
 local currentBackoff = RECONNECT_DELAY
 local MAX_BACKOFF = 30
 WS_GOT_PONG = true
+
+local transportMode = "auto"
+do
+	local mode, info = resolveTransport()
+	if mode then
+		transportMode = mode
+		local active = info and info.active_transport or "?"
+		print("[MCP] Transport mode: " .. mode .. " (active: " .. tostring(active) .. ")")
+	else
+		print("[MCP] Transport discovery failed, defaulting to auto")
+	end
+end
+
+-- ── Stream worker loop ──────────────────────────────────────────────────────
+local function runStreamWorker()
+	print("[MCP] Stream transport starting (long-poll)")
+	STREAM_ACTIVE = true
+
+	local registered, regErr = streamRegister()
+	local regBackoff = RECONNECT_DELAY
+	while not registered do
+		print("[MCP] Stream register failed: " .. tostring(regErr) .. " (retry in " .. regBackoff .. "s)")
+		task.wait(regBackoff)
+		regBackoff = math.min(MAX_BACKOFF, regBackoff * 2)
+		registered, regErr = streamRegister()
+	end
+	print("[MCP] Stream registered | Worker: " .. WORKER_ID)
+	STREAM_LAST_PONG = tick()
+
+	local lastPing = tick()
+	while STREAM_ACTIVE do
+		local tsk = streamPoll(20000)
+		if tsk then
+			local resultData = dispatchTask(tsk)
+			local sentOk = streamSend(tsk.id, resultData, nil, tsk.pid)
+			if not sentOk then
+				print("[MCP] Stream result send failed for " .. tostring(tsk.id))
+			end
+		end
+
+		if tick() - lastPing >= PING_INTERVAL then
+			lastPing = tick()
+			streamPing()
+		end
+	end
+end
+
+if transportMode == "stream" then
+	runStreamWorker()
+	return
+end
+
 while true do
 	if not WS_CONNECTED or not WS then
 		print("[MCP] Connecting...")
@@ -3479,6 +3858,14 @@ while true do
 		else
 			local reason = (not pok) and tostring(connOk) or tostring(connErr)
 			print("[MCP] Connect failed: " .. reason .. " (retry in " .. currentBackoff .. "s)")
+
+			-- In auto mode, fall back to Stream rather than retrying WebSocket forever.
+			if transportMode == "auto" and currentBackoff >= MAX_BACKOFF then
+				print("[MCP] WebSocket unavailable -- switching to Stream transport")
+				runStreamWorker()
+				return
+			end
+
 			task.wait(currentBackoff)
 			currentBackoff = math.min(MAX_BACKOFF, currentBackoff * 2)
 		end
@@ -3499,18 +3886,7 @@ while true do
 	if not tsk then
 		task.wait(0.1)
 	else
-		local handler = HANDLERS[tsk.type]
-		local resultData
-		if not handler then
-			resultData = proxyToServer(tsk.type, tsk.args or {})
-		else
-			local ok2, res = pcall(handler, tsk.args or {})
-			if ok2 then
-				resultData = res
-			else
-				resultData = { success = false, error = "Handler: " .. tostring(res) }
-			end
-		end
+		local resultData = dispatchTask(tsk)
 		pcall(wsSend, tsk.id, resultData, nil, tsk.pid)
 	end
 end

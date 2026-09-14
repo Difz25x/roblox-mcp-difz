@@ -104,9 +104,16 @@ export class QueueManager extends EventEmitter {
             this.pendingResults.set(id, { resolve, reject, timer, submittedAt: Date.now() });
 
             if (this.waitingPollers.length > 0) {
-                const pollerIdx = task.targetWorkerId
-                    ? this.waitingPollers.findIndex(p => p.workerId === task.targetWorkerId)
-                    : this.waitingPollers.findIndex(p => !p.workerId);
+                let pollerIdx: number;
+                if (task.targetWorkerId) {
+                    pollerIdx = this.waitingPollers.findIndex(p => p.workerId === task.targetWorkerId);
+                } else {
+                    // Untargeted task: prefer an anonymous poller (WS broadcast path),
+                    // but fall back to any poller -- stream workers always identify
+                    // themselves by worker_id, and they must still receive broadcasts.
+                    pollerIdx = this.waitingPollers.findIndex(p => !p.workerId);
+                    if (pollerIdx < 0) pollerIdx = 0;
+                }
 
                 if (pollerIdx >= 0) {
                     const poller = this.waitingPollers.splice(pollerIdx, 1)[0];

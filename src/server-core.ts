@@ -68,10 +68,16 @@ function handleMcpMessage(mcp: McpHandler): RequestHandler {
 
 function createApp(opts?: CreateAppOptions): AppComponents {
     const IS_VERBOSE: boolean = !!(opts && opts.verbose);
+    let transportMode: 'auto' | 'ws' | 'stream' = (process.env.MCP_TRANSPORT as any) || 'auto';
+    const transportControl = {
+        getMode: () => transportMode,
+        setMode: (m: 'auto' | 'ws' | 'stream') => { transportMode = m; }
+    };
+
     const queue = new QueueManagerCls();
     const tools = new ToolDefinitionsCls();
     const sessions = new SessionManagerCls();
-    const mcp = new McpHandlerCls(queue, tools, sessions, processManager);
+    const mcp = new McpHandlerCls(queue, tools, sessions, processManager, transportControl);
 
     const log = IS_VERBOSE
         ? (...args: any[]) => console.log('[MCP]', ...args)
@@ -89,31 +95,22 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         next();
     });
 
-    let mcpLuaCache: string | null = null;
     const mcpLuaPath: string = path.join(PKG_DIR, 'public', 'mcp.lua');
 
-    app.get('/mcp.lua', (_req: Request, res: Response): void => {
-        if (!mcpLuaCache) {
+    const serveMcpLua: RequestHandler = (_req: Request, res: Response): void => {
+        try {
             if (fs.existsSync(mcpLuaPath)) {
-                mcpLuaCache = fs.readFileSync(mcpLuaPath, 'utf-8');
+                const content = fs.readFileSync(mcpLuaPath, 'utf-8');
+                res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+                res.send(content);
+                return;
             }
-        }
-        if (mcpLuaCache) {
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.send(mcpLuaCache);
-        } else res.status(404).send('-- mcp.lua not found.');
-    });
-    app.get('/mcp.luau', (_req: Request, res: Response): void => {
-        if (!mcpLuaCache) {
-            if (fs.existsSync(mcpLuaPath)) {
-                mcpLuaCache = fs.readFileSync(mcpLuaPath, 'utf-8');
-            }
-        }
-        if (mcpLuaCache) {
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.send(mcpLuaCache);
-        } else res.status(404).send('-- mcp.lua not found.');
-    });
+        } catch {}
+        res.status(404).send('-- mcp.lua not found.');
+    };
+
+    app.get('/mcp.lua', serveMcpLua);
+    app.get('/mcp.luau', serveMcpLua);
     if (fs.existsSync(publicDir)) app.use(express.static(publicDir));
 
     const server: Server = http.createServer(app);
@@ -145,11 +142,107 @@ function createApp(opts?: CreateAppOptions): AppComponents {
             server: 'roblox-difz',
             version: PKG.version,
             tools: tools.count,
-            transport: 'http+ws',
+            transport: `http+${transportMode}`,
             http: `http://${host}:${port}/mcp`,
             ws: `ws://${host}:${port}/ws`,
+            stream: `http://${host}:${port}/stream`,
             info: `http://${host}:${port}/type`,
         });
+    });
+
+    app.get('/api/transport', (_req: Request, res: Response): void => {
+        const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
+        const host = _req.hostname || 'localhost';
+        const counts = sessions.countByTransport ? sessions.countByTransport() : { ws: 0, stream: 0 };
+        const activeTransport = counts.stream > 0 ? 'stream' : (counts.ws > 0 ? 'ws' : (transportMode === 'auto' ? 'ws' : transportMode));
+        res.json({
+            mode: transportMode,
+            active_transport: activeTransport,
+            ws_url: `ws://${host}:${port}/ws`,
+            stream_urls: {
+                register: `http://${host}:${port}/stream/register`,
+                poll: `http://${host}:${port}/stream/poll`,
+                result: `http://${host}:${port}/stream/result`,
+                ping: `http://${host}:${port}/stream/ping`,
+            },
+            ws_clients: wss.connectedCount,
+            stream_workers: counts.stream,
+            active_sessions: sessions.activeCount,
+        });
+    });
+
+    app.post('/api/transport', (req: Request, res: Response): void => {
+        const { mode } = req.body || {};
+        if (mode && ['auto', 'ws', 'stream'].includes(mode)) {
+            transportMode = mode;
+            res.json({ success: true, mode: transportMode });
+        } else {
+            res.status(400).json({ success: false, error: "mode must be 'auto', 'ws', or 'stream'" });
+        }
+    });
+
+    app.post('/stream/register', (req: Request, res: Response): void => {
+        const { worker_id, username, pid, placeId, jobId, placeName, capabilities } = req.body || {};
+        if (!worker_id) {
+            res.status(400).json({ success: false, error: 'worker_id is required' });
+            return;
+        }
+        sessions.register(worker_id, {
+            pid,
+            name: username || 'RobloxStreamWorker',
+            transport: 'stream',
+            capabilities,
+        });
+        console.log(`[Stream] Registered: ${worker_id}${pid ? ' pid=' + pid : ''} "${placeName || ''}"`);
+        res.json({
+            success: true,
+            worker_id,
+            mode: transportMode,
+            registered_at: Date.now(),
+        });
+    });
+
+    const handleStreamPoll: RequestHandler = async (req: Request, res: Response): Promise<void> => {
+        const workerId = (req.query.worker_id as string) || (req.body && req.body.worker_id) || undefined;
+        const timeoutMs = parseInt((req.query.timeout as string) || (req.body && req.body.timeout), 10) || 20000;
+
+        if (workerId && sessions.touch) {
+            sessions.touch(workerId);
+        }
+
+        try {
+            const task = await queue.waitForTask(Math.min(timeoutMs, 30000), workerId);
+            if (task) {
+                res.json({ success: true, task });
+            } else {
+                res.json({ success: true, task: null, status: 'timeout' });
+            }
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    };
+    app.get('/stream/poll', handleStreamPoll);
+    app.post('/stream/poll', handleStreamPoll);
+
+    app.post('/stream/result', (req: Request, res: Response): void => {
+        const { id, data, error, worker_id } = req.body || {};
+        if (!id) {
+            res.status(400).json({ success: false, error: 'task id is required' });
+            return;
+        }
+        if (worker_id && sessions.touch) {
+            sessions.touch(worker_id);
+        }
+        const resolved = queue.resolveTask(id, data, error);
+        res.json({ success: resolved });
+    });
+
+    app.post('/stream/ping', (req: Request, res: Response): void => {
+        const { worker_id } = req.body || {};
+        if (worker_id && sessions.touch) {
+            sessions.touch(worker_id);
+        }
+        res.json({ success: true, timestamp: Date.now() });
     });
 
     app.get('/api/processes', (_req: Request, res: Response): void => {

@@ -4189,6 +4189,32 @@ class ToolDefinitions {
                     "required": []
                 }
             },
+
+            {
+                name: "get-transport-status",
+                description: "Check the active communication transport status between AI server and Roblox executors (WebSocket vs HTTP Stream), current transport mode ('auto', 'ws', 'stream'), connected workers, active sessions, and endpoints.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+
+            {
+                name: "set-transport-mode",
+                description: "Configure or switch the preferred communication transport mode between AI server and Roblox executors ('auto', 'ws', 'stream').",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "description": "Transport mode to set: 'auto' (WebSocket with automatic Stream fallback), 'ws' (WebSocket only), or 'stream' (HTTP Long-Polling stream only).",
+                            "enum": ["auto", "ws", "stream"]
+                        }
+                    },
+                    "required": ["mode"]
+                }
+            },
         ];
     }
 
