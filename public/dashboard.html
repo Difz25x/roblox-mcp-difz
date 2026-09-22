@@ -1,70 +1,1063 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Roblox MCP Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roblox MCP — Command Deck</title>
     <style>
-        body { font-family: system-ui, sans-serif; background: #0f111a; color: #fff; margin: 0; padding: 2rem; }
-        .card { background: #1a1d27; border: 1px solid #2e3246; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
-        h1 { margin-top: 0; color: #00e6e6; }
-        .process-list { display: flex; flex-direction: column; gap: 0.5rem; }
-        .process-item { display: flex; justify-content: space-between; align-items: center; background: #222634; padding: 1rem; border-radius: 6px; }
-        button { background: #00e6e6; color: #000; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button.kill { background: #ff4444; color: white; }
-        button:hover { opacity: 0.8; }
+        :root {
+            --bg-base: #07090e;
+            --bg-surface: #0e121b;
+            --bg-surface-elevated: #141a26;
+            --bg-card: rgba(18, 24, 37, 0.75);
+            --bg-glass: rgba(14, 18, 27, 0.65);
+            --border-subtle: #1a2233;
+            --border-active: #2a3650;
+            --border-glow: rgba(0, 240, 255, 0.35);
+
+            --text-primary: #f0f4fc;
+            --text-secondary: #8c9bb5;
+            --text-muted: #54627a;
+
+            --accent-cyan: #00f0ff;
+            --accent-cyan-dim: rgba(0, 240, 255, 0.12);
+            --accent-violet: #9d4edd;
+            --accent-violet-dim: rgba(157, 78, 221, 0.15);
+            --accent-emerald: #00ff88;
+            --accent-emerald-dim: rgba(0, 255, 136, 0.12);
+            --accent-amber: #ffb703;
+            --accent-amber-dim: rgba(255, 183, 3, 0.12);
+            --accent-rose: #ff3366;
+            --accent-rose-dim: rgba(255, 51, 102, 0.15);
+
+            --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+            --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --shadow-glow: 0 0 25px rgba(0, 240, 255, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg-base);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            padding: 1.5rem;
+            line-height: 1.5;
+            background-image:
+                radial-gradient(circle at 15% 10%, rgba(0, 240, 255, 0.04) 0%, transparent 40%),
+                radial-gradient(circle at 85% 80%, rgba(157, 78, 221, 0.05) 0%, transparent 45%);
+            background-attachment: fixed;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        /* Top Header Navigation */
+        .header {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .brand-block {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .brand-logo {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, #00f0ff 0%, #9d4edd 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 1.25rem;
+            color: #000;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.35);
+        }
+
+        .brand-info h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .brand-info p {
+            color: var(--text-secondary);
+            font-size: 0.825rem;
+            font-family: var(--font-mono);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.725rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-cyan { background: var(--accent-cyan-dim); color: var(--accent-cyan); border: 1px solid rgba(0, 240, 255, 0.3); }
+        .badge-emerald { background: var(--accent-emerald-dim); color: var(--accent-emerald); border: 1px solid rgba(0, 255, 136, 0.3); }
+        .badge-amber { background: var(--accent-amber-dim); color: var(--accent-amber); border: 1px solid rgba(255, 183, 3, 0.3); }
+        .badge-rose { background: var(--accent-rose-dim); color: var(--accent-rose); border: 1px solid rgba(255, 51, 102, 0.3); }
+        .badge-violet { background: var(--accent-violet-dim); color: var(--accent-violet); border: 1px solid rgba(157, 78, 221, 0.3); }
+
+        .pulse-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 8px currentColor;
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+            flex-wrap: wrap;
+        }
+
+        /* Control Ribbon */
+        .controls-ribbon {
+            display: flex;
+            align-items: center;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 0.25rem;
+        }
+
+        .segmented-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.775rem;
+            font-weight: 600;
+            padding: 0.4rem 0.85rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .segmented-btn.active {
+            background: var(--bg-surface-elevated);
+            color: var(--accent-cyan);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn {
+            background: var(--bg-surface);
+            color: var(--text-primary);
+            border: 1px solid var(--border-subtle);
+            padding: 0.45rem 1rem;
+            border-radius: var(--radius-md);
+            font-size: 0.825rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            border-color: var(--border-active);
+            background: var(--bg-surface-elevated);
+            transform: translateY(-1px);
+        }
+
+        .btn:active { transform: translateY(0); }
+
+        .btn-primary {
+            background: linear-gradient(135deg, rgba(0, 240, 255, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%);
+            border-color: rgba(0, 240, 255, 0.4);
+            color: var(--accent-cyan);
+        }
+
+        .btn-primary:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
+        }
+
+        .btn-emerald {
+            background: var(--accent-emerald-dim);
+            color: var(--accent-emerald);
+            border-color: rgba(0, 255, 136, 0.3);
+        }
+        .btn-emerald:hover { border-color: var(--accent-emerald); }
+
+        .btn-rose {
+            background: var(--accent-rose-dim);
+            color: var(--accent-rose);
+            border-color: rgba(255, 51, 102, 0.3);
+        }
+        .btn-rose:hover { border-color: var(--accent-rose); }
+
+        /* Telemetry Row */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            backdrop-filter: blur(12px);
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-size: 1.85rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            font-family: var(--font-mono);
+            color: var(--text-primary);
+        }
+
+        .stat-sub {
+            font-size: 0.775rem;
+            color: var(--text-secondary);
+        }
+
+        /* Main 2-Column Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (min-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 380px 1fr;
+            }
+        }
+
+        /* Panel Cards */
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(16px);
+        }
+
+        .panel-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-surface);
+        }
+
+        .panel-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .panel-body {
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow-y: auto;
+        }
+
+        /* Process List */
+        .process-item {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            transition: border-color 0.15s ease;
+        }
+
+        .process-item.connected {
+            border-color: rgba(0, 255, 136, 0.4);
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.06);
+        }
+
+        .process-item.unconnected {
+            border-color: rgba(255, 183, 3, 0.3);
+        }
+
+        .process-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .process-title {
+            font-size: 0.875rem;
+            font-weight: 700;
+            word-break: break-word;
+        }
+
+        .process-meta {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .process-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        /* Tools Explorer */
+        .tools-filter-bar {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .search-input {
+            width: 100%;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 0.65rem 1rem;
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            font-size: 0.875rem;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+
+        .search-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.2);
+        }
+
+        .category-pills {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
+
+        .cat-pill {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 999px;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.725rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .cat-pill.active, .cat-pill:hover {
+            background: var(--bg-surface-elevated);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .tools-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+            max-height: 650px;
+            overflow-y: auto;
+            padding-right: 0.25rem;
+        }
+
+        .tool-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            transition: all 0.15s ease;
+        }
+
+        .tool-card:hover {
+            border-color: var(--border-active);
+        }
+
+        .tool-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+
+        .tool-name {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            color: var(--accent-cyan);
+            font-size: 0.85rem;
+        }
+
+        .tool-desc {
+            font-size: 0.825rem;
+            color: var(--text-secondary);
+        }
+
+        /* Tool Runner Accordion Drawer */
+        .tool-runner {
+            background: var(--bg-surface-elevated);
+            border-top: 1px solid var(--border-subtle);
+            padding: 0.85rem;
+            margin-top: 0.5rem;
+            border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+            display: none;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .tool-runner.open { display: flex; }
+
+        .param-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .param-label {
+            font-size: 0.725rem;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+        }
+
+        .param-input {
+            background: var(--bg-base);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.4rem 0.65rem;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.775rem;
+        }
+
+        .param-input:focus {
+            border-color: var(--accent-cyan);
+            outline: none;
+        }
+
+        .runner-response {
+            background: #030407;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.65rem;
+            font-family: var(--font-mono);
+            font-size: 0.725rem;
+            color: #a0aec0;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        /* UNC Matrix Grid */
+        .unc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.65rem;
+            max-height: 420px;
+            overflow-y: auto;
+            padding-right: 0.25rem;
+        }
+
+        .unc-pill {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.6rem 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            font-size: 0.775rem;
+        }
+
+        .unc-pill-name {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .unc-pill-sub {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        /* Toast notifications */
+        #toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--bg-surface-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--accent-cyan);
+            box-shadow: 0 8px 30px rgba(0, 240, 255, 0.25);
+            padding: 0.75rem 1.25rem;
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            font-weight: 600;
+            transform: translateY(150%);
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 9999;
+        }
+        #toast.show { transform: translateY(0); }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h1>Roblox MCP Server</h1>
-        <p>Version: {{version}} | Port: {{port}}</p>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="brand-block">
+                <div class="brand-logo">R</div>
+                <div class="brand-info">
+                    <h1>Roblox MCP Server <span class="badge badge-cyan"><span class="pulse-dot"></span> LIVE</span></h1>
+                    <p>v{{version}} &bull; Port {{port}} &bull; PID <span id="server-pid">...</span></p>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <!-- Transport Mode Segmented Toggle -->
+                <div class="controls-ribbon" title="Active Transport Mode">
+                    <button class="segmented-btn" id="btn-mode-auto" onclick="setTransport('auto')">Auto</button>
+                    <button class="segmented-btn" id="btn-mode-ws" onclick="setTransport('ws')">WebSocket</button>
+                    <button class="segmented-btn" id="btn-mode-stream" onclick="setTransport('stream')">Stream</button>
+                </div>
+
+                <!-- Autoexecute Toggle -->
+                <button class="btn btn-emerald" id="btn-autoexec" onclick="toggleAutoexecute()">
+                    <span>⚡ Teleport Autoexec:</span> <strong id="autoexec-status">ON</strong>
+                </button>
+
+                <!-- Copy Inject Script -->
+                <button class="btn btn-primary" onclick="copyInjectCommand()">
+                    <span>📋 Copy Loader</span>
+                </button>
+
+                <!-- Launch Roblox -->
+                <button class="btn" onclick="launchRoblox()">
+                    <span>🚀 Launch Roblox</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Overview Bar -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Connected Workers <span>CLIENTS</span></div>
+                <div class="stat-value" id="stat-workers">0</div>
+                <div class="stat-sub" id="stat-transport-split">0 WebSocket &bull; 0 Stream</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label">Active Processes <span>ROBLOX</span></div>
+                <div class="stat-value" id="stat-processes">0</div>
+                <div class="stat-sub" id="stat-process-split">0 Connected &bull; 0 Idle</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label">Tool Registry <span>CAPABILITIES</span></div>
+                <div class="stat-value" id="stat-tools">111</div>
+                <div class="stat-sub">103 Executor &bull; 8 Server-Side</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label">Tasks Executed <span>TOTAL</span></div>
+                <div class="stat-value" id="stat-processed">0</div>
+                <div class="stat-sub" id="stat-uptime">Uptime: 0m</div>
+            </div>
+        </section>
+
+        <!-- Main Layout: Sidebar Processes + Main Tools & UNC -->
+        <div class="main-grid">
+            <!-- Left Column: Roblox Process / Session Manager -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">🎮 Roblox Instances</span>
+                    <button class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="loadProcesses()">🔄 Refresh</button>
+                </div>
+                <div class="panel-body" id="process-container">
+                    <p style="color: var(--text-muted); font-size: 0.825rem;">Scanning running Roblox processes...</p>
+                </div>
+            </div>
+
+            <!-- Right Column: Tools Explorer & UNC Matrix -->
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <!-- Tools Panel -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">🛠️ Tool Documentation & Live Runner (<span id="tools-count-header">111</span>)</span>
+                    </div>
+                    <div class="panel-body">
+                        <!-- Filters -->
+                        <div class="tools-filter-bar">
+                            <input type="text" id="tool-search" class="search-input" placeholder="Search 111 tools by name, action, or description (e.g. 'fire-remote', 'teleport', 'screen')..." oninput="filterTools()">
+                            <div class="category-pills" id="category-pills">
+                                <span class="cat-pill active" onclick="setCategory('all')">All</span>
+                                <span class="cat-pill" onclick="setCategory('network')">Network</span>
+                                <span class="cat-pill" onclick="setCategory('inspection')">Inspection</span>
+                                <span class="cat-pill" onclick="setCategory('player')">Player</span>
+                                <span class="cat-pill" onclick="setCategory('gui')">GUI</span>
+                                <span class="cat-pill" onclick="setCategory('input')">Input</span>
+                                <span class="cat-pill" onclick="setCategory('scripting')">Scripting</span>
+                                <span class="cat-pill" onclick="setCategory('memory')">Memory</span>
+                                <span class="cat-pill" onclick="setCategory('filesystem')">Filesystem</span>
+                                <span class="cat-pill" onclick="setCategory('instances')">Instances</span>
+                                <span class="cat-pill" onclick="setCategory('server')">Server</span>
+                            </div>
+                        </div>
+
+                        <!-- Tool Cards List -->
+                        <div class="tools-list" id="tools-list">
+                            <p style="color: var(--text-muted); font-size: 0.825rem;">Loading tool definitions...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- UNC Compatibility Matrix Panel -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">⚡ UNC Compatibility Layer (<span id="unc-count">38</span> Functions)</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="unc-grid" id="unc-container">
+                            <p style="color: var(--text-muted); font-size: 0.825rem;">Checking UNC capability matrix...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="card">
-        <h2>Active Processes</h2>
-        <div id="processes" class="process-list">Loading...</div>
-    </div>
+    <!-- Toast Notification -->
+    <div id="toast">Copied to clipboard!</div>
 
     <script>
+        const PORT = parseInt('{{port}}', 10) || 28429;
+        let allTools = [];
+        let activeCategory = 'all';
+        let currentMode = 'auto';
+
+        // Toast display
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2600);
+        }
+
+        // Copy loader string
+        function copyInjectCommand() {
+            const cmd = `loadstring(game:HttpGet("http://127.0.0.1:${PORT}/mcp.lua"))()`;
+            navigator.clipboard.writeText(cmd).then(() => {
+                showToast("Copied loader to clipboard!");
+            }).catch(() => {
+                prompt("Copy this command:", cmd);
+            });
+        }
+
+        // Format Uptime
+        function formatUptime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const h = Math.floor(m / 60);
+            if (h > 0) return `${h}h ${m % 60}m`;
+            return `${m}m ${Math.floor(seconds % 60)}s`;
+        }
+
+        // Fetch Health and Telemetry
+        async function fetchTelemetry() {
+            try {
+                const res = await fetch('/health');
+                const data = await res.json();
+
+                document.getElementById('stat-processed').innerText = data.totalProcessed || 0;
+                document.getElementById('stat-uptime').innerText = 'Uptime: ' + formatUptime(data.uptime || 0);
+                document.getElementById('stat-tools').innerText = data.toolsRegistered || 111;
+
+                // Fetch Transport Status
+                const tRes = await fetch('/api/transport');
+                const tData = await tRes.json();
+                currentMode = tData.mode || 'auto';
+
+                // Update Segmented Buttons
+                ['auto', 'ws', 'stream'].forEach(m => {
+                    const btn = document.getElementById(`btn-mode-${m}`);
+                    if (btn) btn.classList.toggle('active', currentMode === m);
+                });
+
+                document.getElementById('stat-workers').innerText = tData.active_sessions || 0;
+                document.getElementById('stat-transport-split').innerText =
+                    `${tData.ws_clients || 0} WebSocket • ${tData.stream_workers || 0} Stream (${tData.active_transport.toUpperCase()})`;
+
+                // Fetch Autoexecute Status
+                const aRes = await fetch('/api/autoexecute');
+                const aData = await aRes.json();
+                const btnAuto = document.getElementById('btn-autoexec');
+                const lblAuto = document.getElementById('autoexec-status');
+                if (aData.enabled) {
+                    btnAuto.className = 'btn btn-emerald';
+                    lblAuto.innerText = 'ON';
+                } else {
+                    btnAuto.className = 'btn btn-rose';
+                    lblAuto.innerText = 'OFF';
+                }
+            } catch (err) {
+                console.error("Telemetry fetch error:", err);
+            }
+        }
+
+        // Set Transport Mode
+        async function setTransport(mode) {
+            try {
+                await fetch('/api/transport', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode })
+                });
+                showToast(`Transport mode set to: ${mode.toUpperCase()}`);
+                fetchTelemetry();
+            } catch (err) {
+                showToast("Failed to change transport");
+            }
+        }
+
+        // Toggle Autoexecute
+        async function toggleAutoexecute() {
+            try {
+                const res = await fetch('/api/autoexecute', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                const data = await res.json();
+                showToast(`Teleport Autoexecute: ${data.enabled ? 'ENABLED' : 'DISABLED'}`);
+                fetchTelemetry();
+            } catch (err) {
+                showToast("Failed to toggle autoexecute");
+            }
+        }
+
+        // Load Processes & Sessions
         async function loadProcesses() {
             try {
                 const res = await fetch('/api/processes');
                 const data = await res.json();
-                const container = document.getElementById('processes');
-                
+                const container = document.getElementById('process-container');
+
+                document.getElementById('stat-processes').innerText = data.total || 0;
+                document.getElementById('stat-process-split').innerText =
+                    `${data.connectedCount || 0} Connected • ${data.unconnectedCount || 0} Unconnected`;
+
                 if (!data.processes || data.processes.length === 0) {
-                    container.innerHTML = '<p>No Roblox processes found.</p>';
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">
+                            <p style="font-size: 1.5rem; margin-bottom: 0.5rem;">🛑</p>
+                            <p>No Roblox processes detected.</p>
+                            <p style="font-size: 0.775rem; margin-top: 0.35rem;">Click "Launch Roblox" above to start a game.</p>
+                        </div>
+                    `;
                     return;
                 }
 
-                container.innerHTML = data.processes.map(p => `
-                    <div class="process-item">
-                        <div>
-                            <strong>${p.windowTitle || p.name}</strong><br>
-                            <small>PID: ${p.pid} | Memory: ${p.memoryMB} MB</small>
+                container.innerHTML = data.processes.map(p => {
+                    const isConn = p.isConnected;
+                    return `
+                        <div class="process-item ${isConn ? 'connected' : 'unconnected'}">
+                            <div class="process-top">
+                                <div>
+                                    <div class="process-title">
+                                        ${p.windowTitle || p.name}
+                                    </div>
+                                    <div class="process-meta" style="margin-top: 0.25rem;">
+                                        <span>PID: <strong>${p.pid}</strong></span>
+                                        <span>RAM: ${p.memoryMB} MB</span>
+                                        ${isConn ? `<span>MODE: <strong style="color:var(--accent-cyan)">${(p.transport || 'WS').toUpperCase()}</strong></span>` : ''}
+                                    </div>
+                                    ${isConn && p.workerId ? `<div style="font-size: 0.7rem; font-family: var(--font-mono); color: var(--text-muted); margin-top: 0.2rem;">Worker: ${p.workerId}</div>` : ''}
+                                </div>
+                                <span class="badge ${isConn ? 'badge-emerald' : 'badge-amber'}">
+                                    <span class="pulse-dot"></span>
+                                    ${isConn ? 'CONNECTED' : 'UNCONNECTED'}
+                                </span>
+                            </div>
+
+                            <div class="process-actions">
+                                ${isConn ? `
+                                    <button class="btn" style="font-size: 0.725rem; padding: 0.3rem 0.6rem;" onclick="takeScreenshot(${p.pid})">📷 Snap</button>
+                                ` : `
+                                    <button class="btn btn-primary" style="font-size: 0.725rem; padding: 0.3rem 0.6rem;" onclick="copyInjectCommand()">💉 Inject Script</button>
+                                `}
+                                <button class="btn" style="font-size: 0.725rem; padding: 0.3rem 0.6rem;" onclick="restartProcess(${p.pid})">🔄 Restart</button>
+                                <button class="btn btn-rose" style="font-size: 0.725rem; padding: 0.3rem 0.6rem;" onclick="killProcess(${p.pid})">💀 Kill</button>
+                            </div>
                         </div>
-                        <div>
-                            <button onclick="restart(${p.pid})">Restart</button>
-                            <button class="kill" onclick="kill(${p.pid})">Kill</button>
-                        </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             } catch (err) {
-                document.getElementById('processes').innerHTML = '<p style="color:red">Failed to load processes</p>';
+                document.getElementById('process-container').innerHTML = '<p style="color:var(--accent-rose)">Failed to query processes.</p>';
             }
         }
 
-        async function kill(pid) {
+        async function killProcess(pid) {
+            if (!confirm(`Kill Roblox process PID ${pid}?`)) return;
             await fetch(`/api/processes/${pid}/kill`, { method: 'POST' });
+            showToast(`Killed PID ${pid}`);
             loadProcesses();
         }
 
-        async function restart(pid) {
+        async function restartProcess(pid) {
             await fetch(`/api/processes/${pid}/restart`, { method: 'POST' });
+            showToast(`Restarting PID ${pid}...`);
             loadProcesses();
         }
 
+        async function launchRoblox() {
+            await fetch('/api/processes/launch', { method: 'POST' });
+            showToast("Launching Roblox Player...");
+            setTimeout(loadProcesses, 2000);
+        }
+
+        async function takeScreenshot(pid) {
+            showToast(`Capturing screenshot for PID ${pid}...`);
+            try {
+                const res = await fetch('/api/tools/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: 'take-screenshot', arguments: { pid } })
+                });
+                const data = await res.json();
+                const content = data.result?.content?.[0]?.text;
+                if (content) {
+                    const parsed = JSON.parse(content);
+                    if (parsed.image) {
+                        const win = window.open();
+                        win.document.write(`<body style="margin:0;background:#050608;display:flex;align-items:center;justify-content:center;height:100vh;"><img src="${parsed.image}" style="max-width:98%;max-height:98%;border-radius:8px;box-shadow:0 0 30px rgba(0,0,0,0.8);"/></body>`);
+                        return;
+                    }
+                }
+                showToast("Screenshot captured (see AI response).");
+            } catch (e) {
+                showToast("Screenshot failed: " + e.message);
+            }
+        }
+
+        // Load Tools Catalog
+        async function loadTools() {
+            try {
+                const res = await fetch('/api/tools');
+                const data = await res.json();
+                allTools = data.tools || [];
+                document.getElementById('tools-count-header').innerText = allTools.length;
+                renderTools(allTools);
+            } catch (err) {
+                document.getElementById('tools-list').innerHTML = '<p style="color:var(--accent-rose)">Failed to load tools.</p>';
+            }
+        }
+
+        function setCategory(cat) {
+            activeCategory = cat;
+            document.querySelectorAll('.cat-pill').forEach(el => {
+                el.classList.toggle('active', el.innerText.toLowerCase() === cat);
+            });
+            filterTools();
+        }
+
+        function filterTools() {
+            const q = (document.getElementById('tool-search').value || '').toLowerCase();
+            const filtered = allTools.filter(t => {
+                const matchCat = activeCategory === 'all' || t.category === activeCategory;
+                const matchQuery = !q || t.name.toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q);
+                return matchCat && matchQuery;
+            });
+            renderTools(filtered);
+        }
+
+        function renderTools(toolsList) {
+            const container = document.getElementById('tools-list');
+            if (toolsList.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-muted); padding: 1.5rem; text-align: center;">No tools match your filter.</p>';
+                return;
+            }
+
+            container.innerHTML = toolsList.map((t, i) => {
+                const props = t.inputSchema?.properties || {};
+                const propKeys = Object.keys(props);
+                const isServer = t.category === 'server';
+
+                return `
+                    <div class="tool-card" id="card-tool-${i}">
+                        <div class="tool-header" onclick="toggleToolRunner(${i})">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                <span class="tool-name">${t.name}</span>
+                                <span class="badge ${isServer ? 'badge-amber' : 'badge-cyan'}" style="font-size: 0.65rem;">${t.category}</span>
+                            </div>
+                            <span style="color: var(--text-muted); font-size: 0.75rem;">${propKeys.length} params &bull; <strong>Try ▼</strong></span>
+                        </div>
+                        <div class="tool-desc">${t.description || 'No description provided.'}</div>
+
+                        <!-- Interactive Tool Runner -->
+                        <div class="tool-runner" id="runner-${i}">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem;">
+                                ${propKeys.map(k => `
+                                    <div class="param-group">
+                                        <label class="param-label">${k} <span style="color:var(--accent-cyan); font-size: 0.65rem;">(${props[k].type || 'any'})</span></label>
+                                        <input type="text" class="param-input" id="input-${i}-${k}" placeholder="${props[k].description || ''}">
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.35rem;">
+                                <button class="btn btn-primary" style="font-size: 0.75rem; padding: 0.35rem 0.85rem;" onclick="executeToolCall(${i}, '${t.name}')">▶ Execute Call</button>
+                                <span style="font-size: 0.725rem; color: var(--text-muted);">Runs via internal JSON-RPC</span>
+                            </div>
+                            <div class="runner-response" id="response-${i}" style="display: none;"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleToolRunner(idx) {
+            const runner = document.getElementById(`runner-${idx}`);
+            if (runner) runner.classList.toggle('open');
+        }
+
+        async function executeToolCall(idx, toolName) {
+            const tool = allTools.find(t => t.name === toolName);
+            if (!tool) return;
+
+            const props = tool.inputSchema?.properties || {};
+            const args = {};
+            for (const k of Object.keys(props)) {
+                const el = document.getElementById(`input-${idx}-${k}`);
+                if (el && el.value.trim() !== '') {
+                    let val = el.value.trim();
+                    if (props[k].type === 'number' || props[k].type === 'integer') val = Number(val);
+                    else if (props[k].type === 'boolean') val = val === 'true' || val === '1';
+                    args[k] = val;
+                }
+            }
+
+            const resBox = document.getElementById(`response-${idx}`);
+            resBox.style.display = 'block';
+            resBox.innerText = 'Executing in Roblox DataModel...';
+
+            try {
+                const res = await fetch('/api/tools/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: toolName, arguments: args })
+                });
+                const data = await res.json();
+                const output = data.result?.content?.[0]?.text || JSON.stringify(data, null, 2);
+                resBox.innerText = output;
+            } catch (err) {
+                resBox.innerText = 'Execution Error: ' + err.message;
+            }
+        }
+
+        // Load UNC Matrix
+        async function loadUncMatrix() {
+            try {
+                const res = await fetch('/api/unc');
+                const data = await res.json();
+                const container = document.getElementById('unc-container');
+                const list = data.standardFunctions || [];
+
+                document.getElementById('unc-count').innerText = list.length;
+                container.innerHTML = list.map(u => `
+                    <div class="unc-pill">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="unc-pill-name">${u.name}</span>
+                            <span class="badge badge-cyan" style="font-size: 0.6rem; padding: 0.1rem 0.4rem;">${u.category}</span>
+                        </div>
+                        <div class="unc-pill-sub">${u.desc}</div>
+                        <div style="font-size: 0.675rem; color: var(--accent-emerald); font-family: var(--font-mono); margin-top: 0.15rem;">Fallback: ${u.fallback}</div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error("UNC load error:", err);
+            }
+        }
+
+        // Init
+        fetchTelemetry();
         loadProcesses();
-        setInterval(loadProcesses, 5000);
+        loadTools();
+        loadUncMatrix();
+
+        // Polling cycles (2.5s for processes & telemetry)
+        setInterval(() => {
+            fetchTelemetry();
+            loadProcesses();
+        }, 2500);
     </script>
 </body>
 </html>

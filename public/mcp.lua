@@ -111,6 +111,8 @@ local setrawmetatable = setrawmetatable
 local setreadonly = setreadonly
 local isreadonly = isreadonly
 local getnamecallmethod = getnamecallmethod
+local setnamecallmethod = setnamecallmethod or (syn and syn.set_namecall_method) or set_namecall_method
+local queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport) or queueonteleport or (fluxus and fluxus.queue_on_teleport)
 local hookmetamethod = hookmetamethod
 local restorefunction = restorefunction
 local gethui = gethui or function()
@@ -320,6 +322,7 @@ pcall(function()
 			"decompile",
 			"request",
 			"http_request",
+			"queue_on_teleport",
 			"getscriptclosure",
 			"getscripthash",
 			"getcallingscript",
@@ -2312,71 +2315,92 @@ local function handleRemoteSpy(args)
 
 		local function ProcessOutgoing(method, inst, callArgs)
 			if not spyLogCheckCaller and checkcaller and checkcaller() then
-				return false
+				return false, nil
 			end
 
 			local rName = "Unknown"
-			local rPath = "Unknown"
 			pcall(function()
 				rName = inst.Name
-				rPath = getFullPath(inst)
 			end)
 
-			-- Match on Name *or* full path: block-remote sends full paths while
-			-- spy-remotes block sends a name, and both must work.
-			local blockcheck = spyBlocklist[rName] or spyBlocklist[rPath] or spyBlockAll
-			local ignorecheck = spyBlacklist[rName] or spyBlacklist[rPath]
-
-			-- Include/exclude glob filters (set-remote-filter). Exclude wins.
-			if not ignorecheck and not matchesAny(spyFilterExclude, rName, rPath) then
-				local included = true
-				if #spyFilterInclude > 0 then
-					included = matchesAny(spyFilterInclude, rName, rPath)
+			local rPath = nil
+			local function getPath()
+				if not rPath then
+					pcall(function()
+						rPath = getFullPath(inst)
+					end)
+					rPath = rPath or rName
 				end
+				return rPath
+			end
 
-				if not included then
+			-- Fast check: by Name first
+			local blockcheck = spyBlockAll or (spyBlocklist[rName] == true)
+			if not blockcheck and next(spyBlocklist) ~= nil then
+				blockcheck = (spyBlocklist[getPath()] == true)
+			end
+
+			local ignorecheck = (spyBlacklist[rName] == true)
+			if not ignorecheck and next(spyBlacklist) ~= nil then
+				ignorecheck = (spyBlacklist[getPath()] == true)
+			end
+
+			-- Include/exclude glob filters (set-remote-filter)
+			if not ignorecheck and (#spyFilterExclude > 0 or #spyFilterInclude > 0) then
+				local p = getPath()
+				if matchesAny(spyFilterExclude, rName, p) then
+					ignorecheck = true
+				elseif #spyFilterInclude > 0 and not matchesAny(spyFilterInclude, rName, p) then
 					ignorecheck = true
 				end
 			end
 
-			-- Argument spoofing (spoof-remote-args): rewrite in place before the call
-			-- proceeds. Rules are keyed by Name or full path.
-			local spoofRules = spySpoof[rPath] or spySpoof[rName]
+			-- Argument spoofing (spoof-remote-args)
+			local isSpoofed = false
+			local spoofRules = spySpoof[rName] or (next(spySpoof) ~= nil and spySpoof[getPath()])
 			if spoofRules and type(callArgs) == "table" then
-				for idx, rule in pairs(spoofRules) do
-					local i = tonumber(idx)
+				for _, rule in ipairs(spoofRules) do
+					local i = tonumber(rule.index)
 					if i and i >= 1 and i <= #callArgs then
 						if rule.mode == "replace" then
 							callArgs[i] = rule.value
+							isSpoofed = true
 						elseif rule.mode == "delete" then
 							table.remove(callArgs, i)
+							isSpoofed = true
 						end
 					end
 				end
 			end
 
+			-- Asynchronous logging via task.defer with shallow-copied args to prevent game lag
 			if not ignorecheck and not blockcheck then
 				if #spyLogs < maxLog then
+					local loggedArgs = {}
+					if type(callArgs) == "table" then
+						for k, v in pairs(callArgs) do
+							loggedArgs[k] = v
+						end
+					end
 					task.defer(function()
 						pcall(function()
+							local p = getPath()
+							local s, l = "unknown", 0
+							pcall(function()
+								local s1, l1 = debug.info(4, "sl")
+								if s1 then s, l = tostring(s1), tonumber(l1) or 0 end
+							end)
 							local logEntry = {
 								remote = rName,
-								remotePath = rPath,
+								remotePath = p,
 								method = method,
 								direction = "outgoing",
-								args = serialize(callArgs),
+								args = serialize(loggedArgs),
 								timestamp = tick(),
 								blocked = false,
-								source = "unknown",
-								line = 0,
+								source = s,
+								line = l,
 							}
-							pcall(function()
-								local s, l = debug.info(4, "sl")
-								if s then
-									logEntry.source = tostring(s)
-									logEntry.line = tonumber(l) or 0
-								end
-							end)
 							table.insert(spyLogs, 1, logEntry)
 							if #spyLogs > maxLog then
 								table.remove(spyLogs)
@@ -2386,48 +2410,51 @@ local function handleRemoteSpy(args)
 				end
 			end
 
-			return blockcheck and true or false
+			return (blockcheck and true or false), (isSpoofed and callArgs or nil)
 		end
 
-		-- Direct method hooks
+		-- Direct method hooks (fallback if __namecall is not hookable)
 		local origFireServer, origInvokeServer, origUnreliableFireServer
 
-		local function newFireServer(...)
-			local self = ...
+		local function newFireServer(self, ...)
 			if typeof(self) == "Instance" and self.ClassName == "RemoteEvent" then
-				local args = { select(2, ...) }
-				if ProcessOutgoing("FireServer", self, args) then
-					return
+				local callArgs = { ... }
+				local blocked, spoofedArgs = ProcessOutgoing("FireServer", self, callArgs)
+				if blocked then return end
+				if spoofedArgs then
+					return origFireServer(self, table.unpack(spoofedArgs))
 				end
 			end
-			return origFireServer(...)
+			return origFireServer(self, ...)
 		end
 
-		local function newUnreliableFireServer(...)
-			local self = ...
+		local function newUnreliableFireServer(self, ...)
 			if typeof(self) == "Instance" and self.ClassName == "UnreliableRemoteEvent" then
-				local args = { select(2, ...) }
-				if ProcessOutgoing("FireServer", self, args) then
-					return
+				local callArgs = { ... }
+				local blocked, spoofedArgs = ProcessOutgoing("FireServer", self, callArgs)
+				if blocked then return end
+				if spoofedArgs then
+					return origUnreliableFireServer(self, table.unpack(spoofedArgs))
 				end
 			end
-			return origUnreliableFireServer(...)
+			return origUnreliableFireServer(self, ...)
 		end
 
-		local function newInvokeServer(...)
-			local self = ...
+		local function newInvokeServer(self, ...)
 			if typeof(self) == "Instance" and self.ClassName == "RemoteFunction" then
-				local args = { select(2, ...) }
-				if ProcessOutgoing("InvokeServer", self, args) then
-					return nil
+				local callArgs = { ... }
+				local blocked, spoofedArgs = ProcessOutgoing("InvokeServer", self, callArgs)
+				if blocked then return nil end
+				if spoofedArgs then
+					return origInvokeServer(self, table.unpack(spoofedArgs))
 				end
 			end
-			return origInvokeServer(...)
+			return origInvokeServer(self, ...)
 		end
 
 		-- Namecall hook
 		local origNamecall
-		local function newNamecall(...)
+		local function newNamecall(self, ...)
 			local method = getnamecallmethod()
 			if
 				method == "FireServer"
@@ -2435,46 +2462,69 @@ local function handleRemoteSpy(args)
 				or method == "InvokeServer"
 				or method == "invokeServer"
 			then
-				local self = ...
 				if
 					typeof(self) == "Instance"
 					and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction") or self:IsA("UnreliableRemoteEvent"))
 				then
-					local args = { select(2, ...) }
-					local blocked = ProcessOutgoing(method, self, args)
+					local callArgs = { ... }
+					local blocked, spoofedArgs = ProcessOutgoing(method, self, callArgs)
 					if blocked then
 						if self:IsA("RemoteFunction") then
 							return nil
 						end
 						return
 					end
+
+					-- ALWAYS restore namecall method before forwarding to origNamecall
+					if setnamecallmethod then
+						setnamecallmethod(method)
+					end
+
+					if spoofedArgs then
+						return origNamecall(self, table.unpack(spoofedArgs))
+					end
+					return origNamecall(self, ...)
 				end
 			end
-			return origNamecall(...)
+
+			if setnamecallmethod then
+				setnamecallmethod(method)
+			end
+			return origNamecall(self, ...)
 		end
 
+		local hookedViaNamecall = false
 		if oth and hook then
 			local gmt = getrawmetatable(game)
 			if gmt and gmt.__namecall then
-				origNamecall = hook(gmt.__namecall, clonefunction(newcclosure(newNamecall)))
+				origNamecall = hook(gmt.__namecall, newcclosure(newNamecall))
+				hookedViaNamecall = true
 			end
-			origFireServer = hook(Instance.new("RemoteEvent").FireServer, clonefunction(newcclosure(newFireServer)))
-			origInvokeServer =
-				hook(Instance.new("RemoteFunction").InvokeServer, clonefunction(newcclosure(newInvokeServer)))
-			origUnreliableFireServer = hook(
-				Instance.new("UnreliableRemoteEvent").FireServer,
-				clonefunction(newcclosure(newUnreliableFireServer))
-			)
-		else
-			origNamecall = hook_meta(game, "__namecall", clonefunction(newcclosure(newNamecall)))
-			origFireServer =
-				hookfunction(Instance.new("RemoteEvent").FireServer, clonefunction(newcclosure(newFireServer)))
-			origInvokeServer =
-				hookfunction(Instance.new("RemoteFunction").InvokeServer, clonefunction(newcclosure(newInvokeServer)))
-			origUnreliableFireServer = hookfunction(
-				Instance.new("UnreliableRemoteEvent").FireServer,
-				clonefunction(newcclosure(newUnreliableFireServer))
-			)
+		elseif hookmetamethod then
+			local ok, res = pcall(hookmetamethod, game, "__namecall", newcclosure(newNamecall))
+			if ok and res then
+				origNamecall = res
+				hookedViaNamecall = true
+			end
+		elseif getrawmetatable and hookfunction then
+			local gmt = getrawmetatable(game)
+			if gmt and gmt.__namecall then
+				origNamecall = hookfunction(gmt.__namecall, newcclosure(newNamecall))
+				hookedViaNamecall = true
+			end
+		end
+
+		-- If namecall was NOT hooked, fallback to hooking individual methods
+		if not hookedViaNamecall and type(hookfunction) == "function" then
+			pcall(function()
+				origFireServer = hookfunction(Instance.new("RemoteEvent").FireServer, newcclosure(newFireServer))
+			end)
+			pcall(function()
+				origInvokeServer = hookfunction(Instance.new("RemoteFunction").InvokeServer, newcclosure(newInvokeServer))
+			end)
+			pcall(function()
+				origUnreliableFireServer = hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, newcclosure(newUnreliableFireServer))
+			end)
 		end
 
 		G_SET("MCP_SPY_HOOKS", {
@@ -2482,6 +2532,7 @@ local function handleRemoteSpy(args)
 			FireServer = origFireServer,
 			InvokeServer = origInvokeServer,
 			UnreliableFireServer = origUnreliableFireServer,
+			HookedViaNamecall = hookedViaNamecall,
 		})
 
 		G_SET("MCP_SPY_ACTIVE", true)
@@ -3546,7 +3597,55 @@ local function handleDisableAntiCheat(args)
 	return { success = true, results = results }
 end
 
-local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["get-metadata"] = handleGetMetadata,
+local MCP_AUTOEXEC_CONN = nil
+
+local function getAutoexecScript()
+	return string.format('loadstring(game:HttpGet("http://%s:%d/mcp.lua"))()', HOST, PORT)
+end
+
+local function handleSetAutoexecute(args)
+	local enable = args.enabled
+	if enable == nil then
+		enable = true
+	end
+	G_SET("MCP_AUTOEXECUTE", enable)
+
+	local hasQot = type(queue_on_teleport) == "function"
+	if enable then
+		if hasQot then
+			pcall(queue_on_teleport, getAutoexecScript())
+		end
+		if not MCP_AUTOEXEC_CONN and LocalPlayer then
+			pcall(function()
+				MCP_AUTOEXEC_CONN = LocalPlayer.OnTeleport:Connect(function(state)
+					if G_GET("MCP_AUTOEXECUTE") and type(queue_on_teleport) == "function" then
+						pcall(queue_on_teleport, getAutoexecScript())
+					end
+				end)
+			end)
+		end
+		return {
+			success = true,
+			enabled = true,
+			supported = hasQot,
+			message = hasQot and "Autoexecute armed via queue_on_teleport across all teleports." or "Autoexecute enabled in genv, but queue_on_teleport is not available on this executor.",
+		}
+	else
+		if MCP_AUTOEXEC_CONN then
+			pcall(function()
+				MCP_AUTOEXEC_CONN:Disconnect()
+			end)
+			MCP_AUTOEXEC_CONN = nil
+		end
+		return {
+			success = true,
+			enabled = false,
+			message = "Autoexecute disabled.",
+		}
+	end
+end
+
+local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoexecute"] = handleSetAutoexecute,	["get-metadata"] = handleGetMetadata,
 	["dump-workspace-players"] = handleDumpPlayers,
 	["get-local-player"] = handlePlayerState,
 	["dump-remote-events"] = handleDumpRemotes,
@@ -3758,6 +3857,13 @@ proxyToServer = function(toolName, args)
 end
 
 G_SET("MCP_RUNNING", true)
+
+-- Re-arm autoexecute on teleport if active in genv
+if G_GET("MCP_AUTOEXECUTE") then
+	pcall(function()
+		handleSetAutoexecute({ enabled = true })
+	end)
+end
 
 -- Runs one task through HANDLERS and returns the serializable result.
 local function dispatchTask(tsk)

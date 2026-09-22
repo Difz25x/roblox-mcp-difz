@@ -4,7 +4,7 @@
 
 It works with **any MCP-compatible AI client** like Claude Code, Cursor, Windsurf, or whatever else you use. 
 
-I packed it with 110 tools. It can traverse the DataModel, inspect properties, fire remotes, run raw Lua, hook functions, intercept network traffic, and simulate user input. Basically, if you can do it in an executor, the AI can do it now.
+I packed it with 111 tools. It can traverse the DataModel, inspect properties, fire remotes, run raw Lua, hook functions, intercept network traffic, and simulate user input. Basically, if you can do it in an executor, the AI can do it now.
 
 ---
 
@@ -16,10 +16,11 @@ I packed it with 110 tools. It can traverse the DataModel, inspect properties, f
 - [MCP Client Configuration](#mcp-client-configuration)
 - [Commands](#commands)
 - [UNC Compatibility (Executor Support)](#unc-compatibility-executor-support)
-- [Tools (110 tools in total)](#tools-110-tools-in-total)
+- [Tools (111 tools in total)](#tools-111-tools-in-total)
+- [Multi-Session Orchestration](#multi-session-orchestration)
 - [Dual Transport (WebSocket & Stream)](#dual-transport-websocket--stream)
 - [How It Actually Works](#how-it-actually-works)
-- [Multi-Instance Support](#multi-instance-support)
+- [Command Deck Web Dashboard](#command-deck-web-dashboard)
 - [When Things Break (Troubleshooting)](#when-things-break-troubleshooting)
 - [Environment Variables](#environment-variables)
 - [Programmatic API](#programmatic-api)
@@ -300,24 +301,27 @@ The client script (mcp.lua) uses **Universal Compatibility (UNC)** functions to 
 
 ---
 
-## Tools (110 tools in total)
+## Tools (111 tools in total)
 
-This MCP server comes with over 100 tools. Below are some of the most commonly used tools. For the complete list and detailed descriptions, refer to `src/tool-definitions.ts`.
+This MCP server comes with over 110 tools. Below are some of the most commonly used tools. For the complete list and detailed descriptions, refer to `src/tool-definitions.ts` or view the live interactive documentation in the web dashboard (`http://localhost:28429`).
 
 | Tool | Description |
 |------|-------------|
 | `execute-script` | Executes arbitrary Luau source code in the target Roblox process with full read/write access. |
+| `set-autoexecute` | Arm automatic re-execution of MCP client across all place/server teleports using `queue_on_teleport`. |
 | `dump-workspace-players` | Get a list of all players along with their character models, HP, speed, and backpack contents. |
 | `walk-tree` | Search for objects within the game. Can be filtered by name, object type (class), and maximum folder depth. |
 | `resolve-path` | Resolve a string path like 'workspace.Model.Part' into an actual object reference. |
-| `spy-remotes` | Master tool for network traffic interception, blocking, and argument spoofing. Hooks FireServer/InvokeServer. |
+| `spy-remotes` | Master tool for network traffic interception, blocking, and argument spoofing. Non-blocking engine. |
 | `dump-remote-events` | Scans specified paths for all RemoteEvents, RemoteFunctions, and UnreliableRemoteEvents. |
-| `decompile-script` | Decompiles a Script, ModuleScript, or LocalScript using the decompile chain (LuaExpert/Medal/Konstant). |
+| `decompile-script` | Decompiles a Script, ModuleScript, or LocalScript using UNC `decompile` or bytecode retrieval. |
 | `get-local-player` | Dump the LocalPlayer in depth: Backpack, Leaderstats, Character state, Humanoid, and PlayerGui. |
 | `disable-anticheat` | Bypass client-side anticheat. Prevents Kick(), disables suspiciously named scripts, and blocks teleport bans. |
 | `take-screenshot` | Capture a screenshot of a Roblox process window on Windows. Returns base64-encoded PNG data URL. |
+| `get-transport-status` | Inspect active transport mode (Auto / WebSocket / Stream), worker breakdown, and endpoints. |
+| `set-transport-mode` | Dynamically switch transport between `'auto'`, `'ws'`, and `'stream'`. |
 
-> **Note:** There are 98 other tools covering GUI manipulation, instance cloning/destroying, camera control, mouse/keyboard simulation, metatable manipulation, closure inspection, and more!
+> **Note:** There are 98 other tools covering GUI manipulation, instance cloning/destroying, camera control, mouse/keyboard simulation, metatable manipulation, closure inspection, and more! Every tool supports targeted execution via `worker_id` / `pid` or automatic multi-session broadcast.
 
 ---
 
@@ -421,27 +425,47 @@ This MCP server comes with over 100 tools. Below are some of the most commonly u
 }
 ```
 
-### Multi-Instance Support
+## Multi-Session Orchestration
 
-Each executor registers with a unique `worker_id`. Tools can target a specific Roblox instance by PID:
+Each Roblox executor registers with a unique `worker_id` (or session ID). The server provides first-class multi-session support across all 111 tools:
+
+### 1. Target a Specific Client
+Pass `worker_id` (or `session_id` / `pid`) as an argument to any tool:
 
 ```json
 {
-  "name": "list-roblox-processes",
-  "arguments": {}
-}
-// Returns [{ pid: 1234, name: "RobloxPlayerBeta", windowTitle: "Game Name" }]
-
-{
   "name": "execute-script",
   "arguments": {
-    "pid": 1234,
-    "code": "print('hello from instance 1234')"
+    "worker_id": "worker_alpha",
+    "code": "print('hello from worker alpha')"
   }
 }
 ```
 
-If no PID is specified, tasks are broadcast to ALL connected executors. To use multi-instance with custom IDs, set `getgenv().MCP_WORKER_ID = "my-instance"` before injecting mcp.lua.
+### 2. Multi-Session Fanout (Broadcast)
+If you omit `worker_id` and have multiple Roblox windows connected, the server automatically executes the tool across **all connected sessions concurrently** and aggregates the results into a structured dictionary:
+
+```json
+// Response when multiple clients are connected
+{
+  "multi_session": true,
+  "total_sessions": 2,
+  "results": {
+    "worker_alpha": {
+      "success": true,
+      "pid": 11360,
+      "name": "PlayerAlpha",
+      "result": { "health": 100 }
+    },
+    "worker_beta": {
+      "success": true,
+      "pid": 14200,
+      "name": "PlayerBeta",
+      "result": { "health": 85 }
+    }
+  }
+}
+```
 
 ---
 

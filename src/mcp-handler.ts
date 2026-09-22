@@ -19,9 +19,17 @@ interface QueueManager {
     };
 }
 
+interface ActiveSession {
+    workerId: string;
+    pid?: number | string;
+    name?: string;
+    status: string;
+    transport?: 'ws' | 'stream';
+}
+
 interface SessionManager {
     readonly activeCount: number;
-    listActive?(): unknown[];
+    listActive?(): ActiveSession[];
     countByTransport?(): { ws: number; stream: number };
 }
 
@@ -132,7 +140,7 @@ class McpHandler {
             }
 
             if (!this.initialized && method !== 'initialize' && method !== 'ping') {
-                return { error: { code: -32002, message: 'Server not initialized' } };
+                this.initialized = true; // Auto-initialize on direct tool call or dashboard runner
             }
 
             switch (method) {
@@ -231,23 +239,94 @@ class McpHandler {
             }
 
             const startTime = Date.now();
-            const opts: any = {};
-            if (args && args.pid) {
-                opts.targetPid = Number(args.pid);
-            }
-            if (args && (args.timeout_ms !== undefined || args.timeout !== undefined)) {
-                opts.timeoutMs = Number(args.timeout_ms ?? args.timeout);
-            }
-            const result = await this.queue.submitTask(name, args || {}, opts);
-            const elapsed = Date.now() - startTime;
+            const targetWorker = (args?.worker_id || args?.session_id || args?.sessionId || args?.workerId) as string | undefined;
+            const targetPid = args?.pid ? Number(args.pid) : undefined;
+            const timeoutMs = args && (args.timeout_ms !== undefined || args.timeout !== undefined)
+                ? Number(args.timeout_ms ?? args.timeout)
+                : undefined;
 
+            const activeSessions = this.sessions.listActive ? this.sessions.listActive() : [];
+
+            // Case 1: Targeted by specific worker_id / session_id
+            if (targetWorker) {
+                const result = await this.queue.submitTask(name, args || {}, { workerId: targetWorker, timeoutMs });
+                const elapsed = Date.now() - startTime;
+                return {
+                    result: {
+                        content: [{
+                            type: 'text',
+                            text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+                        }],
+                        meta: { executionTimeMs: elapsed, tool: name, targetWorker },
+                    },
+                };
+            }
+
+            // Case 2: Targeted by specific PID
+            if (targetPid !== undefined) {
+                const result = await this.queue.submitTask(name, args || {}, { targetPid, timeoutMs });
+                const elapsed = Date.now() - startTime;
+                return {
+                    result: {
+                        content: [{
+                            type: 'text',
+                            text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+                        }],
+                        meta: { executionTimeMs: elapsed, tool: name, targetPid },
+                    },
+                };
+            }
+
+            // Case 3: Exactly 1 session connected -> execute directly
+            if (activeSessions.length <= 1) {
+                const singleWorker = activeSessions[0]?.workerId;
+                const result = await this.queue.submitTask(name, args || {}, { workerId: singleWorker, timeoutMs });
+                const elapsed = Date.now() - startTime;
+                return {
+                    result: {
+                        content: [{
+                            type: 'text',
+                            text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+                        }],
+                        meta: { executionTimeMs: elapsed, tool: name, workerId: singleWorker },
+                    },
+                };
+            }
+
+            // Case 4: Multiple sessions connected and no target specified -> Fanout across all sessions
+            const sessionResults: Record<string, any> = {};
+            await Promise.all(activeSessions.map(async (worker: any) => {
+                const wid = worker.workerId;
+                try {
+                    const res = await this.queue.submitTask(name, args || {}, { workerId: wid, timeoutMs: timeoutMs || 15000 });
+                    sessionResults[wid] = {
+                        success: true,
+                        pid: worker.pid,
+                        name: worker.name,
+                        result: res,
+                    };
+                } catch (err: any) {
+                    sessionResults[wid] = {
+                        success: false,
+                        pid: worker.pid,
+                        name: worker.name,
+                        error: err.message,
+                    };
+                }
+            }));
+
+            const elapsed = Date.now() - startTime;
             return {
                 result: {
                     content: [{
                         type: 'text',
-                        text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+                        text: JSON.stringify({
+                            multi_session: true,
+                            total_sessions: activeSessions.length,
+                            results: sessionResults,
+                        }, null, 2),
                     }],
-                    meta: { executionTimeMs: elapsed, tool: name },
+                    meta: { executionTimeMs: elapsed, tool: name, sessionsExecuted: activeSessions.length },
                 },
             };
         } catch (err: unknown) {

@@ -69,9 +69,12 @@ function handleMcpMessage(mcp: McpHandler): RequestHandler {
 function createApp(opts?: CreateAppOptions): AppComponents {
     const IS_VERBOSE: boolean = !!(opts && opts.verbose);
     let transportMode: 'auto' | 'ws' | 'stream' = (process.env.MCP_TRANSPORT as any) || 'auto';
+    let autoexecuteEnabled: boolean = true;
     const transportControl = {
         getMode: () => transportMode,
-        setMode: (m: 'auto' | 'ws' | 'stream') => { transportMode = m; }
+        setMode: (m: 'auto' | 'ws' | 'stream') => { transportMode = m; },
+        isAutoexecute: () => autoexecuteEnabled,
+        setAutoexecute: (v: boolean) => { autoexecuteEnabled = v; },
     };
 
     const queue = new QueueManagerCls();
@@ -245,24 +248,146 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         res.json({ success: true, timestamp: Date.now() });
     });
 
+    app.get('/api/autoexecute', (_req: Request, res: Response): void => {
+        res.json({
+            success: true,
+            enabled: autoexecuteEnabled,
+            script: `loadstring(game:HttpGet("http://localhost:${parseInt(process.env.MCP_PORT!, 10) || 28429}/mcp.lua"))()`,
+        });
+    });
+
+    app.post('/api/autoexecute', (req: Request, res: Response): void => {
+        const { enabled } = req.body || {};
+        autoexecuteEnabled = enabled !== undefined ? !!enabled : !autoexecuteEnabled;
+        res.json({ success: true, enabled: autoexecuteEnabled });
+    });
+
+    app.get('/api/tools', (_req: Request, res: Response): void => {
+        const allTools = tools.getTools();
+        const categorized = allTools.map((t: any) => {
+            let category = 'other';
+            const n = t.name;
+            if (['dump-remote-events', 'fire-remote', 'spy-remotes', 'block-remote', 'spoof-remote-args', 'set-remote-filter', 'toggle-remote-killswitch', 'check-replication', 'fire-signal', 'inspect-remote-connections'].includes(n)) category = 'network';
+            else if (['walk-tree', 'get-services', 'get-instances-by-class', 'resolve-path', 'get-siblings', 'find-by-attribute', 'find-by-tag', 'get-children', 'scan-nil-instances', 'find-by-property', 'scan-proximity', 'get-instances-by-subclass', 'get-instance', 'read-properties', 'inspect-property', 'get-class-blueprint', 'compare-instances', 'get-workspace-objects'].includes(n)) category = 'inspection';
+            else if (['get-local-player', 'dump-workspace-players', 'get-humanoid-state', 'modify-local-player', 'teleport-player', 'set-autoexecute', 'disable-anticheat', 'send-chat'].includes(n)) category = 'player';
+            else if (['dump-gui', 'dump-gui-hierarchy', 'extract-screen-text', 'inject-gui', 'manage-esp', 'watch-ui-changes', 'world-to-screen', 'get-geometry', 'track-cursor', 'hide-notifications', 'click-button', 'click-ui-element'].includes(n)) category = 'gui';
+            else if (['move-character', 'move-mouse', 'click-mouse', 'hold-mouse-button', 'scroll-mouse', 'press-key', 'hold-key', 'type-text', 'control-camera', 'simulate-touch', 'fire-click-detector', 'fire-proximity-prompt', 'interact-prompts', 'record-macro', 'replay-macro'].includes(n)) category = 'input';
+            else if (['execute-script', 'execute-file', 'get-script-source', 'decompile-script', 'get-loaded-modules', 'get-running-scripts', 'get-script-closure', 'get-script-hash', 'get-calling-script', 'get-script-env', 'get-roblox-env', 'analyze-sandbox', 'check-unc'].includes(n)) category = 'scripting';
+            else if (['inspect-metatable', 'modify-metatable', 'set-raw-metatable', 'toggle-readonly', 'hook-function', 'check-closure-type', 'scan-registry', 'scan-gc', 'inspect-closure', 'get-constants-upvalues', 'get-debug-info', 'get-hidden-property', 'set-hidden-property', 'set-scriptable'].includes(n)) category = 'memory';
+            else if (['read-file', 'write-file', 'delete-file', 'list-files', 'create-folder', 'load-custom-asset'].includes(n)) category = 'filesystem';
+            else if (['create-instance', 'destroy-instance', 'clone-instance', 'set-properties'].includes(n)) category = 'instances';
+            else if (['list-roblox-processes', 'launch-roblox', 'open-roblox-game', 'take-screenshot', 'record-roblox-video', 'get-roblox-versions', 'get-transport-status', 'set-transport-mode'].includes(n)) category = 'server';
+
+            return { ...t, category };
+        });
+
+        res.json({ total: allTools.length, tools: categorized });
+    });
+
+    app.get('/api/sessions', (_req: Request, res: Response): void => {
+        const active = sessions.listActive ? sessions.listActive() : [];
+        const all = sessions.listAll ? sessions.listAll() : active;
+        res.json({
+            activeCount: sessions.activeCount,
+            sessions: all,
+        });
+    });
+
+    app.get('/api/unc', (_req: Request, res: Response): void => {
+        const active = sessions.listActive ? sessions.listActive() : [];
+        const firstWithCaps = active.find((s: any) => s.capabilities && s.capabilities.supported !== undefined);
+        const capabilities = firstWithCaps ? firstWithCaps.capabilities : null;
+
+        const standardUncList = [
+            { name: 'loadstring', category: 'Code Execution', fallback: 'None (Hard Requirement)', desc: 'Compile & run Luau code string' },
+            { name: 'hookmetamethod', category: 'Hooking', fallback: 'hookfunction on __namecall', desc: 'Hook metamethods (__namecall, etc.)' },
+            { name: 'hookfunction', category: 'Hooking', fallback: 'No-op', desc: 'Detour C / Luau closures' },
+            { name: 'newcclosure', category: 'Hooking', fallback: 'Identity', desc: 'Wrap Lua function as a C closure' },
+            { name: 'clonefunction', category: 'Hooking', fallback: 'Identity', desc: 'Clone a closure to bypass integrity checks' },
+            { name: 'getnamecallmethod', category: 'Hooking', fallback: 'Returns empty string', desc: 'Get current namecall method in hook' },
+            { name: 'setnamecallmethod', category: 'Hooking', fallback: 'No-op', desc: 'Restore namecall method before calling orig' },
+            { name: 'getrawmetatable', category: 'Metatables', fallback: 'getmetatable', desc: 'Retrieve raw metatable bypassing __metatable' },
+            { name: 'setrawmetatable', category: 'Metatables', fallback: 'No-op', desc: 'Overwrite raw metatable bypassing lock' },
+            { name: 'setreadonly', category: 'Metatables', fallback: 'No-op', desc: 'Toggle readonly flag on tables' },
+            { name: 'isreadonly', category: 'Metatables', fallback: 'Returns false', desc: 'Check if table is readonly' },
+            { name: 'queue_on_teleport', category: 'Teleport', fallback: 'None (manual reinject)', desc: 'Queue Lua code to execute on place teleport' },
+            { name: 'WebSocket.connect', category: 'Network', fallback: 'HTTP Stream Long-Polling', desc: 'Establish bidirectional WebSocket connection' },
+            { name: 'request / http_request', category: 'Network', fallback: 'game:HttpGet / HttpService', desc: 'Perform raw HTTP requests bypassing domain checks' },
+            { name: 'decompile', category: 'Decompilation', fallback: 'getscriptbytecode info', desc: 'Decompile bytecode into readable Luau' },
+            { name: 'getscriptbytecode', category: 'Decompilation', fallback: 'Error reported', desc: 'Retrieve compiled Luau bytecode' },
+            { name: 'cloneref', category: 'Instances', fallback: 'Identity function', desc: 'Obtain clean unforgeable instance reference' },
+            { name: 'getnilinstances', category: 'Instances', fallback: 'Returns empty table', desc: 'Enumerate instances parented to nil' },
+            { name: 'compareinstances', category: 'Instances', fallback: '== operator', desc: 'Compare underlying C++ pointers' },
+            { name: 'gethiddenproperty', category: 'Properties', fallback: 'Returns nil', desc: 'Read hidden/non-scriptable properties' },
+            { name: 'sethiddenproperty', category: 'Properties', fallback: 'No-op', desc: 'Write hidden/non-scriptable properties' },
+            { name: 'setscriptable', category: 'Properties', fallback: 'No-op', desc: 'Make hidden property visible to scripts' },
+            { name: 'gethui', category: 'GUI', fallback: 'CoreGui / PlayerGui', desc: 'Get hidden UI container for drawing overlays' },
+            { name: 'firesignal', category: 'GUI', fallback: 'signal:Fire()', desc: 'Fire instance events (MouseButton1Click, etc.)' },
+            { name: 'fireclickdetector', category: 'Interaction', fallback: 'No-op', desc: 'Trigger ClickDetector without clicking' },
+            { name: 'fireproximityprompt', category: 'Interaction', fallback: 'No-op', desc: 'Trigger ProximityPrompt ignoring duration' },
+            { name: 'getconnections', category: 'Connections', fallback: 'instance:GetConnections()', desc: 'Enumerate RBXScriptConnection handlers' },
+            { name: 'readfile', category: 'Filesystem', fallback: 'Returns empty string', desc: 'Read file from executor workspace' },
+            { name: 'writefile', category: 'Filesystem', fallback: 'No-op', desc: 'Write file to executor workspace' },
+            { name: 'deletefile', category: 'Filesystem', fallback: 'No-op', desc: 'Delete file from executor workspace' },
+            { name: 'listfiles', category: 'Filesystem', fallback: 'Returns empty table', desc: 'List files in workspace folder' },
+            { name: 'makefolder', category: 'Filesystem', fallback: 'No-op', desc: 'Create directory in workspace' },
+            { name: 'getcustomasset', category: 'Filesystem', fallback: 'Error reported', desc: 'Create rbxasset:// URL from workspace file' },
+            { name: 'getgc', category: 'Memory & GC', fallback: 'Error reported', desc: 'Enumerate all objects in Lua GC' },
+            { name: 'getreg', category: 'Memory & GC', fallback: 'Error reported', desc: 'Access Lua registry table' },
+            { name: 'getrenv', category: 'Environment', fallback: 'Error reported', desc: 'Inspect global Roblox game environment' },
+            { name: 'getgenv', category: 'Environment', fallback: '_G', desc: 'Access executor global environment' },
+            { name: 'identifyexecutor', category: 'Environment', fallback: 'Returns Unknown', desc: 'Identify executor brand and version' },
+        ];
+
+        res.json({
+            capabilities,
+            standardFunctions: standardUncList,
+        });
+    });
+
     app.get('/api/processes', (_req: Request, res: Response): void => {
         const procs = processManager.listRobloxProcesses();
-        res.json({ processes: procs });
+        const active = sessions.listActive ? sessions.listActive() : [];
+        const pidToSession = new Map<number, any>();
+        for (const s of active) {
+            if (s.pid) pidToSession.set(Number(s.pid), s);
+        }
+        const enriched = procs.map((p: any) => {
+            const sess = pidToSession.get(p.pid);
+            return {
+                ...p,
+                isConnected: !!sess,
+                workerId: sess ? sess.workerId : null,
+                transport: sess ? (sess.transport || 'ws') : null,
+                sessionName: sess ? sess.name : null,
+            };
+        });
+        res.json({
+            processes: enriched,
+            total: procs.length,
+            connectedCount: active.length,
+            unconnectedCount: Math.max(0, procs.length - active.length),
+        });
     });
 
-    app.post('/api/processes/:pid/kill', (_req: Request, res: Response): void => {
-        const pid = parseInt(_req.params.pid as string, 10);
-        const success = processManager.killProcess(pid);
-        res.json({ success });
+    app.post('/api/processes/launch', (_req: Request, res: Response): void => {
+        const result = processManager.launchRoblox();
+        res.json(result);
     });
 
-    app.post('/api/processes/:pid/restart', (_req: Request, res: Response): void => {
-        const pid = parseInt(_req.params.pid as string, 10);
-        processManager.killProcess(pid);
-        setTimeout(() => {
-            const result = processManager.launchRoblox();
-            res.json({ success: result.success });
-        }, 1000);
+    app.post('/api/tools/execute', async (req: Request, res: Response): Promise<void> => {
+        const { name, arguments: args } = req.body || {};
+        if (!name) {
+            res.status(400).json({ success: false, error: 'name is required' });
+            return;
+        }
+        try {
+            const mcpReq = { jsonrpc: '2.0', id: Date.now(), method: 'tools/call', params: { name, arguments: args || {} } };
+            const mcpRes = await mcp.handleMessage(mcpReq);
+            res.json(mcpRes);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
     });
 
     app.get('/health', (_req: Request, res: Response): void => {

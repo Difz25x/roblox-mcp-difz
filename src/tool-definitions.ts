@@ -10,8 +10,38 @@ class ToolDefinitions {
     private tools: ToolDefinition[];
 
     constructor() {
+        const SERVER_SIDE_ONLY = new Set([
+            'list-roblox-processes',
+            'launch-roblox',
+            'open-roblox-game',
+            'take-screenshot',
+            'record-roblox-video',
+            'get-roblox-versions',
+            'get-transport-status',
+            'set-transport-mode',
+        ]);
+
         this.tools = this._defineTools().map(tool => {
-            tool.inputSchema = this._sanitizeSchema(tool.inputSchema);
+            const schema: any = tool.inputSchema || { type: 'object', properties: {} };
+            if (!schema.properties) schema.properties = {};
+
+            // Universal multi-session targeting parameters
+            if (!SERVER_SIDE_ONLY.has(tool.name)) {
+                if (!schema.properties.worker_id) {
+                    schema.properties.worker_id = {
+                        type: 'string',
+                        description: 'Optional target Roblox session/worker ID. If omitted, executes across all connected sessions.',
+                    };
+                }
+                if (!schema.properties.pid) {
+                    schema.properties.pid = {
+                        type: 'number',
+                        description: 'Optional target Roblox process ID (PID).',
+                    };
+                }
+            }
+
+            tool.inputSchema = this._sanitizeSchema(schema);
             return tool;
         });
     }
@@ -4213,6 +4243,22 @@ class ToolDefinitions {
                         }
                     },
                     "required": ["mode"]
+                }
+            },
+
+            {
+                name: "set-autoexecute",
+                description: "Configure automatic re-execution of the MCP client script across server teleports in Roblox using queue_on_teleport. Keeps MCP connected when joining new games/servers.",
+                inputSchema: {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "True to enable auto-execution on teleport, false to disable.",
+                            "default": true
+                        }
+                    },
+                    "required": ["enabled"]
                 }
             },
         ];

@@ -160,6 +160,21 @@ class WsServer {
 
         try {
             this._taskHandler = (task: any) => {
+                if (task.targetWorkerId) {
+                    const info = this.workers.get(task.targetWorkerId);
+                    if (info) {
+                        this._safeSend(info.ws, {
+                            type: 'task',
+                            id: task.id,
+                            tool: task.type,
+                            args: task.args,
+                            timestamp: task.timestamp,
+                            workerId: task.targetWorkerId,
+                            pid: task.targetPid ?? info.pid,
+                        });
+                        return;
+                    }
+                }
                 if (task.targetPid) {
                     const wid = this.pidMap.get(Number(task.targetPid));
                     if (!wid) return console.log(`[WS] No worker for PID ${task.targetPid}`);
