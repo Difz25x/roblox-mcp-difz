@@ -343,8 +343,41 @@ class McpHandler {
 
     private async _runServerTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
         switch (name) {
-            case 'list-roblox-processes':
-                return { success: true, processes: this.proc.listRobloxProcesses(), count: this.sessions.activeCount };
+            case 'list-roblox-processes': {
+                const procs = this.proc.listRobloxProcesses();
+                const active = this.sessions.listActive ? this.sessions.listActive() : [];
+                const pidToSession = new Map<number, any>();
+                for (const s of active) {
+                    if (s.pid) pidToSession.set(Number(s.pid), s);
+                }
+                let connectedCount = 0;
+                let unconnectedCount = 0;
+                const enriched = procs.map((p: any) => {
+                    const sess = pidToSession.get(p.pid);
+                    const isConnected = !!sess;
+                    if (isConnected) connectedCount++;
+                    else unconnectedCount++;
+                    return {
+                        pid: p.pid,
+                        name: p.name,
+                        windowTitle: p.windowTitle,
+                        memoryMB: p.memoryMB,
+                        status: isConnected ? ('connected' as const) : ('unconnected' as const),
+                        workerId: sess ? sess.workerId : null,
+                        transport: sess ? (sess.transport || 'ws') : null,
+                        player: sess ? sess.name : null,
+                    };
+                });
+                return {
+                    success: true,
+                    total: procs.length,
+                    status: {
+                        connected: connectedCount,
+                        unconnected: unconnectedCount,
+                    },
+                    processes: enriched,
+                };
+            }
 
             case 'launch-roblox':
                 return this.proc.launchRoblox((args.path as string) || null);
@@ -386,6 +419,29 @@ class McpHandler {
                 return this._getRobloxVersions();
 
             case 'get-transport-status': {
+                const procs = this.proc.listRobloxProcesses();
+                const active = this.sessions.listActive ? this.sessions.listActive() : [];
+                const pidToSession = new Map<number, any>();
+                for (const s of active) {
+                    if (s.pid) pidToSession.set(Number(s.pid), s);
+                }
+                let connectedCount = 0;
+                let unconnectedCount = 0;
+                const enriched = procs.map((p: any) => {
+                    const sess = pidToSession.get(p.pid);
+                    const isConnected = !!sess;
+                    if (isConnected) connectedCount++;
+                    else unconnectedCount++;
+                    return {
+                        pid: p.pid,
+                        name: p.name,
+                        windowTitle: p.windowTitle,
+                        memoryMB: p.memoryMB,
+                        status: isConnected ? ('connected' as const) : ('unconnected' as const),
+                        workerId: sess ? sess.workerId : null,
+                        transport: sess ? (sess.transport || 'ws') : null,
+                    };
+                });
                 const counts = this.sessions.countByTransport ? this.sessions.countByTransport() : { ws: 0, stream: 0 };
                 const mode = this.transportControl ? this.transportControl.getMode() : 'auto';
                 const activeTransport = counts.stream > 0 ? 'stream' : (counts.ws > 0 ? 'ws' : (mode === 'auto' ? 'ws' : mode));
@@ -395,7 +451,12 @@ class McpHandler {
                     activeTransport,
                     streamWorkers: counts.stream,
                     wsWorkers: counts.ws,
-                    activeSessions: this.sessions.listActive ? this.sessions.listActive() : [],
+                    status: {
+                        connected: connectedCount,
+                        unconnected: unconnectedCount,
+                    },
+                    activeSessions: active,
+                    processes: enriched,
                     queueStats: this.queue.getStats(),
                 };
             }

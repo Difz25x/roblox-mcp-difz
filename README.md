@@ -427,43 +427,74 @@ This MCP server comes with over 110 tools. Below are some of the most commonly u
 
 ## Multi-Session Orchestration
 
-Each Roblox executor registers with a unique `worker_id` (or session ID). The server provides first-class multi-session support across all 111 tools:
+Each Roblox game client that injects `mcp.lua` automatically registers as an active worker session. You can run as many simultaneous Roblox instances as you want (multi-boxing, multi-account farming, or multiple games). There are no fixed or hardcoded worker names — workers are dynamically tracked by PID, player username, and worker ID.
 
-### 1. Target a Specific Client
-Pass `worker_id` (or `session_id` / `pid`) as an argument to any tool:
+### 1. Target a Specific Game Instance
+Pass `worker_id` (or `pid` / `session_id`) as an argument to any tool:
 
 ```json
 {
   "name": "execute-script",
   "arguments": {
-    "worker_id": "worker_alpha",
-    "code": "print('hello from worker alpha')"
+    "pid": 11360,
+    "code": "print('hello from instance 11360')"
   }
 }
 ```
 
 ### 2. Multi-Session Fanout (Broadcast)
-If you omit `worker_id` and have multiple Roblox windows connected, the server automatically executes the tool across **all connected sessions concurrently** and aggregates the results into a structured dictionary:
+If you omit target arguments and have multiple Roblox windows connected, the server automatically executes the tool across **all connected game instances concurrently** and aggregates the results into a table per worker session:
 
 ```json
-// Response when multiple clients are connected
+// Response when multiple Roblox windows are connected
 {
   "multi_session": true,
   "total_sessions": 2,
   "results": {
-    "worker_alpha": {
+    "PlayerOne_11360": {
       "success": true,
       "pid": 11360,
-      "name": "PlayerAlpha",
+      "name": "PlayerOne",
       "result": { "health": 100 }
     },
-    "worker_beta": {
+    "PlayerTwo_14200": {
       "success": true,
       "pid": 14200,
-      "name": "PlayerBeta",
+      "name": "PlayerTwo",
       "result": { "health": 85 }
     }
   }
+}
+```
+
+### 3. Process Status Inspection
+The `list-roblox-processes` tool and `/health` endpoint report all detected Roblox processes with their `status` table (`connected` vs `unconnected`):
+
+```json
+{
+  "total": 2,
+  "status": {
+    "connected": 1,
+    "unconnected": 1
+  },
+  "processes": [
+    {
+      "pid": 11360,
+      "name": "RobloxPlayerBeta",
+      "windowTitle": "Blox Fruits",
+      "status": "connected",
+      "workerId": "PlayerOne_11360",
+      "transport": "ws"
+    },
+    {
+      "pid": 14200,
+      "name": "RobloxPlayerBeta",
+      "windowTitle": "Roblox",
+      "status": "unconnected",
+      "workerId": null,
+      "transport": null
+    }
+  ]
 }
 ```
 

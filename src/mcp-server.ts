@@ -138,7 +138,41 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
 
 async function runServerTool(name: string, args: any, proc: any, sessions: any): Promise<any> {
   switch (name) {
-    case 'list-roblox-processes': return { success: true, processes: proc.listRobloxProcesses(), count: sessions.activeCount };
+    case 'list-roblox-processes': {
+        const procs = proc.listRobloxProcesses();
+        const active = sessions.listActive ? sessions.listActive() : [];
+        const pidToSession = new Map<number, any>();
+        for (const s of active) {
+            if (s.pid) pidToSession.set(Number(s.pid), s);
+        }
+        let connectedCount = 0;
+        let unconnectedCount = 0;
+        const enriched = procs.map((p: any) => {
+            const sess = pidToSession.get(p.pid);
+            const isConnected = !!sess;
+            if (isConnected) connectedCount++;
+            else unconnectedCount++;
+            return {
+                pid: p.pid,
+                name: p.name,
+                windowTitle: p.windowTitle,
+                memoryMB: p.memoryMB,
+                status: isConnected ? 'connected' : 'unconnected',
+                workerId: sess ? sess.workerId : null,
+                transport: sess ? (sess.transport || 'ws') : null,
+                player: sess ? sess.name : null,
+            };
+        });
+        return {
+            success: true,
+            total: procs.length,
+            status: {
+                connected: connectedCount,
+                unconnected: unconnectedCount,
+            },
+            processes: enriched,
+        };
+    }
     case 'launch-roblox': return proc.launchRoblox(args?.path || null);
     case 'open-roblox-game': {
         if (!args?.place_id) return { success: false, error: "place_id is required" };
@@ -159,13 +193,41 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
     case 'get-roblox-versions': return getRobloxVersions();
     case 'get-transport-status': {
         const counts = sessions.countByTransport ? sessions.countByTransport() : { ws: 0, stream: 0 };
+        const procs = proc.listRobloxProcesses();
+        const active = sessions.listActive ? sessions.listActive() : [];
+        const pidToSession = new Map<number, any>();
+        for (const s of active) {
+            if (s.pid) pidToSession.set(Number(s.pid), s);
+        }
+        let connectedCount = 0;
+        let unconnectedCount = 0;
+        const enriched = procs.map((p: any) => {
+            const sess = pidToSession.get(p.pid);
+            const isConnected = !!sess;
+            if (isConnected) connectedCount++;
+            else unconnectedCount++;
+            return {
+                pid: p.pid,
+                name: p.name,
+                windowTitle: p.windowTitle,
+                memoryMB: p.memoryMB,
+                status: isConnected ? 'connected' : 'unconnected',
+                workerId: sess ? sess.workerId : null,
+                transport: sess ? (sess.transport || 'ws') : null,
+            };
+        });
         return {
             success: true,
             mode: 'auto',
             activeTransport: counts.stream > 0 ? 'stream' : 'ws',
             streamWorkers: counts.stream,
             wsWorkers: counts.ws,
-            activeSessions: sessions.listActive ? sessions.listActive() : [],
+            status: {
+                connected: connectedCount,
+                unconnected: unconnectedCount,
+            },
+            processes: enriched,
+            activeSessions: active,
         };
     }
     case 'set-transport-mode': return { success: true, mode: args?.mode || 'auto' };

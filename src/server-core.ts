@@ -352,11 +352,17 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         for (const s of active) {
             if (s.pid) pidToSession.set(Number(s.pid), s);
         }
+        let connectedCount = 0;
+        let unconnectedCount = 0;
         const enriched = procs.map((p: any) => {
             const sess = pidToSession.get(p.pid);
+            const isConnected = !!sess;
+            if (isConnected) connectedCount++;
+            else unconnectedCount++;
             return {
                 ...p,
-                isConnected: !!sess,
+                isConnected,
+                status: isConnected ? ('connected' as const) : ('unconnected' as const),
                 workerId: sess ? sess.workerId : null,
                 transport: sess ? (sess.transport || 'ws') : null,
                 sessionName: sess ? sess.name : null,
@@ -365,8 +371,12 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         res.json({
             processes: enriched,
             total: procs.length,
-            connectedCount: active.length,
-            unconnectedCount: Math.max(0, procs.length - active.length),
+            status: {
+                connected: connectedCount,
+                unconnected: unconnectedCount,
+            },
+            connectedCount,
+            unconnectedCount,
         });
     });
 
@@ -391,6 +401,30 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.get('/health', (_req: Request, res: Response): void => {
+        const procs = processManager.listRobloxProcesses();
+        const active = sessions.listActive ? sessions.listActive() : [];
+        const pidToSession = new Map<number, any>();
+        for (const s of active) {
+            if (s.pid) pidToSession.set(Number(s.pid), s);
+        }
+        let connectedCount = 0;
+        let unconnectedCount = 0;
+        const enriched = procs.map((p: any) => {
+            const sess = pidToSession.get(p.pid);
+            const isConnected = !!sess;
+            if (isConnected) connectedCount++;
+            else unconnectedCount++;
+            return {
+                pid: p.pid,
+                name: p.name,
+                windowTitle: p.windowTitle,
+                memoryMB: p.memoryMB,
+                status: isConnected ? ('connected' as const) : ('unconnected' as const),
+                workerId: sess ? sess.workerId : null,
+                transport: sess ? (sess.transport || 'ws') : null,
+            };
+        });
+
         res.json({
             status: 'ok',
             uptime: process.uptime(),
@@ -399,7 +433,14 @@ function createApp(opts?: CreateAppOptions): AppComponents {
             toolsRegistered: tools.count,
             wsConnections: wss.connectedCount,
             activeSessions: sessions.activeCount,
-            robloxProcesses: processManager.listRobloxProcesses().length,
+            robloxProcesses: {
+                total: procs.length,
+                status: {
+                    connected: connectedCount,
+                    unconnected: unconnectedCount,
+                },
+                list: enriched,
+            },
         });
     });
 
