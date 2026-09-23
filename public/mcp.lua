@@ -114,6 +114,7 @@ local getnamecallmethod = getnamecallmethod
 local setnamecallmethod = setnamecallmethod or (syn and syn.set_namecall_method) or set_namecall_method
 local queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport) or queueonteleport or (fluxus and fluxus.queue_on_teleport)
 local hookmetamethod = hookmetamethod
+local unpack = table.unpack or unpack
 local restorefunction = restorefunction
 local gethui = gethui or function()
 	if LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") then
@@ -2422,7 +2423,7 @@ local function handleRemoteSpy(args)
 				local blocked, spoofedArgs = ProcessOutgoing("FireServer", self, callArgs)
 				if blocked then return end
 				if spoofedArgs then
-					return origFireServer(self, table.unpack(spoofedArgs))
+					return origFireServer(self, unpack(spoofedArgs))
 				end
 			end
 			return origFireServer(self, ...)
@@ -2434,7 +2435,7 @@ local function handleRemoteSpy(args)
 				local blocked, spoofedArgs = ProcessOutgoing("FireServer", self, callArgs)
 				if blocked then return end
 				if spoofedArgs then
-					return origUnreliableFireServer(self, table.unpack(spoofedArgs))
+					return origUnreliableFireServer(self, unpack(spoofedArgs))
 				end
 			end
 			return origUnreliableFireServer(self, ...)
@@ -2446,7 +2447,7 @@ local function handleRemoteSpy(args)
 				local blocked, spoofedArgs = ProcessOutgoing("InvokeServer", self, callArgs)
 				if blocked then return nil end
 				if spoofedArgs then
-					return origInvokeServer(self, table.unpack(spoofedArgs))
+					return origInvokeServer(self, unpack(spoofedArgs))
 				end
 			end
 			return origInvokeServer(self, ...)
@@ -2481,7 +2482,7 @@ local function handleRemoteSpy(args)
 					end
 
 					if spoofedArgs then
-						return origNamecall(self, table.unpack(spoofedArgs))
+						return origNamecall(self, unpack(spoofedArgs))
 					end
 					return origNamecall(self, ...)
 				end
@@ -3503,6 +3504,7 @@ local function handleDisableAntiCheat(args)
 							if type(setscriptable) == "function" then
 								setscriptable(inst, "Disabled", true)
 							end
+							inst.Enabled = false
 							inst.Disabled = true
 							table.insert(G_GET("MCP_DISABLED_SCRIPTS"), inst)
 							results.detection_attempts = results.detection_attempts + 1
@@ -3645,7 +3647,23 @@ local function handleSetAutoexecute(args)
 	end
 end
 
-local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoexecute"] = handleSetAutoexecute,	["get-metadata"] = handleGetMetadata,
+local HANDLERS = {
+	["get-player"] = handlePlayerState,
+	["get-players"] = handleDumpPlayers,
+	["list-remotes"] = handleDumpRemotes,
+	["get-gui-tree"] = handleGuiDump,
+	["get-screen-text"] = handleScreenText,
+	["get-script"] = handleScriptSource,
+	["get-remote-handlers"] = handleRemoteConns,
+	["set-player"] = handleStateBypass,
+	["teleport"] = handleStateBypass,
+	["bypass-anticheat"] = handleDisableAntiCheat,
+	["find-instances"] = function(a)
+		a.action = "class_collect"
+		return handleTreeExplore(a)
+	end,
+	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoexecute"] = handleSetAutoexecute,
+	["get-metadata"] = handleGetMetadata,
 	["dump-workspace-players"] = handleDumpPlayers,
 	["get-local-player"] = handlePlayerState,
 	["dump-remote-events"] = handleDumpRemotes,
@@ -3653,74 +3671,147 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 	["get-network-ownership"] = handleNetworkOwnership,
 	["execute-script"] = handleCodeExec,
 	["execute-file"] = handleCodeExecFile,
-	get_workspace_objects = handleWorkspaceObjects,	["fire-remote"] = handleRemoteFire,
-	invoke_remote_function = handleRemoteFire,	["inspect-remote-connections"] = handleRemoteConns,	["walk-tree"] = function(a)
+	get_workspace_objects = handleWorkspaceObjects,
+	["fire-remote"] = handleRemoteFire,
+	invoke_remote_function = handleRemoteFire,
+	["inspect-remote-connections"] = handleRemoteConns,
+	["walk-tree"] = function(a)
 		a.action = "walk"
 		return handleTreeExplore(a)
-	end,	["get-services"] = function(a)
+	end,
+	["get-services"] = function(a)
 		a.action = "services"
 		return handleTreeExplore(a)
-	end,	["get-children"] = function(a)
+	end,
+	["get-children"] = function(a)
 		a.action = "children"
 		return handleTreeExplore(a)
-	end,	["resolve-path"] = function(a)
+	end,
+	["resolve-path"] = function(a)
 		a.action = "path_resolve"
 		return handleTreeExplore(a)
-	end,	["get-instances-by-subclass"] = function(a)
+	end,
+	["get-instances-by-subclass"] = function(a)
 		a.action = "subtree"
 		return handleTreeExplore(a)
-	end,	["scan-proximity"] = function(a)
+	end,
+	["scan-proximity"] = function(a)
 		a.action = "proximity"
 		return handleTreeExplore(a)
-	end,	["fire-click-detector"] = function(a)
+	end,
+	["fire-click-detector"] = function(a)
 		a.action = "clickdetector"
 		return handleTreeExplore(a)
-	end,	["fire-proximity-prompt"] = function(a)
+	end,
+	["fire-proximity-prompt"] = function(a)
 		a.action = "proximity_prompt"
 		return handleTreeExplore(a)
-	end,	["find-by-tag"] = function(a)
+	end,
+	["find-by-tag"] = function(a)
 		a.action = "tag_collect"
 		return handleTreeExplore(a)
-	end,	["find-by-attribute"] = function(a)
+	end,
+	["find-by-attribute"] = function(a)
 		a.action = "attribute_seek"
 		return handleTreeExplore(a)
-	end,	["scan-nil-instances"] = function(a)
+	end,
+	["scan-nil-instances"] = function(a)
 		a.action = "nil_realm"
 		return handleTreeExplore(a)
-	end,	["get-instances-by-class"] = function(a)
+	end,
+	["get-instances-by-class"] = function(a)
 		a.action = "class_collect"
 		return handleTreeExplore(a)
-	end,	["read-properties"] = handlePropertyRead,	["inspect-property"] = handlePropertyRead,	["get-class-blueprint"] = handlePropertyRead,	["inject-gui"] = handleGuiInject,
-	screen_overlay_renderer = handleGuiInject,	["dump-gui"] = handleGuiDump,	["dump-gui-hierarchy"] = handleGuiDump,	["read-file"] = function(a)
+	end,
+	["read-properties"] = handlePropertyRead,
+	["inspect-property"] = handlePropertyRead,
+	["get-class-blueprint"] = handlePropertyRead,
+	["inject-gui"] = handleGuiInject,
+	screen_overlay_renderer = handleGuiInject,
+	["dump-gui"] = handleGuiDump,
+	["dump-gui-hierarchy"] = handleGuiDump,
+	["read-file"] = function(a)
 		a.action = "read"
 		return handleFileOp(a)
-	end,	["write-file"] = function(a)
+	end,
+	["write-file"] = function(a)
 		a.action = "write"
 		return handleFileOp(a)
-	end,	["delete-file"] = function(a)
+	end,
+	["delete-file"] = function(a)
 		a.action = "delete"
 		return handleFileOp(a)
-	end,	["list-files"] = function(a)
+	end,
+	["list-files"] = function(a)
 		a.action = "list"
 		return handleFileOp(a)
-	end,	["get-hidden-property"] = handleHiddenProp,	["set-hidden-property"] = handleHiddenProp,	["set-scriptable"] = handleHiddenProp,	["modify-local-player"] = handleStateBypass,	["teleport-player"] = handleStateBypass,	["press-key"] = handleInputSim,	["click-mouse"] = handleInputSim,	["move-character"] = function(a)
+	end,
+	["get-hidden-property"] = handleHiddenProp,
+	["set-hidden-property"] = handleHiddenProp,
+	["set-scriptable"] = handleHiddenProp,
+	["modify-local-player"] = handleStateBypass,
+	["teleport-player"] = handleStateBypass,
+	["press-key"] = handleInputSim,
+	["click-mouse"] = handleInputSim,
+	["move-character"] = function(a)
 		a.action = "char_move"
 		return handleInputSim(a)
-	end,	["get-loaded-modules"] = handleGetLoadedModules,	["get-running-scripts"] = handleRunningScripts,	["get-script-source"] = handleScriptSource,	["decompile-script"] = handleScriptDecompiler,	["get-script-closure"] = handleScriptClosure,	["get-script-hash"] = handleScriptHash,	["get-calling-script"] = handleCallingScript,	["get-script-env"] = handleScriptEnv,	["get-roblox-env"] = handleRobloxEnv,	["analyze-sandbox"] = handleSandboxAnalysis,	["inspect-metatable"] = handleMetatableSeer,	["modify-metatable"] = handleMetatableModifier,	["set-raw-metatable"] = function(a)
+	end,
+	["get-loaded-modules"] = handleGetLoadedModules,
+	["get-running-scripts"] = handleRunningScripts,
+	["get-script-source"] = handleScriptSource,
+	["decompile-script"] = handleScriptDecompiler,
+	["get-script-closure"] = handleScriptClosure,
+	["get-script-hash"] = handleScriptHash,
+	["get-calling-script"] = handleCallingScript,
+	["get-script-env"] = handleScriptEnv,
+	["get-roblox-env"] = handleRobloxEnv,
+	["analyze-sandbox"] = handleSandboxAnalysis,
+	["inspect-metatable"] = handleMetatableSeer,
+	["modify-metatable"] = handleMetatableModifier,
+	["set-raw-metatable"] = function(a)
 		a.action = "set_raw"
 		a.new_metatable = a.metatable
 		return handleMetatableModifier(a)
-	end,	["toggle-readonly"] = function(a)
+	end,
+	["toggle-readonly"] = function(a)
 		a.action = "set_readonly"
 		a.state = a.state
 		return handleMetatableModifier(a)
-	end,	["hook-function"] = handleFuncInterceptor,	["check-closure-type"] = handleClosureType,	["scan-registry"] = handleRegistryScan,	["scan-gc"] = handleGCScan,	["inspect-closure"] = handleClosureInspect,	["get-constants-upvalues"] = handleDumpConstants,	["get-debug-info"] = handleDebugInfo,	["spy-remotes"] = handleRemoteSpy,	["install-remote-spy"] = handleRemoteSpy,	["block-remote"] = function(a)
+	end,
+	["hook-function"] = handleFuncInterceptor,
+	["check-closure-type"] = handleClosureType,
+	["scan-registry"] = handleRegistryScan,
+	["scan-gc"] = handleGCScan,
+	["inspect-closure"] = handleClosureInspect,
+	["get-constants-upvalues"] = handleDumpConstants,
+	["get-debug-info"] = handleDebugInfo,
+	["spy-remotes"] = handleRemoteSpy,
+	["install-remote-spy"] = handleRemoteSpy,
+	["block-remote"] = function(a)
 		a.action = "block"
 		return handleRemoteSpy(a)
-	end,	["toggle-remote-killswitch"] = function(a)
+	end,
+	["toggle-remote-killswitch"] = function(a)
 		return handleRemoteSpy({ action = (a.enabled and "block_all" or "unblock_all") })
-	end,	["spoof-remote-args"] = function(x)		x.action = "spoof"		return handleRemoteSpy(x)	end,	["set-remote-filter"] = function(x)		x.action = "set_filter"		return handleRemoteSpy(x)	end,	["check-replication"] = handleNetworkOwnership,	["compare-instances"] = handleInstanceComparer,	["get-siblings"] = handleSiblingEnum,	["find-by-property"] = handlePropertySeeker,
-	data_model_explorer = handleDataModelExplore,	["get-humanoid-state"] = handleHumanoidState,	["interact-prompts"] = handleInteractAllPrompts,	["click-button"] = handleGuiButtonClick,	["fire-signal"] = function(a)
+	end,
+	["spoof-remote-args"] = function(x)
+		x.action = "spoof"
+		return handleRemoteSpy(x)
+	end,
+	["set-remote-filter"] = function(x)
+		x.action = "set_filter"
+		return handleRemoteSpy(x)
+	end,
+	["check-replication"] = handleNetworkOwnership,
+	["compare-instances"] = handleInstanceComparer,
+	["get-siblings"] = handleSiblingEnum,
+	["find-by-property"] = handlePropertySeeker,
+	data_model_explorer = handleDataModelExplore,
+	["get-humanoid-state"] = handleHumanoidState,
+	["interact-prompts"] = handleInteractAllPrompts,
+	["click-button"] = handleGuiButtonClick,
+	["fire-signal"] = function(a)
 		if a.signal_path then
 			local inst = resolvePath(a.signal_path)
 			if inst then
@@ -3729,10 +3820,22 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 			return { success = true }
 		end
 		return { success = false, error = "signal_path required" }
-	end,	["move-mouse"] = handleMouseMove,	["hold-mouse-button"] = handleMouseButton,	["scroll-mouse"] = handleScrollWheel,	["hold-key"] = handleKeyHold,	["type-text"] = handleTextType,	["simulate-touch"] = handleMouseMove,	["click-ui-element"] = handleGuiButtonClick,	["control-camera"] = handleCameraControl,	["extract-screen-text"] = handleScreenText,	["hide-notifications"] = handleNotificationHide,	["track-cursor"] = function()
+	end,
+	["move-mouse"] = handleMouseMove,
+	["hold-mouse-button"] = handleMouseButton,
+	["scroll-mouse"] = handleScrollWheel,
+	["hold-key"] = handleKeyHold,
+	["type-text"] = handleTextType,
+	["simulate-touch"] = handleMouseMove,
+	["click-ui-element"] = handleGuiButtonClick,
+	["control-camera"] = handleCameraControl,
+	["extract-screen-text"] = handleScreenText,
+	["hide-notifications"] = handleNotificationHide,
+	["track-cursor"] = function()
 		local m = LocalPlayer:GetMouse()
 		return { success = true, x = m.X, y = m.Y }
-	end,	["world-to-screen"] = function(a)
+	end,
+	["world-to-screen"] = function(a)
 		local cam = workspace.CurrentCamera
 		if not cam then
 			return { success = false, error = "No camera" }
@@ -3745,7 +3848,8 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 			return { success = true, screenX = sp.X, screenY = sp.Y, onScreen = sp.Z > 0 }
 		end
 		return { success = false, error = "WorldToScreenPoint failed" }
-	end,	["get-geometry"] = function(a)
+	end,
+	["get-geometry"] = function(a)
 		local inst = resolvePath(a.instance_path or "")
 		if not inst then
 			return { success = false, error = "instance_path required" }
@@ -3757,7 +3861,10 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 			return { success = true, cframe = serialize(cf), size = serialize(inst:GetExtentsSize()) }
 		end
 		return { success = true, path = getFullPath(inst) }
-	end,	["manage-esp"] = handleESP,	["send-chat"] = handleChatSystem,	["set-properties"] = function(a)
+	end,
+	["manage-esp"] = handleESP,
+	["send-chat"] = handleChatSystem,
+	["set-properties"] = function(a)
 		local inst = resolvePath(a.instance_path or "")
 		if not inst then
 			return { success = false, error = "instance_path required" }
@@ -3769,7 +3876,8 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 			end)
 		end
 		return { success = true, applied = props }
-	end,	["create-instance"] = function(a)
+	end,
+	["create-instance"] = function(a)
 		local cn = a.class_name or "Part"
 		local parent = resolvePath(a.parent_path or 'game:GetService("Workspace")')
 		if not parent then
@@ -3788,7 +3896,8 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 			return { success = false, error = "Create failed: " .. tostring(ni) }
 		end
 		return { success = true, name = ni.Name, path = getFullPath(ni) }
-	end,	["destroy-instance"] = function(a)
+	end,
+	["destroy-instance"] = function(a)
 		local inst = resolvePath(a.instance_path or "")
 		if not inst then
 			return { success = false, error = "instance_path required" }
@@ -3797,7 +3906,8 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 			inst:Destroy()
 		end)
 		return { success = true }
-	end,	["clone-instance"] = function(a)
+	end,
+	["clone-instance"] = function(a)
 		local inst = resolvePath(a.instance_path or "")
 		if not inst then
 			return { success = false, error = "instance_path required" }
@@ -3817,14 +3927,16 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 			clonedName = clone.Name,
 			clonedPath = a.parent_path ~= "" and getFullPath(clone) or "unparented",
 		}
-	end,	["create-folder"] = function(a)
+	end,
+	["create-folder"] = function(a)
 		local p = a.path or ""
 		if p == "" then
 			return { success = false, error = "path required" }
 		end
 		pcall(makefolder, p)
 		return { success = true, path = p }
-	end,	["load-custom-asset"] = function(a)
+	end,
+	["load-custom-asset"] = function(a)
 		local p = a.path or ""
 		if p == "" then
 			return { success = false, error = "path required" }
@@ -3834,16 +3946,21 @@ local HANDLERS = {	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoex
 			return { success = true, assetPath = asset }
 		end
 		return { success = false, error = "getcustomasset failed" }
-	end,	["check-unc"] = function()
+	end,
+	["check-unc"] = function()
 		return { success = true, capabilities = MCP_CAPABILITIES }
-	end,	["record-macro"] = function()
+	end,
+	["record-macro"] = function()
 		return { success = false, message = "Macro recorder not implemented in executor" }
-	end,	["replay-macro"] = function()
+	end,
+	["replay-macro"] = function()
 		return { success = false, message = "Macro replayer not implemented in executor" }
-	end,	["get-instance"] = function(a)
+	end,
+	["get-instance"] = function(a)
 		a.action = "path_resolve"
 		return handleTreeExplore(a)
-	end,	["watch-ui-changes"] = handleUiChangeWatcher,
+	end,
+	["watch-ui-changes"] = handleUiChangeWatcher,
 }
 
 proxyToServer = function(toolName, args)

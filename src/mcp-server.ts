@@ -179,13 +179,21 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
         return proc.openGame(args.place_id, args || {});
     }
     case 'take-screenshot': {
-        const ss = await proc.performScreenshot(args?.pid ? Number(args.pid) : undefined);
+        const ss = await proc.performScreenshot(
+            args?.pid ? Number(args.pid) : undefined,
+            args?.output_path || undefined
+        );
         if (ss.error) return { success: false, error: ss.error };
         if (ss.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: ss.windows };
-        return { success: true, image: 'data:image/png;base64,' + ss.imageBase64, pid: ss.pid ?? args?.pid ?? null };
+        if (ss.filePath && !ss.imageBase64) return { success: true, file_path: ss.filePath, pid: ss.pid ?? args?.pid ?? null };
+        return { success: true, image: 'data:image/png;base64,' + ss.imageBase64, file_path: ss.filePath, pid: ss.pid ?? args?.pid ?? null };
     }
     case 'record-roblox-video': {
-        const vd = await proc.recordVideo(args?.pid ? Number(args.pid) : undefined, args?.duration_seconds ? Number(args.duration_seconds) : 5);
+        const vd = await proc.recordVideo(
+            args?.pid ? Number(args.pid) : undefined,
+            args?.duration_seconds ? Number(args.duration_seconds) : 5,
+            args?.output_path || undefined
+        );
         if (vd.error) return { success: false, error: vd.error };
         if (vd.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: vd.windows };
         return { success: true, file_path: vd.filePath, pid: vd.pid ?? args?.pid ?? null, note: "Video saved to file. You can download or view it via external media." };

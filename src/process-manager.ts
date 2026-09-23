@@ -232,6 +232,21 @@ interface ScreenshotResult {
     windows?: RobloxWindowInfo[];
     imageBase64?: string;
     pid?: number;
+    filePath?: string;
+}
+
+/**
+ * Resolves where a captured artifact should be written.
+ * An explicit `outputPath` wins; otherwise we fall back to the OS temp directory.
+ */
+function resolveOutputPath(outputPath: string | undefined, defaultName: string): string {
+    if (outputPath && outputPath.trim() !== '') {
+        const resolved = path.resolve(outputPath.trim());
+        const dir = path.dirname(resolved);
+        fs.mkdirSync(dir, { recursive: true });
+        return resolved;
+    }
+    return path.join(os.tmpdir(), defaultName);
 }
 
 function isSupported(): boolean {
@@ -280,11 +295,7 @@ foreach ($w in $allWindows) {
 if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Compress }
 `;
     try {
-        const encodedScript = Buffer.from(ps, 'utf16le').toString('base64');
-        const raw = execSync(
-            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedScript}"`,
-            { encoding: "utf-8" as BufferEncoding, timeout: 15000, windowsHide: true }
-        ).trim();
+        const raw = runPowerShellScript(ps, 15000).trim();
         if (!raw || raw === "null") return [];
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [parsed];
@@ -292,10 +303,48 @@ if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Co
 
 }
 
-function captureWindowPNG(hwnd: string): string {
-    if (!/^\d+$/.test(hwnd)) throw new Error("Invalid hwnd");
-    const outFile = path.join(os.tmpdir(), `roblox_ss_${Date.now()}.b64`);
-    const ps = `
+/**
+ * Brings a window to the foreground and verifies it is genuinely unobstructed
+ * before we sample screen pixels from its rectangle.
+ *
+ * Why this exists: `CopyFromScreen` copies whatever pixels currently occupy the
+ * given screen coordinates. If another app (a browser, a chat window) sits on
+ * top of the Roblox window, we would silently capture that app instead. Windows
+ * also routinely refuses `SetForegroundWindow` (foreground-lock), which used to
+ * fail silently here.
+ *
+ * The shared PowerShell prologue below:
+ *   1. Defines POINT locally -- the previous `ref System.Drawing.Point` signature
+ *      did not compile (Add-Type has no System.Drawing reference at compile time),
+ *      so the whole WinCapture class failed to build and every screenshot errored.
+ *   2. Restores + raises the target window, retrying until it owns the foreground.
+ *   3. Confirms with WindowFromPoint that the topmost window at the capture rect's
+ *      centre belongs to the target process. Returns CAPTURE_OK only then.
+ */
+/**
+ * Runs a PowerShell script by writing it to a temp .ps1 and invoking it with
+ * -File.
+ *
+ * Why not -EncodedCommand: base64 expands the script roughly 2.7x, and the
+ * capture prologue is large enough that the resulting command line exceeds the
+ * Windows limit (~32k), which failed with "The command line is too long."
+ * A file has no such limit.
+ */
+function runPowerShellScript(ps: string, timeoutMs: number): string {
+    const scriptFile = path.join(os.tmpdir(), `roblox_ps_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.ps1`);
+    // UTF-8 with BOM so PowerShell reads non-ASCII paths correctly.
+    fs.writeFileSync(scriptFile, '﻿' + ps, 'utf-8');
+    try {
+        return execSync(
+            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptFile}"`,
+            { encoding: 'utf-8' as BufferEncoding, timeout: timeoutMs, windowsHide: true }
+        );
+    } finally {
+        try { fs.unlinkSync(scriptFile); } catch { }
+    }
+}
+function buildCapturePrologue(hwnd: string, pid: number): string {
+    return `
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
@@ -304,27 +353,81 @@ using System.Runtime.InteropServices;
 public class WinCapture {
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X, Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
-    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref System.Drawing.Point lpPoint);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
 }
 "@
 $hwnd = [IntPtr]::new([long]${hwnd})
-if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
-[WinCapture]::SetForegroundWindow($hwnd) | Out-Null
-Start-Sleep -Milliseconds 100
+$targetPid = ${pid}
+
+if (-not [WinCapture]::IsWindow($hwnd)) { Write-Output 'ERR:WINDOW_GONE'; exit 1 }
+if ([WinCapture]::IsIconic($hwnd)) {
+    [WinCapture]::ShowWindow($hwnd, 9) | Out-Null
+    Start-Sleep -Milliseconds 250
+}
+
+# Raise the window and wait until it actually owns the foreground. SetForegroundWindow
+# is commonly refused by Windows, so retry with ShowWindow/BringWindowToTop nudges.
+$raised = $false
+for ($attempt = 0; $attempt -lt 12; $attempt++) {
+    [WinCapture]::ShowWindow($hwnd, 5) | Out-Null
+    [WinCapture]::BringWindowToTop($hwnd) | Out-Null
+    [WinCapture]::SetForegroundWindow($hwnd) | Out-Null
+    Start-Sleep -Milliseconds 120
+    if ([WinCapture]::GetForegroundWindow() -eq $hwnd) { $raised = $true; break }
+}
+if (-not $raised) {
+    # Not fatal on its own: the window may still be unobstructed (e.g. always-on-top).
+    # The occlusion check below is the real gate.
+    Start-Sleep -Milliseconds 200
+}
 
 $rect = New-Object WinCapture+RECT
 [WinCapture]::GetClientRect($hwnd, [ref]$rect) | Out-Null
 $w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
-if ($w -le 0 -or $h -le 0) { Write-Error "Zero size"; exit 1 }
+if ($w -le 0 -or $h -le 0) { Write-Output 'ERR:ZERO_SIZE'; exit 1 }
 
 $pt = New-Object WinCapture+POINT
 [WinCapture]::ClientToScreen($hwnd, [ref]$pt) | Out-Null
 
+# Occlusion gate: sample the topmost window at the centre of the capture rect.
+# If it is not our target process, another app is covering Roblox and sampling
+# screen pixels would capture the wrong application.
+$centerPt = New-Object WinCapture+POINT
+$centerPt.X = $pt.X + [int]($w / 2)
+$centerPt.Y = $pt.Y + [int]($h / 2)
+$topHwnd = [WinCapture]::WindowFromPoint($centerPt)
+$topPid = 0
+[WinCapture]::GetWindowThreadProcessId($topHwnd, [ref]$topPid) | Out-Null
+if ($topPid -ne $targetPid) {
+    $rootHwnd = [WinCapture]::GetAncestor($topHwnd, 2)
+    $rootPid = 0
+    [WinCapture]::GetWindowThreadProcessId($rootHwnd, [ref]$rootPid) | Out-Null
+    if ($rootPid -ne $targetPid) {
+        Write-Output "ERR:OCCLUDED:$topPid"
+        exit 1
+    }
+}
+`;
+}
+
+function captureWindowPNG(hwnd: string, pid: number): string {
+    if (!/^\d+$/.test(hwnd)) throw new Error("Invalid hwnd");
+    const outFile = path.join(os.tmpdir(), `roblox_ss_${Date.now()}.b64`);
+    const ps = `${buildCapturePrologue(hwnd, pid)}
 $bmp = New-Object System.Drawing.Bitmap($w, $h)
 $gfx = [System.Drawing.Graphics]::FromImage($bmp)
 $gfx.CopyFromScreen($pt.X, $pt.Y, 0, 0, $bmp.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
@@ -335,25 +438,29 @@ $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
 $bytes = $ms.ToArray(); $ms.Dispose()
 $b64 = [Convert]::ToBase64String($bytes)
 [System.IO.File]::WriteAllText('${outFile}', $b64)
-Write-Output 'OK'
+Write-Output 'CAPTURE_OK'
 `;
     try {
-        const encodedScript = Buffer.from(ps, 'utf16le').toString('base64');
-        execSync(
-            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedScript}"`,
-            { encoding: "utf-8" as BufferEncoding, timeout: 15000, windowsHide: true }
-        );
-        if (!fs.existsSync(outFile)) throw new Error("No output");
+        const stdout = runPowerShellScript(ps, 20000).trim();
+
+        if (stdout.includes('ERR:WINDOW_GONE')) throw new Error("Roblox window closed before capture");
+        if (stdout.includes('ERR:ZERO_SIZE')) throw new Error("Roblox window has zero size (minimised?)");
+        if (stdout.includes('ERR:OCCLUDED')) {
+            throw new Error(
+                "Roblox window is covered by another application. " +
+                "Bring it to the front and retry."
+            );
+        }
+        if (!fs.existsSync(outFile)) throw new Error("Capture produced no output");
         const result = fs.readFileSync(outFile, "utf-8").trim();
-        if (!result) throw new Error("Empty output");
+        if (!result) throw new Error("Capture produced empty output");
         return result;
     } finally {
-
         try { fs.unlinkSync(outFile); } catch { }
     }
 }
 
-async function performScreenshot(pid?: number): Promise<ScreenshotResult> {
+async function performScreenshot(pid?: number, outputPath?: string): Promise<ScreenshotResult> {
     const windows = enumRobloxWindows();
     if (windows.length === 0) {
         return { error: "No visible Roblox windows found." };
@@ -368,15 +475,24 @@ async function performScreenshot(pid?: number): Promise<ScreenshotResult> {
     if (targets.length > 1) {
         return { needsDisambiguation: true, windows: targets };
     }
+    const target = targets[0];
     try {
-        const imageBase64 = captureWindowPNG(targets[0].hwnd);
-        return { imageBase64, pid: targets[0].pid };
+        const imageBase64 = captureWindowPNG(target.hwnd, target.pid);
+        const filePath = resolveOutputPath(outputPath, `roblox_shot_${target.pid}_${Date.now()}.png`);
+        fs.writeFileSync(filePath, Buffer.from(imageBase64, 'base64'));
+
+        // When the caller asked for a specific destination, return the path only --
+        // there is no need to ship a multi-megabyte base64 blob back as well.
+        if (outputPath && outputPath.trim() !== '') {
+            return { filePath, pid: target.pid };
+        }
+        return { imageBase64, filePath, pid: target.pid };
     } catch (err: any) {
         return { error: `Failed to capture window: ${err.message}` };
     }
 }
 
-async function recordVideo(pid?: number, duration: number = 5): Promise<ScreenshotResult & { filePath?: string }> {
+async function recordVideo(pid?: number, duration: number = 5, outputPath?: string): Promise<ScreenshotResult & { filePath?: string }> {
     const windows = enumRobloxWindows();
     if (windows.length === 0) {
         return { error: "No visible Roblox windows found." };
@@ -395,54 +511,46 @@ async function recordVideo(pid?: number, duration: number = 5): Promise<Screensh
     try {
         const targetPid = targets[0].pid;
 
-        const outFile = path.join(os.tmpdir(), `roblox_rec_${targetPid}_${Date.now()}.mp4`);
         const durationSecs = Math.min(Math.max(1, duration), 30);
-
         const targetFps = 30;
+        const outFile = resolveOutputPath(outputPath, `roblox_rec_${targetPid}_${Date.now()}.mp4`);
 
-        const ps = `
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class WinCapture {
-    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
-    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
-    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
-    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-}
-"@
-Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
-
-$hwnd = [IntPtr]::new([long]${targets[0].hwnd})
-if ([WinCapture]::IsIconic($hwnd)) { [WinCapture]::ShowWindow($hwnd, 9) | Out-Null; Start-Sleep -Milliseconds 200 }
-[WinCapture]::SetForegroundWindow($hwnd) | Out-Null
-Start-Sleep -Milliseconds 100
-
-$rect = New-Object WinCapture+RECT
-[WinCapture]::GetClientRect($hwnd, [ref]$rect) | Out-Null
-$w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
-if ($w -le 0 -or $h -le 0) { Write-Error "Zero size"; exit 1 }
-
-$pt = New-Object WinCapture+POINT
-[WinCapture]::ClientToScreen($hwnd, [ref]$pt) | Out-Null
-
+        // Reuses the shared prologue: compiles WinCapture correctly, raises the window,
+        // and aborts if another application is covering the capture region.
+        const ps = `${buildCapturePrologue(targets[0].hwnd, targetPid)}
 $duration = ${durationSecs}
 $fps = ${targetFps}
 $frames = $duration * $fps
 $frameDelayMs = 1000 / $fps
 
-$outFolder = Join-Path $env:TEMP "roblox_frames_$(${targets[0].pid})_$(Get-Date -UFormat '%s')"
+$outFolder = Join-Path $env:TEMP "roblox_frames_${targetPid}_$(Get-Date -UFormat '%s')"
 New-Item -ItemType Directory -Path $outFolder | Out-Null
 
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
+$occluded = 0
 
 for ($i = 0; $i -lt $frames; $i++) {
     $loopStart = $sw.ElapsedMilliseconds
+
+    # Re-check occlusion each frame: a window can steal focus mid-recording, which
+    # would otherwise splice unrelated application pixels into the video.
+    $centerPt = New-Object WinCapture+POINT
+    $centerPt.X = $pt.X + [int]($w / 2)
+    $centerPt.Y = $pt.Y + [int]($h / 2)
+    $topHwnd = [WinCapture]::WindowFromPoint($centerPt)
+    $topPid = 0
+    [WinCapture]::GetWindowThreadProcessId($topHwnd, [ref]$topPid) | Out-Null
+    if ($topPid -ne $targetPid) {
+        $rootHwnd = [WinCapture]::GetAncestor($topHwnd, 2)
+        $rootPid = 0
+        [WinCapture]::GetWindowThreadProcessId($rootHwnd, [ref]$rootPid) | Out-Null
+        if ($rootPid -ne $targetPid) {
+            $occluded++
+            [WinCapture]::SetForegroundWindow($hwnd) | Out-Null
+            Start-Sleep -Milliseconds 60
+            continue
+        }
+    }
 
     $bmp = New-Object System.Drawing.Bitmap($w, $h)
     $gfx = [System.Drawing.Graphics]::FromImage($bmp)
@@ -460,17 +568,31 @@ for ($i = 0; $i -lt $frames; $i++) {
     }
 }
 
-Write-Output $outFolder
-        `;
+if ($occluded -ge $frames) {
+    Remove-Item -Recurse -Force $outFolder -ErrorAction SilentlyContinue
+    Write-Output 'ERR:OCCLUDED'
+    exit 1
+}
 
-        const encodedScript = Buffer.from(ps, 'utf16le').toString('base64');
-        const psResult = require('child_process').execSync(
-            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encodedScript}"`,
-            { encoding: "utf-8", timeout: (durationSecs * 1000) + 15000, windowsHide: true }
-        );
+Write-Output "FRAMES_OK:$outFolder"
+`;
 
-        const frameFolder = psResult.trim().split(/\r?\n/).pop()?.trim() || "";
-        if (!fs.existsSync(frameFolder)) {
+        const psResult = runPowerShellScript(ps, (durationSecs * 1000) + 25000);
+
+        const lines = psResult.trim().split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
+        if (lines.some((l: string) => l.includes('ERR:WINDOW_GONE'))) {
+            return { error: "Roblox window closed before recording started." };
+        }
+        if (lines.some((l: string) => l.includes('ERR:ZERO_SIZE'))) {
+            return { error: "Roblox window has zero size (minimised?)." };
+        }
+        if (lines.some((l: string) => l.includes('ERR:OCCLUDED'))) {
+            return { error: "Roblox window was covered by another application for the whole recording. Bring it to the front and retry." };
+        }
+
+        const framesLine = lines.find((l: string) => l.startsWith('FRAMES_OK:')) || '';
+        const frameFolder = framesLine.replace('FRAMES_OK:', '').trim();
+        if (!frameFolder || !fs.existsSync(frameFolder)) {
             return { error: "Failed to record video frames." };
         }
 

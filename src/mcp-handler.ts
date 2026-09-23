@@ -58,14 +58,15 @@ interface ProcessManager {
             experienceId?: string;
         }
     ): { success: boolean; launchUrl?: string; error?: string };
-    performScreenshot(pid?: number): Promise<{
+    performScreenshot(pid?: number, outputPath?: string): Promise<{
         error?: string;
         needsDisambiguation?: boolean;
         windows?: Array<{ pid: number; hwnd: string; title: string }>;
         imageBase64?: string;
+        filePath?: string;
         pid?: number;
     }>;
-    recordVideo(pid?: number, duration?: number): Promise<{
+    recordVideo(pid?: number, duration?: number, outputPath?: string): Promise<{
         error?: string;
         needsDisambiguation?: boolean;
         windows?: Array<{ pid: number; hwnd: string; title: string }>;
@@ -88,6 +89,20 @@ interface McpResult {
     result?: unknown;
     error?: McpError;
 }
+
+const LUA_TASK_NAME_MAP: Record<string, string> = {
+    'get-player': 'get-local-player',
+    'get-players': 'dump-workspace-players',
+    'list-remotes': 'dump-remote-events',
+    'get-gui-tree': 'dump-gui-hierarchy',
+    'get-screen-text': 'extract-screen-text',
+    'get-script': 'get-script-source',
+    'get-remote-handlers': 'inspect-remote-connections',
+    'set-player': 'modify-local-player',
+    'teleport': 'teleport-player',
+    'bypass-anticheat': 'disable-anticheat',
+    'find-instances': 'get-instances-by-class',
+};
 
 const SERVER_SIDE_TOOLS = new Set<string>([
     'list-roblox-processes',
@@ -239,17 +254,33 @@ class McpHandler {
             }
 
             const startTime = Date.now();
-            const targetWorker = (args?.worker_id || args?.session_id || args?.sessionId || args?.workerId) as string | undefined;
-            const targetPid = args?.pid ? Number(args.pid) : undefined;
+            const rawTarget = (args?.workerId || args?.worker_id || args?.sessionId || args?.session_id) as string | undefined;
+            const targetPid = args?.pid !== undefined ? Number(args.pid) : undefined;
             const timeoutMs = args && (args.timeout_ms !== undefined || args.timeout !== undefined)
                 ? Number(args.timeout_ms ?? args.timeout)
                 : undefined;
 
+            const taskName = LUA_TASK_NAME_MAP[name] || name;
             const activeSessions = this.sessions.listActive ? this.sessions.listActive() : [];
 
-            // Case 1: Targeted by specific worker_id / session_id
-            if (targetWorker) {
-                const result = await this.queue.submitTask(name, args || {}, { workerId: targetWorker, timeoutMs });
+            // Resolve targetWorker dynamically (by exact workerId, PID, username, or substring)
+            let resolvedWorkerId: string | undefined = undefined;
+            if (rawTarget) {
+                const targetStr = String(rawTarget).trim();
+                const targetLower = targetStr.toLowerCase();
+                const matched = activeSessions.find(s =>
+                    s.workerId === targetStr ||
+                    s.workerId.toLowerCase() === targetLower ||
+                    (s.pid && String(s.pid) === targetStr) ||
+                    (s.name && s.name.toLowerCase() === targetLower) ||
+                    s.workerId.toLowerCase().includes(targetLower)
+                );
+                resolvedWorkerId = matched ? matched.workerId : targetStr;
+            }
+
+            // Case 1: Targeted by specific workerId / session
+            if (resolvedWorkerId) {
+                const result = await this.queue.submitTask(taskName, args || {}, { workerId: resolvedWorkerId, timeoutMs });
                 const elapsed = Date.now() - startTime;
                 return {
                     result: {
@@ -257,14 +288,14 @@ class McpHandler {
                             type: 'text',
                             text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
                         }],
-                        meta: { executionTimeMs: elapsed, tool: name, targetWorker },
+                        meta: { executionTimeMs: elapsed, tool: name, workerId: resolvedWorkerId },
                     },
                 };
             }
 
             // Case 2: Targeted by specific PID
             if (targetPid !== undefined) {
-                const result = await this.queue.submitTask(name, args || {}, { targetPid, timeoutMs });
+                const result = await this.queue.submitTask(taskName, args || {}, { targetPid, timeoutMs });
                 const elapsed = Date.now() - startTime;
                 return {
                     result: {
@@ -280,7 +311,7 @@ class McpHandler {
             // Case 3: Exactly 1 session connected -> execute directly
             if (activeSessions.length <= 1) {
                 const singleWorker = activeSessions[0]?.workerId;
-                const result = await this.queue.submitTask(name, args || {}, { workerId: singleWorker, timeoutMs });
+                const result = await this.queue.submitTask(taskName, args || {}, { workerId: singleWorker, timeoutMs });
                 const elapsed = Date.now() - startTime;
                 return {
                     result: {
@@ -298,7 +329,7 @@ class McpHandler {
             await Promise.all(activeSessions.map(async (worker: any) => {
                 const wid = worker.workerId;
                 try {
-                    const res = await this.queue.submitTask(name, args || {}, { workerId: wid, timeoutMs: timeoutMs || 15000 });
+                    const res = await this.queue.submitTask(taskName, args || {}, { workerId: wid, timeoutMs: timeoutMs || 15000 });
                     sessionResults[wid] = {
                         success: true,
                         pid: worker.pid,
@@ -342,6 +373,21 @@ class McpHandler {
     }
 
     private async _runServerTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+        const rawTarget = (args.workerId || args.worker_id || args.sessionId || args.session_id) as string | undefined;
+        if (!args.pid && rawTarget) {
+            const active = this.sessions.listActive ? this.sessions.listActive() : [];
+            const targetStr = String(rawTarget).trim().toLowerCase();
+            const matched = active.find(s =>
+                s.workerId.toLowerCase() === targetStr ||
+                (s.pid && String(s.pid) === targetStr) ||
+                (s.name && s.name.toLowerCase() === targetStr) ||
+                s.workerId.toLowerCase().includes(targetStr)
+            );
+            if (matched && matched.pid) {
+                args.pid = Number(matched.pid);
+            }
+        }
+
         switch (name) {
             case 'list-roblox-processes': {
                 const procs = this.proc.listRobloxProcesses();
@@ -395,18 +441,30 @@ class McpHandler {
                 });
 
             case 'take-screenshot': {
-                const ssResult = await this.proc.performScreenshot(args.pid ? Number(args.pid) : undefined);
+                const ssResult = await this.proc.performScreenshot(
+                    args.pid ? Number(args.pid) : undefined,
+                    (args.output_path as string) || undefined
+                );
                 if (ssResult.error) return { success: false, error: ssResult.error };
                 if (ssResult.needsDisambiguation) {
                     return { success: true, needsDisambiguation: true, windows: ssResult.windows };
                 }
-                return { success: true, image: `data:image/png;base64,${ssResult.imageBase64}`, pid: ssResult.pid ?? args.pid ?? null };
+                if (ssResult.filePath && !ssResult.imageBase64) {
+                    return { success: true, file_path: ssResult.filePath, pid: ssResult.pid ?? args.pid ?? null };
+                }
+                return {
+                    success: true,
+                    image: `data:image/png;base64,${ssResult.imageBase64}`,
+                    file_path: ssResult.filePath,
+                    pid: ssResult.pid ?? args.pid ?? null,
+                };
             }
 
             case 'record-roblox-video': {
                 const vidResult = await this.proc.recordVideo(
                     args.pid ? Number(args.pid) : undefined,
-                    args.duration_seconds ? Number(args.duration_seconds) : 5
+                    args.duration_seconds ? Number(args.duration_seconds) : 5,
+                    (args.output_path as string) || undefined
                 );
                 if (vidResult.error) return { success: false, error: vidResult.error };
                 if (vidResult.needsDisambiguation) {
