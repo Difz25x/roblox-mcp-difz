@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const PKG = require('../package.json');
-const { execSync, spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +9,9 @@ const os = require('os');
 
 import * as readline from 'readline';
 
-const PID_FILE = path.join(os.tmpdir(), 'roblox-mcp.pid');
+const CONFIG_DIR = path.join(os.homedir(), '.roblox-mcp');
+try { if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true }); } catch {}
+const PID_FILE = path.join(CONFIG_DIR, 'server.pid');
 const DEFAULT_PORT = 28429;
 
 function getPort(): number {
@@ -128,9 +130,15 @@ async function cmdUpdate(): Promise<void> {
 
     console.log(`  Updating...`);
     try {
-        execSync(`npm install -g ${PKG.name}@latest`, {
-            stdio: 'inherit', timeout: 60000, windowsHide: true,
+        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const res = spawnSync(npmCmd, ['install', '-g', `${PKG.name}@latest`], {
+            stdio: 'inherit',
+            timeout: 60000,
+            windowsHide: true,
         });
+        if (res.status !== 0) {
+            throw new Error(`npm exited with status code ${res.status}`);
+        }
         console.log(`  \x1b[32m✔ Updated to v${latest}!\x1b[0m`);
 
         console.log(`  \x1b[2mRelaunching...\x1b[0m`);
@@ -340,7 +348,7 @@ async function hideInTray(port: number, oldPid: number): Promise<void> {
 
         // Use __filename to ensure we spawn the compiled JS (dist/cli.js) and not a dynamic dev path
         const scriptPath = __filename;
-        const logPath = path.join(os.tmpdir(), 'roblox-mcp-daemon.log');
+        const logPath = path.join(CONFIG_DIR, 'daemon.log');
         const out = fs.openSync(logPath, 'a');
 
         const child = spawn(process.execPath, [scriptPath, 'daemon'], {
@@ -354,15 +362,7 @@ async function hideInTray(port: number, oldPid: number): Promise<void> {
         console.log(`  \x1b[32m✔\x1b[0m Server handed over to background daemon (PID ${child.pid})`);
         console.log(`  \x1b[2mRight-click the tray icon to manage it.\x1b[0m\n`);
 
-        setTimeout(() => {
-            // Attempt to force close the parent powershell/cmd window if possible
-            if (process.platform === 'win32') {
-                try {
-                    execSync('powershell -NoProfile -Command "Stop-Process -Id $PID"', { stdio: 'ignore' });
-                } catch {}
-            }
-            process.exit(0);
-        }, 500);
+        process.exit(0);
     } catch (err: any) {
         console.error(`  \x1b[31m✖ Failed to spawn daemon: ${err.message}\x1b[0m`);
     }

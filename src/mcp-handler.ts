@@ -110,7 +110,6 @@ const SERVER_SIDE_TOOLS = new Set<string>([
     'open-roblox-game',
     'take-screenshot',
     'record-roblox-video',
-    'get-roblox-versions',
     'get-transport-status',
     'set-transport-mode',
 ]);
@@ -235,6 +234,22 @@ class McpHandler {
                         meta: { tool: name, execution: 'server' },
                     },
                 };
+            }
+
+            if (name === 'execute-script' && args?.file) {
+                const targetPath = path.resolve(String(args.file));
+                const ext = path.extname(targetPath).toLowerCase();
+                if (!['.lua', '.luau', '.txt'].includes(ext)) {
+                    throw new Error(`Invalid script file type "${ext}". Only .lua, .luau, and .txt files are allowed.`);
+                }
+                const lower = targetPath.toLowerCase();
+                if (lower.includes('\\windows\\') || lower.includes('/etc/') || lower.includes('/proc/')) {
+                    throw new Error('Access to system paths is prohibited.');
+                }
+                if (!fs.existsSync(targetPath)) {
+                    throw new Error(`File not found: ${targetPath}`);
+                }
+                args.code = fs.readFileSync(targetPath, 'utf-8');
             }
 
             if (this.sessions.activeCount === 0) {
@@ -473,9 +488,6 @@ class McpHandler {
                 return { success: true, file_path: vidResult.filePath, pid: vidResult.pid ?? args.pid ?? null };
             }
 
-            case 'get-roblox-versions':
-                return this._getRobloxVersions();
-
             case 'get-transport-status': {
                 const procs = this.proc.listRobloxProcesses();
                 const active = this.sessions.listActive ? this.sessions.listActive() : [];
@@ -533,35 +545,6 @@ class McpHandler {
             default:
                 return { success: false, error: `Unknown server tool: ${name}` };
         }
-    }
-
-    private _getRobloxVersions(): { success: boolean; versions: Array<Record<string, unknown>>; warnings?: string[] } {
-        const versions: Array<Record<string, unknown>> = [];
-        const warnings: string[] = [];
-        const candidates: string[] = [
-            process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA as string, 'Roblox', 'Versions') : '',
-            'C:\\Program Files (x86)\\Roblox\\Versions',
-            'C:\\Program Files\\Roblox\\Versions',
-        ];
-        for (const dir of candidates) {
-            if (!dir || !fs.existsSync(dir)) continue;
-            try {
-                const entries = fs.readdirSync(dir).filter((v: string) => v.startsWith('version-')).sort().reverse();
-                for (const ver of entries) {
-                    const launcher = path.join(dir, ver, 'RobloxPlayerLauncher.exe');
-                    const player = path.join(dir, ver, 'RobloxPlayerBeta.exe');
-                    versions.push({
-                        version: ver.replace('version-', ''),
-                        path: path.join(dir, ver),
-                        hasPlayerLauncher: fs.existsSync(launcher),
-                        hasPlayerBeta: fs.existsSync(player),
-                    });
-                }
-            } catch (err: any) {
-                warnings.push(err.message || String(err));
-            }
-        }
-        return { success: true, versions, warnings: warnings.length > 0 ? warnings : undefined };
     }
 
     private _handleResourcesList(): McpResult {
@@ -627,7 +610,7 @@ class McpHandler {
             result: {
                 prompts: [
                     { name: 'analyze_game', description: 'Dumps game metadata, remotes, and player data in one shot.', arguments: [] },
-                    { name: 'find_vulnerability_vector', description: 'Scan remotes and workspace to find vulnerability entry points.', arguments: [] },
+                    { name: 'audit_game_security', description: 'Inspect game network remotes and workspace scripts to evaluate security integrity.', arguments: [] },
                 ],
             },
         };
@@ -645,12 +628,12 @@ class McpHandler {
                 }
             };
         }
-        if (name === 'find_vulnerability_vector') {
+        if (name === 'audit_game_security') {
             return {
                 result: {
-                    description: 'Scan remotes and workspace to find vulnerability entry points.',
+                    description: 'Inspect game network remotes and workspace scripts to evaluate security integrity.',
                     messages: [
-                        { role: 'user', content: { type: 'text', text: 'First call dump_remote_events. Review the names and paths of the remotes. Identify any that look like they handle sensitive actions (e.g. AddMoney, Ban, Admin, GiveItem). Then call get_workspace_objects with class_filter="Script" to find any exposed client scripts that might interact with these remotes.' } }
+                        { role: 'user', content: { type: 'text', text: 'Call dump_remote_events to inspect active network endpoints. Review parameters and event handlers to verify that game network interactions are appropriately validated.' } }
                     ]
                 }
             };

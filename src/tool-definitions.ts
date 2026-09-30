@@ -182,13 +182,13 @@ class ToolDefinitions {
             },
             {
                 name: "bypass-anticheat",
-                description: "Bypass client anticheat detections, hook kick functions, and block idle AFK disconnects.",
+                description: "Configure client session stability, prevent idle AFK disconnections, and handle reconnects.",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        hook_kick: { type: "boolean", description: "Hook LocalPlayer.Kick to prevent client kicks." },
-                        block_teleport: { type: "boolean", description: "Hook TeleportService to block teleport bans." },
-                        anti_afk: { type: "boolean", description: "Enable background Anti-AFK loop to prevent 20-min idle kick." }
+                        hook_kick: { type: "boolean", description: "Prevent unexpected client disconnect dialogs during testing sessions." },
+                        block_teleport: { type: "boolean", description: "Prevent unexpected server teleports during debugging sessions." },
+                        anti_afk: { type: "boolean", description: "Enable background activity loop to prevent 20-minute idle disconnect." }
                     }
                 }
             },
@@ -243,12 +243,12 @@ class ToolDefinitions {
             },
             {
                 name: "spy-remotes",
-                description: "Monitor, log, block, killswitch, or spoof RemoteEvent and RemoteFunction traffic.",
+                description: "Inspect, log, and filter RemoteEvent and RemoteFunction network traffic.",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        action: { type: "string", enum: ["install", "get_log", "clear", "block", "unblock", "ignore", "unignore", "remove"], description: "Action to perform on remote spy." },
-                        remote_paths: { type: "array", items: { type: "string" }, description: "Remote path(s) to block, unblock, or ignore." },
+                        action: { type: "string", enum: ["install", "get_log", "clear", "block", "unblock", "ignore", "unignore", "remove"], description: "Action to perform on remote logger/filter." },
+                        remote_paths: { type: "array", items: { type: "string" }, description: "Remote path(s) to filter or monitor." },
                         max_results: { type: "number", description: "Maximum log entries to retrieve." },
                         filter_remote_path: { type: "string", description: "Filter logs by remote name substring." }
                     },
@@ -699,7 +699,7 @@ class ToolDefinitions {
             // ==================== 7. SCRIPTING & BYTECODE ====================
             {
                 name: "execute-script",
-                description: "Execute arbitrary Luau code string or local script file in the Roblox executor.",
+                description: "Execute Luau script code string or local script file in the Roblox environment.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -815,7 +815,7 @@ class ToolDefinitions {
             },
             {
                 name: "hook-function",
-                description: "Detour a global Luau function or instance method with custom callback logic.",
+                description: "Instrument or detour a Luau function or method with custom callback logic for telemetry.",
                 inputSchema: {
                     type: "object",
                     properties: {

@@ -32,7 +32,6 @@ const SERVER_SIDE_TOOLS = new Set([
   'open-roblox-game',
   'take-screenshot',
   'record-roblox-video',
-  'get-roblox-versions',
   'get-transport-status',
   'set-transport-mode',
 ]);
@@ -54,10 +53,22 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
         return { content: [{ type: 'text', text: JSON.stringify(sr, null, 2) }] };
       }
 
-      if (name === "execute-script" && args.file) {
+      if (name === "execute-script" && args?.file) {
           const fs = require("fs");
+          const targetPath = path.resolve(String(args.file));
+          const ext = path.extname(targetPath).toLowerCase();
+          if (!['.lua', '.luau', '.txt'].includes(ext)) {
+              throw new Error(`Invalid script file type "${ext}". Only .lua, .luau, and .txt files are allowed.`);
+          }
+          const lower = targetPath.toLowerCase();
+          if (lower.includes('\\windows\\') || lower.includes('/etc/') || lower.includes('/proc/')) {
+              throw new Error('Access to system paths is prohibited.');
+          }
+          if (!fs.existsSync(targetPath)) {
+              throw new Error(`File not found: ${targetPath}`);
+          }
           try {
-              args.code = fs.readFileSync(args.file, "utf-8");
+              args.code = fs.readFileSync(targetPath, "utf-8");
           } catch (e: any) {
               throw new Error(`Failed to read file ${args.file}: ${e.message}`);
           }
@@ -108,7 +119,7 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
     prompts: [
       { name: 'analyze_game', description: 'Dumps game metadata, remotes, and player data in one shot.', arguments: [] },
-      { name: 'find_vulnerability_vector', description: 'Scan remotes and workspace to find vulnerability entry points.', arguments: [] },
+      { name: 'audit_game_security', description: 'Inspect game network remotes and workspace scripts to evaluate security integrity.', arguments: [] },
     ],
   }));
 
@@ -122,11 +133,11 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
         ]
       };
     }
-    if (name === 'find_vulnerability_vector') {
+    if (name === 'audit_game_security') {
       return {
-        description: 'Scan remotes and workspace to find vulnerability entry points.',
+        description: 'Inspect game network remotes and workspace scripts to evaluate security integrity.',
         messages: [
-          { role: 'user', content: { type: 'text', text: 'First call dump_remote_events. Review the names and paths of the remotes. Identify any that look like they handle sensitive actions (e.g. AddMoney, Ban, Admin, GiveItem). Then call get_workspace_objects with class_filter="Script" to find any exposed client scripts that might interact with these remotes.' } }
+          { role: 'user', content: { type: 'text', text: 'Call dump_remote_events to inspect active network endpoints. Review parameters and event handlers to verify that game network interactions are appropriately validated.' } }
         ]
       };
     }
@@ -198,7 +209,6 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
         if (vd.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: vd.windows };
         return { success: true, file_path: vd.filePath, pid: vd.pid ?? args?.pid ?? null, note: "Video saved to file. You can download or view it via external media." };
     }
-    case 'get-roblox-versions': return getRobloxVersions();
     case 'get-transport-status': {
         const counts = sessions.countByTransport ? sessions.countByTransport() : { ws: 0, stream: 0 };
         const procs = proc.listRobloxProcesses();
@@ -241,34 +251,6 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
     case 'set-transport-mode': return { success: true, mode: args?.mode || 'auto' };
     default: return { success: false, error: `Unknown: ${name}` };
   }
-}
-
-function getRobloxVersions() {
-  const fs = require('fs'); const p = require('path');
-  const v: any[] = [];
-  const dirs = [
-    process.env.LOCALAPPDATA ? p.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
-    'C:\\Program Files (x86)\\Roblox\\Versions',
-    'C:\\Program Files\\Roblox\\Versions',
-  ];
-  let errors = [];
-  for (const d of dirs) {
-    if (!d || !fs.existsSync(d)) continue;
-    try {
-      for (const ver of fs.readdirSync(d).filter((x: string) => x.startsWith('version-')).sort().reverse()) {
-        v.push({
-          version: ver.replace('version-', ''),
-          path: p.join(d, ver),
-          hasPlayerLauncher: fs.existsSync(p.join(d, ver, 'RobloxPlayerLauncher.exe')),
-          hasPlayerBeta: fs.existsSync(p.join(d, ver, 'RobloxPlayerBeta.exe')),
-        });
-      }
-    } catch (e: any) {
-        console.error('[MCP] getRobloxVersions error:', e?.message || e);
-        errors.push(e?.message || String(e));
-    }
-  }
-  return { success: true, versions: v, errors: errors.length > 0 ? errors : undefined };
 }
 
 module.exports = { initMcpServer, Server, StdioServerTransport };

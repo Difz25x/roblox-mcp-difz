@@ -276,7 +276,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
             else if (['inspect-metatable', 'modify-metatable', 'set-raw-metatable', 'toggle-readonly', 'hook-function', 'check-closure-type', 'scan-registry', 'scan-gc', 'inspect-closure', 'get-constants-upvalues', 'get-debug-info', 'get-hidden-property', 'set-hidden-property', 'set-scriptable'].includes(n)) category = 'memory';
             else if (['read-file', 'write-file', 'delete-file', 'list-files', 'create-folder', 'load-custom-asset'].includes(n)) category = 'filesystem';
             else if (['create-instance', 'destroy-instance', 'clone-instance', 'read-properties', 'set-properties', 'inspect-property'].includes(n)) category = 'instances';
-            else if (['list-roblox-processes', 'launch-roblox', 'open-roblox-game', 'take-screenshot', 'record-roblox-video', 'get-roblox-versions', 'get-transport-status', 'set-transport-mode', 'set-autoexecute', 'get-metadata', 'get-console-logs'].includes(n)) category = 'server';
+            else if (['list-roblox-processes', 'launch-roblox', 'open-roblox-game', 'take-screenshot', 'record-roblox-video', 'get-transport-status', 'set-transport-mode', 'set-autoexecute', 'get-metadata', 'get-console-logs'].includes(n)) category = 'server';
 
             return { ...t, category };
         });

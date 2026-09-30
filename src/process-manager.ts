@@ -1,4 +1,4 @@
-const { execSync, spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -26,10 +26,12 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
     try {
         let output: string;
         if (IS_WIN) {
-            output = execSync(
-                `powershell -NoProfile -NonInteractive -Command "Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Select-Object Id, MainWindowTitle, WorkingSet64 | ConvertTo-Json -Compress"`,
-                { encoding: 'utf-8' as BufferEncoding, timeout: 3000, windowsHide: true }
-            ) as string;
+            const psRes = spawnSync(
+                'powershell.exe',
+                ['-NoProfile', '-NonInteractive', '-Command', "Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Select-Object Id, MainWindowTitle, WorkingSet64 | ConvertTo-Json -Compress"],
+                { encoding: 'utf-8', timeout: 3000, windowsHide: true }
+            );
+            output = (psRes.stdout || '').trim();
 
             if (output && output.trim()) {
                 const parsed = JSON.parse(output);
@@ -46,7 +48,8 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
                 }
             }
         } else {
-            output = execSync("ps aux | grep -i roblox || true", { encoding: 'utf-8' as BufferEncoding, timeout: 3000 }) as string;
+            const psRes = spawnSync("ps", ["aux"], { encoding: 'utf-8', timeout: 3000 });
+            output = psRes.stdout || '';
             const lines: string[] = output.split('\n').filter(l => l.trim());
             for (const line of lines) {
                 const parts: string[] = line.split(/\s+/);
@@ -76,17 +79,14 @@ function findRobloxPath(): string | null {
     }
 
     try {
-        const regOutput: string = execSync(
-            'reg query "HKLM\\SOFTWARE\\Roblox\\RobloxStudio" /v Location 2>nul || ' +
-            'reg query "HKLM\\SOFTWARE\\WOW6432Node\\Roblox\\RobloxStudio" /v Location 2>nul',
-            { encoding: 'utf-8' as BufferEncoding, timeout: 3000 }
-        ) as string;
+        const regRes = spawnSync('reg.exe', ['query', 'HKLM\\SOFTWARE\\Roblox\\RobloxStudio', '/v', 'Location'], { encoding: 'utf-8', timeout: 3000, windowsHide: true });
+        const regOutput: string = regRes.stdout || '';
         const match: RegExpMatchArray | null = regOutput.match(/Location\s+REG_SZ\s+(.+)/);
         if (match) {
             const launcher: string = path.join(match[1].trim(), 'RobloxPlayerLauncher.exe');
             if (fs.existsSync(launcher)) return launcher;
         }
-    } catch (e: any) { console.error('[PM] registry error:', e?.message || e); }
+    } catch (e: any) { }
 
     const candidates: string[] = [
         process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
@@ -322,26 +322,21 @@ if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Co
  *      centre belongs to the target process. Returns CAPTURE_OK only then.
  */
 /**
- * Runs a PowerShell script by writing it to a temp .ps1 and invoking it with
- * -File.
- *
- * Why not -EncodedCommand: base64 expands the script roughly 2.7x, and the
- * capture prologue is large enough that the resulting command line exceeds the
- * Windows limit (~32k), which failed with "The command line is too long."
- * A file has no such limit.
+ * Runs a PowerShell command via stdin stream using spawnSync.
+ * Avoids writing temporary scripts to disk and avoids execution policy bypass flags.
  */
 function runPowerShellScript(ps: string, timeoutMs: number): string {
-    const scriptFile = path.join(os.tmpdir(), `roblox_ps_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.ps1`);
-    // UTF-8 with BOM so PowerShell reads non-ASCII paths correctly.
-    fs.writeFileSync(scriptFile, '﻿' + ps, 'utf-8');
-    try {
-        return execSync(
-            `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptFile}"`,
-            { encoding: 'utf-8' as BufferEncoding, timeout: timeoutMs, windowsHide: true }
-        );
-    } finally {
-        try { fs.unlinkSync(scriptFile); } catch { }
+    const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'], {
+        input: ps,
+        encoding: 'utf-8',
+        timeout: timeoutMs,
+        windowsHide: true,
+        maxBuffer: 25 * 1024 * 1024,
+    });
+    if (res.error) {
+        throw res.error;
     }
+    return res.stdout || '';
 }
 function buildCapturePrologue(hwnd: string, pid: number): string {
     return `
@@ -426,7 +421,6 @@ if ($topPid -ne $targetPid) {
 
 function captureWindowPNG(hwnd: string, pid: number): string {
     if (!/^\d+$/.test(hwnd)) throw new Error("Invalid hwnd");
-    const outFile = path.join(os.tmpdir(), `roblox_ss_${Date.now()}.b64`);
     const ps = `${buildCapturePrologue(hwnd, pid)}
 $bmp = New-Object System.Drawing.Bitmap($w, $h)
 $gfx = [System.Drawing.Graphics]::FromImage($bmp)
@@ -437,27 +431,24 @@ $ms = New-Object System.IO.MemoryStream
 $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
 $bytes = $ms.ToArray(); $ms.Dispose()
 $b64 = [Convert]::ToBase64String($bytes)
-[System.IO.File]::WriteAllText('${outFile}', $b64)
-Write-Output 'CAPTURE_OK'
+Write-Output "B64_DATA:$b64"
 `;
-    try {
-        const stdout = runPowerShellScript(ps, 20000).trim();
+    const stdout = runPowerShellScript(ps, 20000).trim();
 
-        if (stdout.includes('ERR:WINDOW_GONE')) throw new Error("Roblox window closed before capture");
-        if (stdout.includes('ERR:ZERO_SIZE')) throw new Error("Roblox window has zero size (minimised?)");
-        if (stdout.includes('ERR:OCCLUDED')) {
-            throw new Error(
-                "Roblox window is covered by another application. " +
-                "Bring it to the front and retry."
-            );
-        }
-        if (!fs.existsSync(outFile)) throw new Error("Capture produced no output");
-        const result = fs.readFileSync(outFile, "utf-8").trim();
-        if (!result) throw new Error("Capture produced empty output");
-        return result;
-    } finally {
-        try { fs.unlinkSync(outFile); } catch { }
+    if (stdout.includes('ERR:WINDOW_GONE')) throw new Error("Roblox window closed before capture");
+    if (stdout.includes('ERR:ZERO_SIZE')) throw new Error("Roblox window has zero size (minimised?)");
+    if (stdout.includes('ERR:OCCLUDED')) {
+        throw new Error(
+            "Roblox window is covered by another application. " +
+            "Bring it to the front and retry."
+        );
     }
+    const marker = 'B64_DATA:';
+    const idx = stdout.indexOf(marker);
+    if (idx === -1) throw new Error("Capture produced no output");
+    const result = stdout.slice(idx + marker.length).trim();
+    if (!result) throw new Error("Capture produced empty output");
+    return result;
 }
 
 async function performScreenshot(pid?: number, outputPath?: string): Promise<ScreenshotResult> {
@@ -597,11 +588,20 @@ Write-Output "FRAMES_OK:$outFolder"
         }
 
         let hasFfmpeg = true;
-        try { require('child_process').execSync("ffmpeg -version", { stdio: 'ignore', windowsHide: true }); } catch { hasFfmpeg = false; }
+        try { spawnSync("ffmpeg", ["-version"], { stdio: 'ignore', windowsHide: true }); } catch { hasFfmpeg = false; }
 
         if (hasFfmpeg) {
             // Pad width and height to be divisible by 2 for yuv420p compliance
-            require('child_process').execSync(`ffmpeg -y -framerate ${targetFps} -i "${path.join(frameFolder, 'frame_%04d.jpg')}" -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${outFile}"`, { stdio: 'ignore', windowsHide: true });
+            spawnSync("ffmpeg", [
+                "-y",
+                "-framerate", String(targetFps),
+                "-i", path.join(frameFolder, "frame_%04d.jpg"),
+                "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-pix_fmt", "yuv420p",
+                outFile
+            ], { stdio: 'ignore', windowsHide: true });
             try { fs.rmSync(frameFolder, { recursive: true, force: true }); } catch { }
             return { pid: targetPid, filePath: outFile };
         } else {
@@ -613,9 +613,10 @@ Write-Output "FRAMES_OK:$outFolder"
 }
 
 function killProcess(pid: number): boolean {
+    if (!Number.isInteger(pid) || pid <= 0) return false;
     try {
         if (IS_WIN) {
-            execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+            spawnSync("taskkill", ["/F", "/PID", String(pid)], { stdio: 'ignore', windowsHide: true });
         } else {
             process.kill(pid, 'SIGKILL');
         }
