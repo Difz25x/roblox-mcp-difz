@@ -1,6 +1,6 @@
 {
   "name": "roblox-mcp-difz",
-  "version": "1.5.9",
+  "version": "1.6.0",
   "description": "Universal Model Context Protocol (MCP) server for Roblox game automation, debugging, telemetry, and developer tooling.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
