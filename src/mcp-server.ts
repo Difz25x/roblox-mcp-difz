@@ -1,30 +1,18 @@
 
 
 const path = require('path');
-const SDK_DIR = path.resolve(__dirname, '..', 'node_modules', '@modelcontextprotocol', 'sdk', 'dist', 'cjs');
+const { getMcpSdk, scanMcpSdk } = require('./sdk-scanner');
 
-function loadSdk() {
-  try {
-    const Server = require(path.join(SDK_DIR, 'server', 'index.js')).Server;
-    const StdioServerTransport = require(path.join(SDK_DIR, 'server', 'stdio.js')).StdioServerTransport;
-    const types = require(path.join(SDK_DIR, 'types.js'));
-    return {
-      Server, StdioServerTransport,
-      ListToolsRequestSchema: types.ListToolsRequestSchema,
-      CallToolRequestSchema: types.CallToolRequestSchema,
-      ListResourcesRequestSchema: types.ListResourcesRequestSchema,
-      ReadResourceRequestSchema: types.ReadResourceRequestSchema,
-      ListPromptsRequestSchema: types.ListPromptsRequestSchema,
-      GetPromptRequestSchema: types.GetPromptRequestSchema,
-    };
-  } catch (err) {
-    throw new Error('@modelcontextprotocol/sdk is not installed or path is incorrect. Please run: npm install');
-  }
-}
-
-const { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSchema,
-        ListResourcesRequestSchema, ReadResourceRequestSchema, ListPromptsRequestSchema,
-        GetPromptRequestSchema } = loadSdk();
+const {
+    Server,
+    StdioServerTransport,
+    ListToolsRequestSchema,
+    CallToolRequestSchema,
+    ListResourcesRequestSchema,
+    ReadResourceRequestSchema,
+    ListPromptsRequestSchema,
+    GetPromptRequestSchema
+} = getMcpSdk();
 
 const SERVER_SIDE_TOOLS = new Set([
   'list-roblox-processes',

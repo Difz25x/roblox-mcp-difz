@@ -21,6 +21,7 @@
     "bin/",
     "dist/",
     "public/",
+    "skills/",
     "README.md"
   ],
   "publishConfig": {

@@ -15,19 +15,40 @@ export function getDiscoveryPort(): number {
 export interface DiscoveryServerOptions {
     activePort: number;
     discoveryPort?: number;
-    onStopRequest?: () => Promise<void> | void;
 }
+
+// Global registry of all active discovery server instances for graceful process exit
+const activeDiscoveryInstances: Set<DiscoveryServer> = new Set();
+
+export function stopAllDiscoveryServers(): void {
+    for (const inst of activeDiscoveryInstances) {
+        try {
+            inst.stop();
+        } catch {}
+    }
+    activeDiscoveryInstances.clear();
+}
+
+// Auto-cleanup on process termination
+process.on('exit', () => {
+    stopAllDiscoveryServers();
+});
+process.on('SIGTERM', () => {
+    stopAllDiscoveryServers();
+});
+process.on('SIGINT', () => {
+    stopAllDiscoveryServers();
+});
 
 export class DiscoveryServer {
     private server: http.Server | null = null;
     private activePort: number;
     private discoveryPort: number;
-    private onStopRequest?: () => Promise<void> | void;
+    private sockets: Set<any> = new Set();
 
     constructor(opts: DiscoveryServerOptions) {
         this.activePort = opts.activePort;
         this.discoveryPort = opts.discoveryPort || getDiscoveryPort();
-        this.onStopRequest = opts.onStopRequest;
     }
 
     public updateActivePort(port: number): void {
@@ -62,7 +83,7 @@ export class DiscoveryServer {
 
             const parsedUrl = req.url ? req.url.split('?')[0] : '/';
 
-            // 1. Port discovery endpoint
+            // 1. Port discovery endpoint (mcp.lua and clients use this to discover active port)
             if (parsedUrl === '/port' || parsedUrl === '/discovery' || parsedUrl === '/api/port') {
                 const payload = JSON.stringify({
                     success: true,
@@ -78,27 +99,7 @@ export class DiscoveryServer {
                 return;
             }
 
-            // 2. Remote stop endpoint
-            if (parsedUrl === '/stop' || parsedUrl === '/api/stop') {
-                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({
-                    success: true,
-                    message: `Host server on port ${this.activePort} is shutting down...`,
-                    pid: process.pid,
-                }));
-
-                setTimeout(async () => {
-                    console.log(`\n  \x1b[33m⚡ Stop signal received via discovery port (${this.discoveryPort}). Shutting down (PID ${process.pid})...\x1b[0m`);
-                    if (this.onStopRequest) {
-                        try { await this.onStopRequest(); } catch {}
-                    }
-                    this.stop();
-                    process.exit(0);
-                }, 300);
-                return;
-            }
-
-            // 3. Serve mcp.lua with dynamically injected active port
+            // 2. Serve mcp.lua with dynamically injected active port
             if (parsedUrl === '/mcp.lua' || parsedUrl === '/mcp.luau') {
                 try {
                     if (fs.existsSync(mcpLuaPath)) {
@@ -117,7 +118,7 @@ export class DiscoveryServer {
                 return;
             }
 
-            // Fallback status response
+            // Fallback status response (Notice: NO /stop endpoint here — lifecycle tied strictly to roblox-mcp)
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({
                 name: 'roblox-mcp-discovery-router',
@@ -127,6 +128,16 @@ export class DiscoveryServer {
                 pid: process.pid,
             }));
         });
+
+        // Track all incoming sockets to destroy them immediately upon server stop
+        this.server.on('connection', (socket) => {
+            this.sockets.add(socket);
+            socket.on('close', () => {
+                this.sockets.delete(socket);
+            });
+        });
+
+        activeDiscoveryInstances.add(this);
 
         return new Promise((resolve) => {
             this.server?.once('error', (err: any) => {
@@ -141,9 +152,27 @@ export class DiscoveryServer {
     }
 
     public stop(): void {
+        activeDiscoveryInstances.delete(this);
+
+        // Instantly destroy all open client keep-alive sockets
+        for (const socket of this.sockets) {
+            try {
+                socket.destroy();
+            } catch {}
+        }
+        this.sockets.clear();
+
         if (this.server) {
-            try { this.server.close(); } catch {}
+            try {
+                if (typeof (this.server as any).closeAllConnections === 'function') {
+                    (this.server as any).closeAllConnections();
+                }
+            } catch {}
+            try {
+                this.server.close();
+            } catch {}
             this.server = null;
         }
     }
 }
+

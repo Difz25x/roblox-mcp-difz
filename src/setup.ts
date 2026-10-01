@@ -3,6 +3,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const readline = require('readline');
+const { installSkillToTarget } = require('./skill-installer');
 
 const HOME = process.env.USERPROFILE || process.env.HOME || '';
 const CWD = process.cwd();
@@ -51,19 +52,25 @@ interface PlatformDef {
 const PLATFORMS: Record<string, PlatformDef> = {
     'claude-code': {
         name: 'Claude Code', icon: '🤖',
-        instructions: 'Registered via claude mcp add (HTTP).',
+        instructions: 'Registered via claude mcp add (HTTP) + skill deployed to ~/.claude/skills/roblox-mcp.',
         setup: async () => {
             removeServerFromJson(path.join(HOME, '.mcp.json'), 'roblox-mcp-difz');
             try {
                 const cmd = `claude mcp add roblox-mcp-difz -s user --transport http http://localhost:${MCP_PORT}/mcp`;
                 const result = execSync(cmd, { stdio: 'pipe', timeout: 15000, windowsHide: true });
                 console.log(`     ${result.toString().trim().split('\n').pop()}`);
-                return undefined;
             } catch (err: any) {
                 const msg = err.stderr?.toString() || err.message || '';
-                if (msg.includes('already exists') || msg.includes('Added')) return undefined;
-                throw new Error(msg.trim());
+                if (!msg.includes('already exists') && !msg.includes('Added')) {
+                    throw new Error(msg.trim());
+                }
             }
+            // Deploy skill
+            try {
+                installSkillToTarget('claude-code-global');
+                installSkillToTarget('claude-code-project');
+            } catch {}
+            return undefined;
         },
     },
     'claude-desktop': {
@@ -77,21 +84,35 @@ const PLATFORMS: Record<string, PlatformDef> = {
     },
     'cursor': {
         name: 'Cursor', icon: '🔷',
-        instructions: 'Restart Cursor IDE.',
-        setup: async () => writeConfigFile(
-            path.join(HOME, '.cursor'),
-            path.join(HOME, '.cursor', 'mcp.json'),
-            HTTP_CONFIG,
-        ),
+        instructions: 'Restart Cursor IDE + rules added to .cursor/rules/roblox-mcp.mdc.',
+        setup: async () => {
+            const res = writeConfigFile(
+                path.join(HOME, '.cursor'),
+                path.join(HOME, '.cursor', 'mcp.json'),
+                HTTP_CONFIG,
+            );
+            try {
+                installSkillToTarget('cursor-project');
+                installSkillToTarget('cursor-global');
+            } catch {}
+            return res;
+        },
     },
     'windsurf': {
         name: 'Windsurf', icon: '🏄',
-        instructions: 'Restart Windsurf.',
-        setup: async () => writeConfigFile(
-            path.join(HOME, '.windsurf'),
-            path.join(HOME, '.windsurf', 'mcp_config.json'),
-            HTTP_CONFIG,
-        ),
+        instructions: 'Restart Windsurf + rules added to .windsurf/rules/roblox-mcp.md.',
+        setup: async () => {
+            const res = writeConfigFile(
+                path.join(HOME, '.windsurf'),
+                path.join(HOME, '.windsurf', 'mcp_config.json'),
+                HTTP_CONFIG,
+            );
+            try {
+                installSkillToTarget('windsurf-project');
+                installSkillToTarget('windsurf-global');
+            } catch {}
+            return res;
+        },
     },
     'vscode': {
         name: 'VS Code (Cline / Continue)', icon: '📝',

@@ -455,7 +455,7 @@ function showPostStartMenu(port: number, pid: number): void {
             icon: '⏹️',
             description: 'Shutdown and exit',
             action: async () => {
-                cleanupPidFile();
+                cleanupAll();
                 console.log(`  \x1b[2mStopped.\x1b[0m`);
                 process.exit(0);
             },
@@ -532,14 +532,19 @@ async function hideInTray(port: number, oldPid: number): Promise<void> {
     try {
         _isHandingOverToDaemon = true;
 
-        // Close the current server so the daemon can bind to the port
+        // Close the current server and discovery router so the daemon can bind to both ports
+        if (_discoveryServer) {
+            try { _discoveryServer.stop(); } catch {}
+            _discoveryServer = null;
+        }
+
         if (_activeServer) {
             await new Promise<void>(resolve => {
                 // Force close all idle and active connections immediately (Node 18+)
                 if (typeof _activeServer.closeAllConnections === 'function') {
                     _activeServer.closeAllConnections();
                 }
-                
+
                 // Fallback timeout in case close takes too long
                 const timeout = setTimeout(() => {
                     resolve();
@@ -626,8 +631,13 @@ async function startTray(port: number, pid: number): Promise<void> {
             }
         }
         if (action.item === itemStop) {
-            cleanupPidFile();
-            systray.kill(false);
+            cleanupAll();
+            const discPort = getDiscoveryPort();
+            const discPid = getPidOnPort(discPort);
+            if (discPid && discPid !== process.pid) {
+                killProcessByPid(discPid);
+            }
+            try { systray.kill(false); } catch {}
             process.exit(0);
         }
     });
@@ -682,11 +692,24 @@ function cleanupPidFile(): void {
     try { fs.unlinkSync(PID_FILE); } catch {}
 }
 
-// ── Setup ───────────────────────────────────────────
+// ── Setup & Diagnostics ──────────────────────────────
 
 async function cmdSetup(): Promise<void> {
     const { runSetupWizard } = require('./setup');
     await runSetupWizard(null);
+}
+
+async function cmdSkill(specificTarget?: string): Promise<void> {
+    const { runSkillInstallerWizard } = require('./skill-installer');
+    await runSkillInstallerWizard(specificTarget || null);
+}
+
+async function cmdSdkDoctor(): Promise<void> {
+    const { scanMcpSdk, formatSdkReport } = require('./sdk-scanner');
+    console.log('\n  \x1b[1;36mScanning @modelcontextprotocol/sdk & runtime environment...\x1b[0m\n');
+    const diag = scanMcpSdk(true);
+    console.log(formatSdkReport(diag));
+    console.log('');
 }
 
 // ── Main menu ───────────────────────────────────────
@@ -843,6 +866,18 @@ function showInteractiveMenu(): Promise<void> {
                 action: cmdSetup,
             },
             {
+                label: 'Deploy AI Skill',
+                icon: '🧠',
+                description: 'Install roblox-mcp skill to Claude / Cursor / Windsurf',
+                action: async () => { await cmdSkill(); },
+            },
+            {
+                label: 'Diagnose MCP SDK',
+                icon: '🩺',
+                description: 'Scan @modelcontextprotocol/sdk health',
+                action: cmdSdkDoctor,
+            },
+            {
                 label: 'Manage Processes',
                 icon: '🛠️',
                 description: 'Restart or kill Roblox',
@@ -951,18 +986,33 @@ async function main(): Promise<void> {
     if (cmd === 'daemon') { await cmdStart(true); return; }
     if (cmd === 'stdio') { await cmdStdio(); return; }
     if (cmd === 'setup') { await cmdSetup(); return; }
+    if (cmd === 'skill' || cmd === 'add-skill' || cmd === 'install-skill') { await cmdSkill(args[1]); return; }
     if (cmd === 'update') { await cmdUpdate(); return; }
     if (cmd === 'stop') { await cmdStop(); return; }
+    if (cmd === 'sdk' || cmd === 'doctor') { await cmdSdkDoctor(); return; }
 
     console.log(`  \x1b[33m⚠ Unknown: "${cmd}"\x1b[0m`);
-    console.log(`  \x1b[2mAvailable: start, stdio, setup, update, stop\x1b[0m\n`);
+    console.log(`  \x1b[2mAvailable: start, stdio, setup, skill, sdk, doctor, update, stop\x1b[0m\n`);
     await showInteractiveMenu();
 }
 
-// Cleanup PID file on exit
-process.on('exit', () => { if (!_isHandingOverToDaemon) cleanupPidFile(); });
-process.on('SIGTERM', () => { if (!_isHandingOverToDaemon) cleanupPidFile(); process.exit(0); });
-process.on('SIGINT', () => { if (!_isHandingOverToDaemon) cleanupPidFile(); process.exit(0); });
+function cleanupAll(): void {
+    if (_isHandingOverToDaemon) return;
+    cleanupPidFile();
+    if (_discoveryServer) {
+        try { _discoveryServer.stop(); } catch {}
+        _discoveryServer = null;
+    }
+    if (_activeServer) {
+        try { _activeServer.close(); } catch {}
+        _activeServer = null;
+    }
+}
+
+// Cleanup PID file and background discovery servers on exit
+process.on('exit', () => { cleanupAll(); });
+process.on('SIGTERM', () => { cleanupAll(); process.exit(0); });
+process.on('SIGINT', () => { cleanupAll(); process.exit(0); });
 
 main().catch((err: any) => {
     showCursor();

@@ -91,6 +91,11 @@ async function fetchTelemetry() {
             statusChip.className = 'brand-status-chip online';
             statusChip.innerText = 'ONLINE';
         }
+
+        // 6. MCP SDK Telemetry
+        if (data.mcpSdk) {
+            updateSdkDisplay(data.mcpSdk);
+        }
     } catch {
         const statusChip = document.getElementById('brand-status-chip');
         if (statusChip) {
@@ -695,6 +700,35 @@ async function shutdownServer() {
     }
 }
 
+function updateSdkDisplay(diag) {
+    if (!diag) return;
+    const elVer = document.getElementById('ops-sdk-version');
+    const elProt = document.getElementById('ops-sdk-protocol');
+    const elStrat = document.getElementById('ops-sdk-strategy');
+    const elSummary = document.getElementById('ops-sdk-summary');
+
+    if (elVer) elVer.innerText = `v${diag.version || '1.30.0'}`;
+    if (elProt) elProt.innerText = diag.latestProtocolVersion || '2025-11-25';
+    if (elStrat) elStrat.innerText = diag.resolvedStrategy ? diag.resolvedStrategy.replace('-', ' ').toUpperCase() : 'STANDARD EXPORTS';
+    if (elSummary) {
+        elSummary.innerText = diag.available
+            ? `Verified ${diag.availableSchemas ? diag.availableSchemas.length : 40} protocol schemas. Engine operational.`
+            : `Warning: ${diag.warnings ? diag.warnings.join('; ') : 'Check SDK installation'}`;
+    }
+}
+
+async function runSdkScan() {
+    notify('SCANNING MCP SDK ENVIRONMENT...');
+    try {
+        const res = await fetch('/api/mcp/sdk');
+        const data = await res.json();
+        updateSdkDisplay(data);
+        notify(`MCP SDK v${data.version || ''} VERIFIED (${data.scanDurationMs || 0}ms)`);
+    } catch (err) {
+        notify('SDK SCAN ERROR: ' + err.message);
+    }
+}
+
 // ==========================================================================
 // MODAL & LOADER INJECTION ACTIONS
 // ==========================================================================
@@ -728,12 +762,100 @@ function copyLoader(type) {
 }
 
 // ==========================================================================
+// AI SKILL DEPLOYMENT & COPY ACTIONS
+// ==========================================================================
+function openSkillModal() {
+    const modal = document.getElementById('skill-modal');
+    if (modal) modal.classList.add('open');
+}
+
+function closeSkillModal(e) {
+    if (e && e.target && e.target !== e.currentTarget && !e.target.closest('.modal-close-btn')) {
+        return;
+    }
+    const modal = document.getElementById('skill-modal');
+    if (modal) modal.classList.remove('open');
+}
+
+async function deploySkillTarget(targetId) {
+    notify(`DEPLOYING SKILL TO ${targetId.toUpperCase()}...`);
+    const feedback = document.getElementById('skill-deploy-feedback');
+    if (feedback) feedback.innerText = `Deploying to ${targetId}...`;
+
+    try {
+        const res = await fetch('/api/skill/install', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targets: [targetId] })
+        });
+        const data = await res.json();
+        if (data.success && data.results && data.results[0] && data.results[0].success) {
+            notify(`SKILL DEPLOYED: ${data.results[0].name}`);
+            if (feedback) feedback.innerText = `Successfully deployed to ${data.results[0].destinationPath}`;
+        } else {
+            const err = data.results?.[0]?.error || 'Deployment failed';
+            notify(`DEPLOY ERROR: ${err}`);
+            if (feedback) feedback.innerText = `Error: ${err}`;
+        }
+    } catch (err) {
+        notify(`DEPLOY ERROR: ${err.message}`);
+        if (feedback) feedback.innerText = `Error: ${err.message}`;
+    }
+}
+
+async function deployAllSkillTargets() {
+    notify('DEPLOYING SKILL TO ALL TARGETS...');
+    const feedback = document.getElementById('skill-deploy-feedback');
+    if (feedback) feedback.innerText = 'Deploying to Claude Code, Cursor, and Windsurf...';
+
+    try {
+        const targets = ['claude-code-global', 'cursor-project', 'windsurf-project'];
+        const res = await fetch('/api/skill/install', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targets })
+        });
+        const data = await res.json();
+        if (data.success) {
+            notify(`SKILL DEPLOYED TO ${data.count || 0} TARGETS`);
+            if (feedback) feedback.innerText = `Successfully deployed to ${data.count} AI target configurations!`;
+        } else {
+            notify('DEPLOY FAILED');
+            if (feedback) feedback.innerText = 'Failed to deploy to all targets.';
+        }
+    } catch (err) {
+        notify(`DEPLOY ERROR: ${err.message}`);
+        if (feedback) feedback.innerText = `Error: ${err.message}`;
+    }
+}
+
+async function copySkillMarkdown() {
+    notify('FETCHING SKILL MARKDOWN...');
+    try {
+        const res = await fetch('/api/skill');
+        const data = await res.json();
+        if (data.markdown) {
+            navigator.clipboard.writeText(data.markdown).then(() => {
+                notify('ROBLOX-MCP SKILL MARKDOWN COPIED!');
+                const feedback = document.getElementById('skill-deploy-feedback');
+                if (feedback) feedback.innerText = 'SKILL.md copied to clipboard. You can paste it into any AI system.';
+            }).catch(() => {
+                prompt('Copy SKILL.md content:', data.markdown.slice(0, 100) + '...');
+            });
+        }
+    } catch (err) {
+        notify(`FETCH ERROR: ${err.message}`);
+    }
+}
+
+// ==========================================================================
 // KEYBOARD COMMAND DISPATCHER
 // ==========================================================================
 window.addEventListener('keydown', (e) => {
     // Escape closes modals and screenshot stage
     if (e.key === 'Escape') {
         closeLoaderModal();
+        closeSkillModal();
         closeScreenshotStage();
         return;
     }

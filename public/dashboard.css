@@ -433,8 +433,7 @@ body, button, input, select, textarea, pre, code, .tnum {
     font-size: 16px;
     font-weight: 700;
     color: var(--text-primary);
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+    letter-spacing: 0.01em;
 }
 
 .view-subtitle {
@@ -1030,8 +1029,7 @@ body, button, input, select, textarea, pre, code, .tnum {
     font-size: 13px;
     font-weight: 700;
     color: var(--text-primary);
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+    letter-spacing: 0.01em;
 }
 
 .port-stat-row {
@@ -1176,8 +1174,7 @@ body, button, input, select, textarea, pre, code, .tnum {
     font-size: 13px;
     font-weight: 700;
     color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
 }
 
 .ops-card-desc {
@@ -1233,8 +1230,7 @@ body, button, input, select, textarea, pre, code, .tnum {
     font-size: 13px;
     font-weight: 700;
     color: var(--text-primary);
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+    letter-spacing: 0.01em;
 }
 
 .modal-close-btn {

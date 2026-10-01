@@ -15,6 +15,9 @@ const { ToolDefinitions: ToolDefinitionsCls } = require('./tool-definitions');
 const { SessionManager: SessionManagerCls } = require('./session-manager');
 const { WsServer: WsServerCls } = require('./ws-server');
 const processManager = require('./process-manager');
+const { scanMcpSdk } = require('./sdk-scanner');
+const { stopAllDiscoveryServers } = require('./discovery-server');
+const { getSkillContent, SKILL_TARGETS, installSkillToTargets } = require('./skill-installer');
 
 type QueueManager = InstanceType<typeof QueueManagerCls>;
 type ToolDefinitions = InstanceType<typeof ToolDefinitionsCls>;
@@ -158,6 +161,9 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         res.json({ success: true, message: 'Server stopping...', pid: process.pid });
         setTimeout(() => {
             console.log(`\n  \x1b[33m⚡ Stop signal received via HTTP. Shutting down (PID ${process.pid})...\x1b[0m`);
+            try {
+                stopAllDiscoveryServers();
+            } catch {}
             process.exit(0);
         }, 300);
     };
@@ -165,6 +171,42 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     app.post('/stop', handleStop);
     app.get('/api/stop', handleStop);
     app.post('/api/stop', handleStop);
+
+    // AI Skill Integration Endpoints
+    app.get('/api/skill', (_req: Request, res: Response): void => {
+        res.json({
+            success: true,
+            markdown: getSkillContent(),
+            filename: 'SKILL.md',
+            skillName: 'roblox-mcp',
+        });
+    });
+
+    app.get('/api/skill/targets', (_req: Request, res: Response): void => {
+        res.json({
+            success: true,
+            targets: Object.keys(SKILL_TARGETS).map(k => ({
+                id: SKILL_TARGETS[k].id,
+                name: SKILL_TARGETS[k].name,
+                icon: SKILL_TARGETS[k].icon,
+                type: SKILL_TARGETS[k].type,
+                description: SKILL_TARGETS[k].description,
+            })),
+        });
+    });
+
+    app.post('/api/skill/install', (req: Request, res: Response): void => {
+        const { targets } = req.body || {};
+        const chosen = Array.isArray(targets) && targets.length > 0
+            ? targets
+            : ['claude-code-global', 'claude-code-project', 'cursor-project'];
+        const results = installSkillToTargets(chosen);
+        res.json({
+            success: true,
+            results,
+            count: results.filter((r: any) => r.success).length,
+        });
+    });
 
     if (fs.existsSync(publicDir)) app.use(express.static(publicDir));
 
@@ -564,7 +606,12 @@ function createApp(opts?: CreateAppOptions): AppComponents {
                 },
                 list: enriched,
             },
+            mcpSdk: scanMcpSdk(),
         });
+    });
+
+    app.get('/api/mcp/sdk', (_req: Request, res: Response): void => {
+        res.json(scanMcpSdk());
     });
 
     if (IS_VERBOSE) {
