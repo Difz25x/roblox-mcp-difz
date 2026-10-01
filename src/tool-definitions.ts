@@ -169,15 +169,19 @@ class ToolDefinitions {
                 inputSchema: {
                     type: "object",
                     properties: {
-                        target_type: { type: "string", enum: ["coordinates", "player", "instance", "mouse"], description: "Type of teleport target." },
-                        target_name: { type: "string", description: "Name of target player or instance." },
+                        target_type: { type: "string", enum: ["coordinates", "player", "instance", "mouse"], description: "Type of teleport target (optional - auto-detected if coordinates/target_name/player is given)." },
+                        target_name: { type: "string", description: "Name of target player, part, or instance (also accepts target_part, player)." },
+                        target_part: { type: "string", description: "Path to target part or instance." },
+                        player: { type: "string", description: "Target player name." },
                         coordinates: {
                             type: "object",
                             properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" } },
                             description: "Target coordinates for coordinate-based teleport."
-                        }
-                    },
-                    required: ["target_type"]
+                        },
+                        x: { type: "number", description: "Target X coordinate." },
+                        y: { type: "number", description: "Target Y coordinate." },
+                        z: { type: "number", description: "Target Z coordinate." }
+                    }
                 }
             },
             {
@@ -331,10 +335,10 @@ class ToolDefinitions {
                 inputSchema: {
                     type: "object",
                     properties: {
-                        target_path: { type: "string", description: "Path to instance whose children should be inspected." },
+                        target_path: { type: "string", description: "Path to instance whose children should be inspected (also accepts path, instance_path, target_part)." },
+                        path: { type: "string", description: "Alias for target_path." },
                         duration_ms: { type: "number", description: "Milliseconds to watch for added/removed children." }
-                    },
-                    required: ["target_path"]
+                    }
                 }
             },
             {
@@ -431,10 +435,10 @@ class ToolDefinitions {
                 inputSchema: {
                     type: "object",
                     properties: {
-                        instance_path: { type: "string", description: "Path to target instance." },
+                        instance_path: { type: "string", description: "Path to target instance (also accepts target_path, path, or target_part)." },
+                        target_path: { type: "string", description: "Alias for instance_path." },
                         property_list: { type: "array", items: { type: "string" }, description: "Array of property names to read." }
-                    },
-                    required: ["instance_path"]
+                    }
                 }
             },
             {
@@ -443,10 +447,10 @@ class ToolDefinitions {
                 inputSchema: {
                     type: "object",
                     properties: {
-                        target_path: { type: "string", description: "Path to target instance." },
-                        property_map: { type: "string", description: "JSON string of property values (e.g. '{\"Transparency\":0.5}')." }
-                    },
-                    required: ["target_path"]
+                        target_path: { type: "string", description: "Path to target instance (also accepts instance_path or path)." },
+                        instance_path: { type: "string", description: "Alias for target_path." },
+                        property_map: { type: "string", description: "JSON string or object of property values (e.g. '{\"Transparency\":0.5}')." }
+                    }
                 }
             },
             {
@@ -515,9 +519,9 @@ class ToolDefinitions {
                 inputSchema: {
                     type: "object",
                     properties: {
-                        path: { type: "string", description: "Full path to GuiButton instance." }
-                    },
-                    required: ["path"]
+                        path: { type: "string", description: "Full path to GuiButton instance (also accepts target_path, target_part)." },
+                        target_path: { type: "string", description: "Alias for path." }
+                    }
                 }
             },
             {
@@ -715,9 +719,10 @@ class ToolDefinitions {
                 inputSchema: {
                     type: "object",
                     properties: {
-                        target_path: { type: "string", description: "Path to Script or ModuleScript." }
-                    },
-                    required: ["target_path"]
+                        target_path: { type: "string", description: "Path to Script or ModuleScript (also accepts script_path, path, or instance_path)." },
+                        script_path: { type: "string", description: "Path to Script or ModuleScript." },
+                        decompile: { type: "boolean", description: "Whether to decompile the script to source code (defaults to true)." }
+                    }
                 }
             },
             {
@@ -974,11 +979,11 @@ class ToolDefinitions {
             },
             {
                 name: "launch-roblox",
-                description: "Launch the Roblox Player desktop application.",
+                description: "Launch the Roblox Player desktop application or client.",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        path: { type: "string", description: "Optional custom path to RobloxPlayerLauncher.exe." }
+                        path: { type: "string", description: "Optional custom path to Roblox executable or launcher." }
                     }
                 }
             },
@@ -1008,12 +1013,13 @@ class ToolDefinitions {
             },
             {
                 name: "record-roblox-video",
-                description: "Record a 30 FPS MP4 video of a Roblox window for a duration of seconds.",
+                description: "Record an MP4 video of a Roblox window for a duration of seconds at custom FPS (default 30).",
                 inputSchema: {
                     type: "object",
                     properties: {
                         pid: { type: "number", description: "PID of Roblox process to record." },
                         duration_seconds: { type: "number", description: "Recording duration in seconds (max 30)." },
+                        fps: { type: "number", description: "Frames per second for recording (1-60, default 30)." },
                         output_path: { type: "string", description: "Destination file path for the MP4. Defaults to the OS temp folder." }
                     }
                 }
@@ -1073,4 +1079,149 @@ class ToolDefinitions {
     }
 }
 
-module.exports = { ToolDefinitions };
+/**
+ * Universally normalizes tool arguments across any AI model / client quirks.
+ * Handles camelCase <-> snake_case, path aliases (script_path, target_path, target_part, path),
+ * code/script aliases, player aliases, coordinates, remote arguments, and property maps.
+ */
+function normalizeToolArguments(rawArgs: any): Record<string, any> {
+    if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) {
+        return rawArgs || {};
+    }
+
+    const args: Record<string, any> = { ...rawArgs };
+
+    // 1. camelCase <-> snake_case bidirectional automatic aliasing
+    for (const key of Object.keys(rawArgs)) {
+        const val = rawArgs[key];
+        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        if (snakeKey !== key && args[snakeKey] === undefined) {
+            args[snakeKey] = val;
+        }
+        const camelKey = key.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+        if (camelKey !== key && args[camelKey] === undefined) {
+            args[camelKey] = val;
+        }
+    }
+
+    // 2. Universal Path & Target Aliasing (supports decompile, inspect, properties, children, buttons, etc.)
+    const anyPath =
+        args.target_path || args.script_path || args.instance_path ||
+        args.target_part || args.part_path || args.path ||
+        args.target || args.instance || args.part || args.object_path ||
+        (typeof args.script === 'string' && (args.script.includes('.') || args.script.includes('/')) ? args.script : undefined);
+
+    if (anyPath && typeof anyPath === 'string') {
+        const clean = anyPath.trim();
+        if (!args.target_path) args.target_path = clean;
+        if (!args.script_path) args.script_path = clean;
+        if (!args.instance_path) args.instance_path = clean;
+        if (!args.target_part) args.target_part = clean;
+        if (!args.path) args.path = clean;
+        if (!args.target) args.target = clean;
+        if (!args.instance) args.instance = clean;
+        if (!args.part_path) args.part_path = clean;
+    }
+
+    // Single path to array of paths & vice versa
+    if (args.target_path && !args.target_paths) {
+        args.target_paths = [args.target_path];
+    } else if (Array.isArray(args.target_paths) && args.target_paths.length > 0 && !args.target_path) {
+        args.target_path = String(args.target_paths[0]);
+    }
+
+    // 3. Script / Code content
+    const codeCandidate = args.code || args.script_code || args.source || args.content || args.lua || args.luau ||
+        (typeof args.script === 'string' && !args.script.includes('.') ? args.script : undefined);
+    if (codeCandidate && typeof codeCandidate === 'string') {
+        if (!args.code) args.code = codeCandidate;
+        if (!args.script) args.script = codeCandidate;
+        if (!args.source) args.source = codeCandidate;
+        if (!args.content) args.content = codeCandidate;
+    }
+
+    // 4. Remote Event / Function paths & arguments
+    const remoteCandidate = args.remote_path || args.remote;
+    if (remoteCandidate && typeof remoteCandidate === 'string') {
+        if (!args.remote_path) args.remote_path = remoteCandidate;
+        if (!args.remote) args.remote = remoteCandidate;
+        if (!args.path) args.path = remoteCandidate;
+    }
+    const remoteArgs = args.arguments !== undefined ? args.arguments : args.args;
+    if (remoteArgs !== undefined) {
+        if (args.arguments === undefined) args.arguments = remoteArgs;
+        if (args.args === undefined) args.args = remoteArgs;
+    }
+
+    // 5. Properties & Property Maps
+    const propMapCandidate = args.property_map || args.properties || args.props || args.map;
+    if (propMapCandidate !== undefined) {
+        const serialized = typeof propMapCandidate === 'object' ? JSON.stringify(propMapCandidate) : String(propMapCandidate);
+        if (!args.property_map) args.property_map = serialized;
+        if (!args.properties) args.properties = serialized;
+        if (!args.props) args.props = serialized;
+    }
+    const propNameCandidate = args.property_name || args.property || args.prop;
+    if (propNameCandidate && typeof propNameCandidate === 'string') {
+        if (!args.property_name) args.property_name = propNameCandidate;
+        if (!args.property) args.property = propNameCandidate;
+    }
+    const propValCandidate = args.property_value !== undefined ? args.property_value : args.value;
+    if (propValCandidate !== undefined) {
+        if (args.property_value === undefined) args.property_value = propValCandidate;
+        if (args.value === undefined) args.value = propValCandidate;
+    }
+
+    // 6. Player Name / Target
+    const playerCandidate = args.player_name || args.player || args.target_player || args.username || args.user;
+    if (playerCandidate && typeof playerCandidate === 'string') {
+        if (!args.player_name) args.player_name = playerCandidate;
+        if (!args.player) args.player = playerCandidate;
+        if (!args.target_name) args.target_name = playerCandidate;
+    }
+
+    // 7. Teleport Smart Targets & Coordinates
+    if (!args.target_type) {
+        if (args.coordinates || (args.x !== undefined && args.y !== undefined && args.z !== undefined)) {
+            args.target_type = 'coordinates';
+        } else if (args.player || args.player_name) {
+            args.target_type = 'player';
+            args.target_name = args.player || args.player_name;
+        } else if (args.target_part || args.target_path || args.part) {
+            args.target_type = 'instance';
+            args.target_name = args.target_part || args.target_path || args.part;
+        }
+    }
+    if (!args.coordinates && args.x !== undefined && args.y !== undefined && args.z !== undefined) {
+        args.coordinates = { x: Number(args.x), y: Number(args.y), z: Number(args.z) };
+    }
+
+    // 8. Key / Text inputs
+    const keyCandidate = args.key_code || args.key || args.keyCode;
+    if (keyCandidate && typeof keyCandidate === 'string') {
+        if (!args.key_code) args.key_code = keyCandidate;
+        if (!args.key) args.key = keyCandidate;
+    }
+    const textCandidate = args.text || args.message || args.msg;
+    if (textCandidate && typeof textCandidate === 'string') {
+        if (!args.text) args.text = textCandidate;
+        if (!args.message) args.message = textCandidate;
+    }
+
+    // 9. Worker & PID aliases
+    const workerCandidate = args.workerId || args.worker_id || args.sessionId || args.session_id || args.worker || args.session;
+    if (workerCandidate && typeof workerCandidate === 'string') {
+        if (!args.workerId) args.workerId = workerCandidate;
+        if (!args.worker_id) args.worker_id = workerCandidate;
+    }
+    const pidCandidate = args.pid !== undefined ? args.pid : (args.process_id !== undefined ? args.process_id : args.processId);
+    if (pidCandidate !== undefined) {
+        if (args.pid === undefined) args.pid = Number(pidCandidate);
+        if (args.process_id === undefined) args.process_id = Number(pidCandidate);
+    }
+
+    return args;
+}
+
+export { ToolDefinitions, normalizeToolArguments };
+module.exports = { ToolDefinitions, normalizeToolArguments };

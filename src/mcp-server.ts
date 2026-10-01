@@ -45,8 +45,10 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: tools.getTools() }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
-    const { name, arguments: args } = request.params;
+    const { name, arguments: rawArgs } = request.params;
     if (!tools.getTool(name)) throw new Error(`Unknown tool: ${name}`);
+    const { normalizeToolArguments } = require('./tool-definitions');
+    const args = normalizeToolArguments(rawArgs);
     try {
       if (SERVER_SIDE_TOOLS.has(name)) {
         const sr = await runServerTool(name, args || {}, proc, sessions);
@@ -186,8 +188,16 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
     }
     case 'launch-roblox': return proc.launchRoblox(args?.path || null);
     case 'open-roblox-game': {
-        if (!args?.place_id) return { success: false, error: "place_id is required" };
-        return proc.openGame(args.place_id, args || {});
+        const placeId = args?.place_id || args?.placeId;
+        if (!placeId) return { success: false, error: "place_id is required" };
+        return proc.openGame(placeId, {
+            jobId: args?.job_id || args?.jobId,
+            privateServerLinkCode: args?.private_server_link_code || args?.privateServerLinkCode,
+            browserTrackerId: args?.browser_tracker_id || args?.browserTrackerId,
+            launchTime: args?.launch_time || args?.launchTime,
+            launchMode: args?.launch_mode || args?.launchMode,
+            authTicket: args?.auth_ticket || args?.authTicket,
+        });
     }
     case 'take-screenshot': {
         const ss = await proc.performScreenshot(
@@ -203,7 +213,8 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
         const vd = await proc.recordVideo(
             args?.pid ? Number(args.pid) : undefined,
             args?.duration_seconds ? Number(args.duration_seconds) : 5,
-            args?.output_path || undefined
+            args?.output_path || undefined,
+            args?.fps ? Number(args.fps) : 30
         );
         if (vd.error) return { success: false, error: vd.error };
         if (vd.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: vd.windows };

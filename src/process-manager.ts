@@ -28,8 +28,13 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
         if (IS_WIN) {
             const psRes = spawnSync(
                 'powershell.exe',
-                ['-NoProfile', '-NonInteractive', '-Command', "Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Select-Object Id, MainWindowTitle, WorkingSet64 | ConvertTo-Json -Compress"],
-                { encoding: 'utf-8', timeout: 3000, windowsHide: true }
+                [
+                    '-NoProfile',
+                    '-NonInteractive',
+                    '-Command',
+                    "Get-Process | Where-Object { ($_.ProcessName -like '*Roblox*' -or $_.ProcessName -eq 'Bloxstrap') -and $_.ProcessName -notlike '*CrashHandler*' } | Select-Object Id, ProcessName, MainWindowTitle, WorkingSet64 | ConvertTo-Json -Compress"
+                ],
+                { encoding: 'utf-8', timeout: 3500, windowsHide: true }
             );
             output = (psRes.stdout || '').trim();
 
@@ -40,12 +45,38 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
                     if (p.Id) {
                         results.push({
                             pid: p.Id,
-                            name: ROBLOX_PROCESS,
-                            windowTitle: p.MainWindowTitle || '',
+                            name: p.ProcessName || ROBLOX_PROCESS,
+                            windowTitle: p.MainWindowTitle || 'Roblox Window',
                             memoryMB: Math.round((p.WorkingSet64 || 0) / 1048576)
                         });
                     }
                 }
+            }
+
+            // Fallback via tasklist if PowerShell returned no processes or failed
+            if (results.length === 0) {
+                try {
+                    const taskRes = spawnSync('tasklist.exe', ['/FO', 'CSV', '/NH'], { encoding: 'utf-8', timeout: 3000, windowsHide: true });
+                    const lines: string[] = (taskRes.stdout || '').split('\n');
+                    for (const line of lines) {
+                        const parts = line.split('","').map((s: string) => s.replace(/^"|"$/g, '').trim());
+                        if (parts.length < 5) continue;
+                        const imgName = parts[0] || '';
+                        const imgLower = imgName.toLowerCase();
+                        if ((imgLower.includes('roblox') || imgLower.includes('bloxstrap')) && !imgLower.includes('crashhandler')) {
+                            const pid = parseInt(parts[1], 10);
+                            if (!pid || isNaN(pid)) continue;
+                            const memStr = parts[4] || '0';
+                            const memKB = parseInt(memStr.replace(/[^0-9]/g, ''), 10) || 0;
+                            results.push({
+                                pid,
+                                name: imgName.replace(/\.exe$/i, ''),
+                                windowTitle: 'Roblox Window',
+                                memoryMB: Math.round(memKB / 1024)
+                            });
+                        }
+                    }
+                } catch {}
             }
         } else {
             const psRes = spawnSync("ps", ["aux"], { encoding: 'utf-8', timeout: 3000 });
@@ -58,8 +89,8 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
                 const pid = parseInt(parts[1], 10);
                 const memStr = parts[5] || '0';
                 const nameLower: string = name.toLowerCase();
-                if (!nameLower.includes('roblox')) continue;
-                results.push({ pid, name, windowTitle: parts.slice(10).join(' '), memoryMB: parseInt(memStr, 10) || 0 });
+                if (!nameLower.includes('roblox') || nameLower.includes('crashhandler')) continue;
+                results.push({ pid, name, windowTitle: parts.slice(10).join(' '), memoryMB: Math.round((parseInt(memStr, 10) || 0) / 1024) });
             }
         }
     } catch (e: any) {
@@ -74,35 +105,64 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
 }
 
 function findRobloxPath(): string | null {
-    if (!IS_WIN) {
-        return null;
-    }
-
-    try {
-        const regRes = spawnSync('reg.exe', ['query', 'HKLM\\SOFTWARE\\Roblox\\RobloxStudio', '/v', 'Location'], { encoding: 'utf-8', timeout: 3000, windowsHide: true });
-        const regOutput: string = regRes.stdout || '';
-        const match: RegExpMatchArray | null = regOutput.match(/Location\s+REG_SZ\s+(.+)/);
-        if (match) {
-            const launcher: string = path.join(match[1].trim(), 'RobloxPlayerLauncher.exe');
-            if (fs.existsSync(launcher)) return launcher;
+    if (IS_WIN) {
+        // 1. Registry query for roblox-player protocol (covers modern installations)
+        const regKeys = [
+            'HKCU\\Software\\Classes\\roblox-player\\shell\\open\\command',
+            'HKCR\\roblox-player\\shell\\open\\command',
+            'HKLM\\SOFTWARE\\Classes\\roblox-player\\shell\\open\\command',
+            'HKCU\\Software\\Classes\\roblox\\shell\\open\\command',
+            'HKCR\\roblox\\shell\\open\\command'
+        ];
+        for (const regKey of regKeys) {
+            try {
+                const regRes = spawnSync('reg.exe', ['query', regKey], { encoding: 'utf-8', timeout: 3000, windowsHide: true });
+                const regOutput: string = regRes.stdout || '';
+                const match = regOutput.match(/"([^"]+\.exe)"/i) || regOutput.match(/([a-zA-Z]:\\[^\s"]+\.exe)/i);
+                if (match && fs.existsSync(match[1])) {
+                    return match[1];
+                }
+            } catch (e: any) { }
         }
-    } catch (e: any) { }
 
-    const candidates: string[] = [
-        process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
-        'C:\\Program Files (x86)\\Roblox\\Versions',
-        'C:\\Program Files\\Roblox\\Versions',
-    ];
-    for (const dir of candidates) {
-        if (!dir || !fs.existsSync(dir)) continue;
-        try {
-            const versions: string[] = fs.readdirSync(dir).filter((v: string) => v.startsWith('version-')).sort().reverse();
-            for (const ver of versions) {
-                const launcher: string = path.join(dir, ver, 'RobloxPlayerLauncher.exe');
-                if (fs.existsSync(launcher)) return launcher;
-            }
-        } catch (e: any) { console.error('[PM] readdir error:', e?.message || e); }
+        // 2. Scan standard installation and version directories
+        const candidates: string[] = [
+            process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
+            process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Bloxstrap', 'Versions') : '',
+            process.env['ProgramFiles(x86)'] ? path.join(process.env['ProgramFiles(x86)'], 'Roblox', 'Versions') : '',
+            process.env.ProgramFiles ? path.join(process.env.ProgramFiles, 'Roblox', 'Versions') : '',
+            'C:\\Program Files (x86)\\Roblox\\Versions',
+            'C:\\Program Files\\Roblox\\Versions',
+        ].filter(Boolean);
+
+        for (const dir of candidates) {
+            if (!fs.existsSync(dir)) continue;
+            try {
+                const versions: string[] = fs.readdirSync(dir).filter((v: string) => v.startsWith('version-')).sort().reverse();
+                for (const ver of versions) {
+                    const beta = path.join(dir, ver, 'RobloxPlayerBeta.exe');
+                    if (fs.existsSync(beta)) return beta;
+                    const launcher = path.join(dir, ver, 'RobloxPlayerLauncher.exe');
+                    if (fs.existsSync(launcher)) return launcher;
+                }
+            } catch (e: any) { }
+        }
+
+        // 3. Bloxstrap standalone launcher
+        if (process.env.LOCALAPPDATA) {
+            const bloxstrap = path.join(process.env.LOCALAPPDATA, 'Bloxstrap', 'Bloxstrap.exe');
+            if (fs.existsSync(bloxstrap)) return bloxstrap;
+        }
+    } else if (process.platform === 'darwin') {
+        const macCandidates = [
+            '/Applications/Roblox.app/Contents/MacOS/RobloxPlayer',
+            path.join(os.homedir(), 'Applications/Roblox.app/Contents/MacOS/RobloxPlayer'),
+        ];
+        for (const p of macCandidates) {
+            if (fs.existsSync(p)) return p;
+        }
     }
+
     return null;
 }
 
@@ -115,30 +175,59 @@ interface LaunchResult {
 
 function launchRoblox(customPath?: string): LaunchResult {
     const exePath: string | null = customPath || findRobloxPath();
-    if (!exePath) {
-        return { success: false, error: 'Roblox not found. Install Roblox or provide a custom path.' };
+    if (exePath && fs.existsSync(exePath)) {
+        try {
+            // For RobloxPlayerBeta, passing '--app' opens the desktop client
+            const args = path.basename(exePath).toLowerCase().includes('robloxplayerbeta') ? ['--app'] : [];
+            const child = spawn(exePath, args, { detached: true, stdio: 'ignore', windowsHide: false });
+            child.on('error', () => { });
+            child.unref();
+            if (child.pid !== undefined) {
+                return { success: true, pid: child.pid, path: exePath };
+            }
+        } catch (err: any) {
+            // Fall through to protocol launch if direct spawn fails
+        }
     }
-    if (!fs.existsSync(exePath)) {
-        return { success: false, error: `Roblox executable not found at: ${exePath}` };
-    }
+
+    // Protocol launch fallback (covers Windows Store apps, URI handlers, and custom setups)
     try {
-        const child = spawn(exePath, [], { detached: true, stdio: 'ignore', windowsHide: false });
-        child.on('error', () => { }); // Catch spawn errors silently
-        child.unref();
-        if (child.pid === undefined) return { success: false, error: 'Failed to spawn process' };
-        return { success: true, pid: child.pid, path: exePath };
-    } catch (err: any) {
-        return { success: false, error: `Failed to launch Roblox: ${err.message}` };
-    }
+        if (IS_WIN) {
+            const child = spawn('cmd.exe', ['/c', 'start', '', 'roblox-player:'], {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: true,
+            });
+            child.on('error', () => { });
+            child.unref();
+            return { success: true, path: 'roblox-player: (URI Protocol)' };
+        } else if (process.platform === 'darwin') {
+            const child = spawn('open', ['roblox-player:'], { detached: true, stdio: 'ignore' });
+            child.on('error', () => { });
+            child.unref();
+            return { success: true, path: 'roblox-player: (URI Protocol)' };
+        }
+    } catch (e: any) {}
+
+    return {
+        success: false,
+        error: 'Roblox not found. Please install Roblox from https://www.roblox.com or provide a custom executable path.',
+    };
 }
 
 interface OpenGameOptions {
     launchMode?: string;
+    launch_mode?: string;
     jobId?: string;
+    job_id?: string;
     privateServerLinkCode?: string;
+    private_server_link_code?: string;
     browserTrackerId?: string;
+    browser_tracker_id?: string;
     launchTime?: string;
+    launch_time?: string;
     authTicket?: string;
+    auth_ticket?: string;
 }
 
 interface OpenGameResult {
@@ -149,16 +238,16 @@ interface OpenGameResult {
 
 function openGame(placeId: string | number, opts?: OpenGameOptions): OpenGameResult {
     opts = opts || {};
-    const launchMode: string = opts.launchMode || 'play';
-    const jobId: string = opts.jobId || '';
-    const privateServerLinkCode: string = opts.privateServerLinkCode || '';
-    const browserTrackerId: string = opts.browserTrackerId || `tracker_${Date.now()}`;
+    const launchMode: string = opts.launchMode || opts.launch_mode || 'play';
+    const jobId: string = opts.jobId || opts.job_id || '';
+    const privateServerLinkCode: string = opts.privateServerLinkCode || opts.private_server_link_code || '';
+    const browserTrackerId: string = opts.browserTrackerId || opts.browser_tracker_id || `tracker_${Date.now()}`;
 
-    if (opts.browserTrackerId && !/^[a-zA-Z0-9_-]+$/.test(opts.browserTrackerId)) {
+    if (browserTrackerId && !/^[a-zA-Z0-9_-]+$/.test(browserTrackerId)) {
         return { success: false, error: 'Invalid browserTrackerId format' };
     }
-    const launchTime: string = opts.launchTime || Date.now().toString();
-    const authTicket: string = opts.authTicket || '';
+    const launchTime: string = opts.launchTime || opts.launch_time || Date.now().toString();
+    const authTicket: string = opts.authTicket || opts.auth_ticket || '';
 
     if (!placeId) {
         return { success: false, error: 'placeId is required' };
@@ -273,23 +362,28 @@ public class WinEnum {
             var sb = new StringBuilder(256);
             GetWindowText(hWnd, sb, 256);
             string title = sb.ToString();
-            if (string.IsNullOrEmpty(title)) return true;
             uint pid;
             GetWindowThreadProcessId(hWnd, out pid);
-            result.Add(new object[] { pid, hWnd.ToString(), title });
+            result.Add(new object[] { pid, hWnd.ToString(), string.IsNullOrEmpty(title) ? "Roblox Window" : title });
             return true;
         }, IntPtr.Zero);
         return result;
     }
 }
 "@
-$robloxPids = @(Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+$robloxPids = @(Get-Process | Where-Object { ($_.ProcessName -like "*Roblox*" -or $_.ProcessName -eq "Bloxstrap") -and $_.ProcessName -notlike "*CrashHandler*" } | Select-Object -ExpandProperty Id)
 if ($robloxPids.Count -eq 0) { Write-Output '[]'; exit }
 $allWindows = [WinEnum]::GetVisibleWindows()
 $found = @()
 foreach ($w in $allWindows) {
     if ($robloxPids -contains [int]$w[0]) {
         $found += [PSCustomObject]@{ pid=[int]$w[0]; hwnd=$w[1]; title=$w[2] }
+    }
+}
+if ($found.Count -eq 0) {
+    $procsWithWindows = Get-Process | Where-Object { ($_.ProcessName -like "*Roblox*" -or $_.ProcessName -eq "Bloxstrap") -and $_.ProcessName -notlike "*CrashHandler*" -and $_.MainWindowHandle -ne 0 }
+    foreach ($p in $procsWithWindows) {
+        $found += [PSCustomObject]@{ pid=[int]$p.Id; hwnd=$p.MainWindowHandle.ToString(); title=$(if ($p.MainWindowTitle) { $p.MainWindowTitle } else { "Roblox Window" }) }
     }
 }
 if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Compress }
@@ -322,22 +416,30 @@ if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Co
  *      centre belongs to the target process. Returns CAPTURE_OK only then.
  */
 /**
- * Runs a PowerShell command via stdin stream using spawnSync.
- * Avoids writing temporary scripts to disk and avoids execution policy bypass flags.
+ * Runs a PowerShell script reliably using a temporary script file to prevent
+ * syntax issues with multiline here-strings over stdin or CLI length limits.
  */
 function runPowerShellScript(ps: string, timeoutMs: number): string {
-    const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'], {
-        input: ps,
-        encoding: 'utf-8',
-        timeout: timeoutMs,
-        windowsHide: true,
-        maxBuffer: 25 * 1024 * 1024,
-    });
-    if (res.error) {
-        throw res.error;
+    const tmpFile = path.join(os.tmpdir(), `rblx_ps_${Date.now()}_${Math.random().toString(36).slice(2)}.ps1`);
+    try {
+        fs.writeFileSync(tmpFile, ps, 'utf-8');
+        const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', tmpFile], {
+            encoding: 'utf-8',
+            timeout: timeoutMs,
+            windowsHide: true,
+            maxBuffer: 25 * 1024 * 1024,
+        });
+        if (res.error) {
+            throw res.error;
+        }
+        return res.stdout || '';
+    } finally {
+        try {
+            if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+        } catch {}
     }
-    return res.stdout || '';
 }
+
 function buildCapturePrologue(hwnd: string, pid: number): string {
     return `
 Add-Type -AssemblyName System.Drawing
@@ -359,10 +461,19 @@ public class WinCapture {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+    public static void ForceForeground(IntPtr hWnd) {
+        ShowWindow(hWnd, 9);
+        ShowWindow(hWnd, 5);
+        keybd_event(0x12, 0, 0, UIntPtr.Zero);
+        keybd_event(0x12, 0, 2, UIntPtr.Zero);
+        SetForegroundWindow(hWnd);
+        BringWindowToTop(hWnd);
+    }
 }
 "@
 $hwnd = [IntPtr]::new([long]${hwnd})
@@ -374,20 +485,17 @@ if ([WinCapture]::IsIconic($hwnd)) {
     Start-Sleep -Milliseconds 250
 }
 
-# Raise the window and wait until it actually owns the foreground. SetForegroundWindow
-# is commonly refused by Windows, so retry with ShowWindow/BringWindowToTop nudges.
+# Raise the window and wait until it actually owns the foreground.
+[WinCapture]::ForceForeground($hwnd)
+Start-Sleep -Milliseconds 150
 $raised = $false
-for ($attempt = 0; $attempt -lt 12; $attempt++) {
-    [WinCapture]::ShowWindow($hwnd, 5) | Out-Null
-    [WinCapture]::BringWindowToTop($hwnd) | Out-Null
-    [WinCapture]::SetForegroundWindow($hwnd) | Out-Null
-    Start-Sleep -Milliseconds 120
+for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    [WinCapture]::ForceForeground($hwnd)
+    Start-Sleep -Milliseconds 80
     if ([WinCapture]::GetForegroundWindow() -eq $hwnd) { $raised = $true; break }
 }
 if (-not $raised) {
-    # Not fatal on its own: the window may still be unobstructed (e.g. always-on-top).
-    # The occlusion check below is the real gate.
-    Start-Sleep -Milliseconds 200
+    Start-Sleep -Milliseconds 150
 }
 
 $rect = New-Object WinCapture+RECT
@@ -483,7 +591,12 @@ async function performScreenshot(pid?: number, outputPath?: string): Promise<Scr
     }
 }
 
-async function recordVideo(pid?: number, duration: number = 5, outputPath?: string): Promise<ScreenshotResult & { filePath?: string }> {
+async function recordVideo(
+    pid?: number,
+    duration: number = 5,
+    outputPath?: string,
+    fps: number = 30
+): Promise<ScreenshotResult & { filePath?: string }> {
     const windows = enumRobloxWindows();
     if (windows.length === 0) {
         return { error: "No visible Roblox windows found." };
@@ -503,7 +616,7 @@ async function recordVideo(pid?: number, duration: number = 5, outputPath?: stri
         const targetPid = targets[0].pid;
 
         const durationSecs = Math.min(Math.max(1, duration), 30);
-        const targetFps = 30;
+        const targetFps = Math.min(Math.max(1, Number(fps) || 30), 60);
         const outFile = resolveOutputPath(outputPath, `roblox_rec_${targetPid}_${Date.now()}.mp4`);
 
         // Reuses the shared prologue: compiles WinCapture correctly, raises the window,

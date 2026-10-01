@@ -2,6 +2,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { normalizeToolArguments } from './tool-definitions';
 
 interface ToolDefInstance {
     getTools(): unknown[];
@@ -66,7 +67,7 @@ interface ProcessManager {
         filePath?: string;
         pid?: number;
     }>;
-    recordVideo(pid?: number, duration?: number, outputPath?: string): Promise<{
+    recordVideo(pid?: number, duration?: number, outputPath?: string, fps?: number): Promise<{
         error?: string;
         needsDisambiguation?: boolean;
         windows?: Array<{ pid: number; hwnd: string; title: string }>;
@@ -96,7 +97,8 @@ const LUA_TASK_NAME_MAP: Record<string, string> = {
     'list-remotes': 'dump-remote-events',
     'get-gui-tree': 'dump-gui-hierarchy',
     'get-screen-text': 'extract-screen-text',
-    'get-script': 'get-script-source',
+    'get-script': 'get-script',
+    'decompile-script': 'decompile-script',
     'get-remote-handlers': 'inspect-remote-connections',
     'set-player': 'modify-local-player',
     'teleport': 'teleport-player',
@@ -214,7 +216,7 @@ class McpHandler {
     }
 
     private async _handleToolsCall(params?: Record<string, unknown>): Promise<McpResult> {
-        const { name, arguments: args } = (params || {}) as { name?: string; arguments?: Record<string, unknown> };
+        const { name, arguments: rawArgs } = (params || {}) as { name?: string; arguments?: Record<string, unknown> };
 
         if (!name) {
             return { error: { code: -32602, message: 'Tool name is required' } };
@@ -224,6 +226,8 @@ class McpHandler {
         if (!tool) {
             return { error: { code: -32602, message: `Unknown tool: ${name}` } };
         }
+
+        const args = normalizeToolArguments(rawArgs);
 
         try {
             if (SERVER_SIDE_TOOLS.has(name)) {
@@ -443,17 +447,19 @@ class McpHandler {
             case 'launch-roblox':
                 return this.proc.launchRoblox((args.path as string) || null);
 
-            case 'open-roblox-game':
-                if (!args.place_id) return { success: false, error: "place_id is required" };
-                return this.proc.openGame(args.place_id as string | number, {
-                    jobId: args.job_id as string | undefined,
-                    privateServerLinkCode: args.private_server_link_code as string | undefined,
-                    browserTrackerId: args.browser_tracker_id as string | undefined,
-                    launchTime: args.launch_time as string | undefined,
-                    launchMode: args.launch_mode as string | undefined,
-                    authTicket: args.auth_ticket as string | undefined,
-                    experienceId: args.experience_id as string | undefined,
+            case 'open-roblox-game': {
+                const placeId = (args.place_id || args.placeId) as string | number;
+                if (!placeId) return { success: false, error: "place_id is required" };
+                return this.proc.openGame(placeId, {
+                    jobId: (args.job_id || args.jobId) as string | undefined,
+                    privateServerLinkCode: (args.private_server_link_code || args.privateServerLinkCode) as string | undefined,
+                    browserTrackerId: (args.browser_tracker_id || args.browserTrackerId) as string | undefined,
+                    launchTime: (args.launch_time || args.launchTime) as string | undefined,
+                    launchMode: (args.launch_mode || args.launchMode) as string | undefined,
+                    authTicket: (args.auth_ticket || args.authTicket) as string | undefined,
+                    experienceId: (args.experience_id || args.experienceId) as string | undefined,
                 });
+            }
 
             case 'take-screenshot': {
                 const ssResult = await this.proc.performScreenshot(
@@ -479,7 +485,8 @@ class McpHandler {
                 const vidResult = await this.proc.recordVideo(
                     args.pid ? Number(args.pid) : undefined,
                     args.duration_seconds ? Number(args.duration_seconds) : 5,
-                    (args.output_path as string) || undefined
+                    (args.output_path as string) || undefined,
+                    args.fps ? Number(args.fps) : 30
                 );
                 if (vidResult.error) return { success: false, error: vidResult.error };
                 if (vidResult.needsDisambiguation) {

@@ -1723,14 +1723,34 @@ local function handleRunningScripts(args)
 end
 
 local function handleScriptSource(args)
-	local path = args.script_path or ""
+	local path = args.script_path or args.target_path or args.path or args.target_part or args.instance_path or args.target or args.instance or ""
 	if path == "" then
-		return { success = false, error = "script_path required" }
+		return { success = false, error = "script_path or target_path required" }
 	end
 	local inst, err = resolvePath(path)
 	if not inst then
 		return { success = false, error = err }
 	end
+
+	-- Decompile by default if decompile is available and not explicitly disabled
+	if args.decompile ~= false then
+		local decompilerFn = decompile or (_G and _G.decompile)
+		if type(decompilerFn) == "function" then
+			local okDec, decSrc = pcall(decompilerFn, inst)
+			if okDec and type(decSrc) == "string" and decSrc ~= "" then
+				return {
+					success = true,
+					name = inst.Name,
+					className = inst.ClassName,
+					path = getFullPath(inst),
+					decompiled = true,
+					source = decSrc,
+					engine = "unc_decompile",
+				}
+			end
+		end
+	end
+
 	local ok, bc = pcall(getscriptbytecode, inst)
 	if not ok then
 		return { success = false, error = "getscriptbytecode not supported or script has no bytecode" }
@@ -1832,9 +1852,9 @@ local function handleRobloxEnv()
 end
 
 local function handleScriptDecompiler(args)
-	local path = args.script_path or ""
+	local path = args.script_path or args.target_path or args.path or args.target_part or args.instance_path or args.target or args.instance or ""
 	if path == "" then
-		return { success = false, error = "script_path required" }
+		return { success = false, error = "script_path or target_path required" }
 	end
 	local inst, err = resolvePath(path)
 	if not inst then
@@ -1847,6 +1867,8 @@ local function handleScriptDecompiler(args)
 			return {
 				success = true,
 				name = inst.Name,
+				className = inst.ClassName,
+				path = getFullPath(inst),
 				decompiled = true,
 				source = decSrc,
 				engine = "unc_decompile",
@@ -1859,6 +1881,8 @@ local function handleScriptDecompiler(args)
 			return {
 				success = true,
 				name = inst.Name,
+				className = inst.ClassName,
+				path = getFullPath(inst),
 				decompiled = false,
 				bytecodeSize = #bc,
 				message = "Bytecode retrieved. UNC decompile() not supported on this executor.",
@@ -4042,13 +4066,124 @@ if G_GET("MCP_AUTOEXECUTE") then
 	end)
 end
 
+-- Universally normalizes task arguments for all AI models (cross-aliasing paths, codes, keys, etc.)
+local function normalizeTaskArgs(args)
+	if type(args) ~= "table" then
+		return args or {}
+	end
+
+	-- 1. Automatic camelCase <-> snake_case translation
+	for k, v in pairs(args) do
+		if type(k) == "string" then
+			local snakeKey = k:gsub("(%u)", "_%1"):lower()
+			if snakeKey ~= k and args[snakeKey] == nil then
+				args[snakeKey] = v
+			end
+			local camelKey = k:gsub("_(%l)", function(c) return c:upper() end)
+			if camelKey ~= k and args[camelKey] == nil then
+				args[camelKey] = v
+			end
+		end
+	end
+
+	-- 2. Universal Path & Target Aliasing (supports script_path, target_path, target_part, path, etc.)
+	local anyPath = args.target_path or args.script_path or args.instance_path
+		or args.target_part or args.part_path or args.path
+		or args.target or args.instance or args.part or args.object_path
+		or (type(args.script) == "string" and (args.script:find("%.") or args.script:find("/"))) and args.script
+
+	if anyPath and type(anyPath) == "string" then
+		local cleanPath = anyPath:match("^%s*(.-)%s*$")
+		if not args.target_path or args.target_path == "" then args.target_path = cleanPath end
+		if not args.script_path or args.script_path == "" then args.script_path = cleanPath end
+		if not args.instance_path or args.instance_path == "" then args.instance_path = cleanPath end
+		if not args.target_part or args.target_part == "" then args.target_part = cleanPath end
+		if not args.path or args.path == "" then args.path = cleanPath end
+		if not args.target or args.target == "" then args.target = cleanPath end
+		if not args.instance or args.instance == "" then args.instance = cleanPath end
+		if not args.part_path or args.part_path == "" then args.part_path = cleanPath end
+	end
+
+	-- 3. Code / Script content
+	local anyCode = args.code or args.script_code or args.source or args.content or args.lua or args.luau
+	if anyCode and type(anyCode) == "string" then
+		if not args.code or args.code == "" then args.code = anyCode end
+		if not args.script or args.script == "" then args.script = anyCode end
+		if not args.source or args.source == "" then args.source = anyCode end
+		if not args.content or args.content == "" then args.content = anyCode end
+	end
+
+	-- 4. Remote path & arguments
+	local anyRemote = args.remote_path or args.remote
+	if anyRemote and type(anyRemote) == "string" then
+		if not args.remote_path or args.remote_path == "" then args.remote_path = anyRemote end
+		if not args.path or args.path == "" then args.path = anyRemote end
+	end
+	if args.arguments ~= nil and args.args == nil then
+		args.args = args.arguments
+	elseif args.args ~= nil and args.arguments == nil then
+		args.arguments = args.args
+	end
+
+	-- 5. Properties & Property maps
+	local anyPropName = args.property_name or args.property or args.prop or args.name
+	if anyPropName and type(anyPropName) == "string" then
+		if not args.property_name or args.property_name == "" then args.property_name = anyPropName end
+		if not args.property or args.property == "" then args.property = anyPropName end
+	end
+	local anyProps = args.property_map or args.properties or args.props
+	if anyProps ~= nil then
+		if not args.property_map then args.property_map = anyProps end
+		if not args.properties then args.properties = anyProps end
+	end
+
+	-- 6. Player Name
+	local anyPlayer = args.player_name or args.player or args.target_player or args.username or args.user
+	if anyPlayer and type(anyPlayer) == "string" then
+		if not args.player_name or args.player_name == "" then args.player_name = anyPlayer end
+		if not args.player or args.player == "" then args.player = anyPlayer end
+		if not args.target_name or args.target_name == "" then args.target_name = anyPlayer end
+	end
+
+	-- 7. Teleport Smart Targets
+	if not args.target_type then
+		if args.coordinates or (args.x ~= nil and args.y ~= nil and args.z ~= nil) then
+			args.target_type = "coordinates"
+		elseif args.player or args.player_name then
+			args.target_type = "player"
+			args.target_name = args.player or args.player_name
+		elseif args.target_part or args.target_path or args.part then
+			args.target_type = "instance"
+			args.target_name = args.target_part or args.target_path or args.part
+		end
+	end
+	if not args.coordinates and args.x ~= nil and args.y ~= nil and args.z ~= nil then
+		args.coordinates = { x = tonumber(args.x) or 0, y = tonumber(args.y) or 0, z = tonumber(args.z) or 0 }
+	end
+
+	-- 8. Key / Text inputs
+	local anyKey = args.key_code or args.key
+	if anyKey and type(anyKey) == "string" then
+		if not args.key_code or args.key_code == "" then args.key_code = anyKey end
+		if not args.key or args.key == "" then args.key = anyKey end
+	end
+	local anyText = args.text or args.message or args.msg
+	if anyText and type(anyText) == "string" then
+		if not args.text or args.text == "" then args.text = anyText end
+		if not args.message or args.message == "" then args.message = anyText end
+	end
+
+	return args
+end
+
 -- Runs one task through HANDLERS and returns the serializable result.
 local function dispatchTask(tsk)
 	local handler = HANDLERS[tsk.type]
 	if not handler then
 		return proxyToServer(tsk.type, tsk.args or {})
 	end
-	local ok2, res = pcall(handler, tsk.args or {})
+	local normalizedArgs = normalizeTaskArgs(tsk.args or {})
+	local ok2, res = pcall(handler, normalizedArgs)
 	if ok2 then
 		return res
 	end
