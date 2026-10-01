@@ -9,9 +9,6 @@
     <script src="/dashboard.js" defer></script>
 </head>
 <body>
-    <!-- Top Datamatics Barcode Rule -->
-    <div class="barcode-strip" aria-hidden="true"></div>
-
     <!-- Top Command Deck & Navigation Bar -->
     <header class="top-deck">
         <div class="top-bar-inner">
@@ -20,10 +17,10 @@
                 <div class="brand-mark">RM</div>
                 <div class="brand-meta">
                     <div class="brand-title">
-                        ROBLOX MCP // COMMAND DECK
+                        Roblox MCP // Command Deck
                         <span class="brand-status-chip online" id="brand-status-chip">ONLINE</span>
                     </div>
-                    <div class="brand-subtitle">PORT {{port}} &bull; DAEMON ACTIVE</div>
+                    <div class="brand-subtitle">Port {{port}} &bull; Daemon active</div>
                 </div>
             </div>
 
@@ -31,77 +28,77 @@
             <nav class="nav-tab-rail" aria-label="Views">
                 <button class="nav-tab-btn active" id="nav-btn-instances" onclick="switchView('instances')">
                     <span class="nav-tab-key">[1]</span>
-                    <span>INSTANCES</span>
+                    <span>Instances</span>
                 </button>
                 <button class="nav-tab-btn" id="nav-btn-tools" onclick="switchView('tools')">
                     <span class="nav-tab-key">[2]</span>
-                    <span>TOOLS DIRECTORY</span>
+                    <span>Tools Directory</span>
                 </button>
                 <button class="nav-tab-btn" id="nav-btn-port-sync" onclick="switchView('port-sync')">
                     <span class="nav-tab-key">[3]</span>
-                    <span>PORT SYNC</span>
+                    <span>Port Sync</span>
                 </button>
                 <button class="nav-tab-btn" id="nav-btn-unc" onclick="switchView('unc')">
                     <span class="nav-tab-key">[4]</span>
-                    <span>UNC MATRIX</span>
+                    <span>UNC Matrix</span>
                 </button>
                 <button class="nav-tab-btn" id="nav-btn-settings" onclick="switchView('settings')">
                     <span class="nav-tab-key">[5]</span>
-                    <span>OPERATIONS</span>
+                    <span>Operations</span>
                 </button>
             </nav>
 
             <!-- Quick Action Triggers -->
             <div class="top-actions">
                 <button class="btn btn-sm" id="btn-quick-autoexec" onclick="toggleAutoexecute()">
-                    <span>AUTOEXEC: <strong id="quick-autoexec-chip">ON</strong></span>
+                    <span>Autoexec: <strong id="quick-autoexec-chip">ON</strong></span>
                 </button>
                 <button class="btn btn-invert btn-sm" onclick="openLoaderModal()">
-                    <span>COPY LOADER [L]</span>
+                    <span>Copy Loader [L]</span>
                 </button>
             </div>
         </div>
     </header>
 
-    <!-- Top Telemetry Ribbon -->
+    <!-- Top Telemetry Ribbon (Bento 3D Grid) -->
     <section class="telemetry-ribbon" aria-label="Telemetry">
         <div class="telemetry-cell">
             <div class="telemetry-tag">
                 <span>SYSTEM</span>
-                ROBLOX PROCESSES
+                Roblox Processes
             </div>
             <div class="telemetry-val" id="kpi-proc-total">0</div>
-            <div class="telemetry-sub" id="kpi-proc-split">0 CONNECTED / 0 STANDBY</div>
+            <div class="telemetry-sub" id="kpi-proc-split">0 Connected / 0 Standby</div>
         </div>
 
         <div class="telemetry-cell">
             <div class="telemetry-tag">
                 <span>CLIENTS</span>
-                ACTIVE WORKERS
+                Active Workers
             </div>
             <div class="telemetry-val" id="kpi-workers">0</div>
-            <div class="telemetry-sub" id="kpi-transport-split">0 WS ACTIVE</div>
+            <div class="telemetry-sub" id="kpi-transport-split">0 WS Active</div>
         </div>
 
         <div class="telemetry-cell">
             <div class="telemetry-tag">
                 <span>MCP SPEC</span>
-                TOOL REGISTRY
+                Tool Registry
             </div>
             <div class="telemetry-val">
                 <span id="kpi-tools">80</span>
                 <span class="unit">TOOLS</span>
             </div>
-            <div class="telemetry-sub">UNIVERSAL WORKERID &amp; PID ROUTING</div>
+            <div class="telemetry-sub">Universal workerId &amp; PID routing</div>
         </div>
 
         <div class="telemetry-cell">
             <div class="telemetry-tag">
                 <span>THROUGHPUT</span>
-                TASKS PROCESSED
+                Tasks Processed
             </div>
             <div class="telemetry-val" id="kpi-processed">0</div>
-            <div class="telemetry-sub" id="kpi-uptime">UPTIME: 0m 0s</div>
+            <div class="telemetry-sub" id="kpi-uptime">Uptime: 0m 0s</div>
         </div>
     </section>
 
@@ -112,11 +109,11 @@
             <div class="view-header">
                 <div class="view-title-group">
                     <h2 class="view-title">Roblox Client Windows &amp; Process Telemetry</h2>
-                    <span class="brand-status-chip" id="instances-count-badge">0 WINDOWS</span>
+                    <span class="brand-status-chip" id="instances-count-badge">0 Windows</span>
                 </div>
                 <div style="display:flex; gap:0.4rem;">
-                    <button class="btn btn-sm btn-invert" onclick="launchRoblox()">+ LAUNCH ROBLOX</button>
-                    <button class="btn btn-sm" onclick="loadProcesses()">REFRESH [R]</button>
+                    <button class="btn btn-sm btn-invert" onclick="launchRoblox()">+ Launch Roblox</button>
+                    <button class="btn btn-sm" onclick="loadProcesses()">Refresh [R]</button>
                 </div>
             </div>
 
@@ -136,7 +133,7 @@
                         <tbody id="instances-table-body">
                             <tr>
                                 <td colspan="6" style="text-align:center; padding: 2rem; color: var(--text-muted); font-size: 12px;">
-                                    QUERYING LOCAL WINDOWS PROCESSES...
+                                    Querying local Windows processes...
                                 </td>
                             </tr>
                         </tbody>
@@ -147,15 +144,15 @@
                 <div class="screenshot-stage" id="screenshot-stage">
                     <div class="stage-head">
                         <div style="display:flex; align-items:center; gap:0.5rem;">
-                            <span class="brand-status-chip online">CAPTURED FRAME</span>
+                            <span class="brand-status-chip online">Captured Frame</span>
                             <span style="font-weight:700; color:#fff; font-size:12px;" id="screenshot-meta-tag">PID 0</span>
                         </div>
                         <div style="display:flex; gap:0.4rem;">
-                            <button class="btn btn-sm" onclick="closeScreenshotStage()">CLOSE [ESC]</button>
+                            <button class="btn btn-sm" onclick="closeScreenshotStage()">Close [ESC]</button>
                         </div>
                     </div>
                     <div class="stage-view-frame" id="screenshot-frame">
-                        <div style="color:var(--text-muted); font-size:12px; padding:2rem;">NO ACTIVE CAPTURE</div>
+                        <div style="color:var(--text-muted); font-size:12px; padding:2rem;">No active capture in buffer</div>
                     </div>
                 </div>
             </div>
@@ -166,9 +163,9 @@
             <div class="view-header">
                 <div class="view-title-group">
                     <h2 class="view-title">Interactive Tool Directory &amp; Dispatcher</h2>
-                    <span class="brand-status-chip"><span id="tools-total-count">80</span> REGISTERED</span>
+                    <span class="brand-status-chip"><span id="tools-total-count">80</span> Registered</span>
                 </div>
-                <div class="view-subtitle">PRESS [/] TO SEARCH TOOLS &bull; JSON-RPC 2.0 PROTOCOL</div>
+                <div class="view-subtitle">Press [/] to search tools &bull; JSON-RPC 2.0</div>
             </div>
 
             <div class="tools-workspace">
@@ -183,23 +180,23 @@
 
                     <!-- Category Pills -->
                     <div class="category-filter-strip">
-                        <button class="cat-pill active" id="pill-cat-all" onclick="setCategoryFilter('all')">ALL (<span id="cnt-cat-all">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-network" onclick="setCategoryFilter('network')">NET (<span id="cnt-cat-network">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-player" onclick="setCategoryFilter('player')">PLAYER (<span id="cnt-cat-player">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-inspection" onclick="setCategoryFilter('inspection')">INSPECT (<span id="cnt-cat-inspection">0</span>)</button>
+                        <button class="cat-pill active" id="pill-cat-all" onclick="setCategoryFilter('all')">All (<span id="cnt-cat-all">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-network" onclick="setCategoryFilter('network')">Net (<span id="cnt-cat-network">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-player" onclick="setCategoryFilter('player')">Player (<span id="cnt-cat-player">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-inspection" onclick="setCategoryFilter('inspection')">Inspect (<span id="cnt-cat-inspection">0</span>)</button>
                         <button class="cat-pill" id="pill-cat-gui" onclick="setCategoryFilter('gui')">GUI (<span id="cnt-cat-gui">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-input" onclick="setCategoryFilter('input')">INPUT (<span id="cnt-cat-input">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-scripting" onclick="setCategoryFilter('scripting')">SCRIPT (<span id="cnt-cat-scripting">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-memory" onclick="setCategoryFilter('memory')">MEM (<span id="cnt-cat-memory">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-input" onclick="setCategoryFilter('input')">Input (<span id="cnt-cat-input">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-scripting" onclick="setCategoryFilter('scripting')">Script (<span id="cnt-cat-scripting">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-memory" onclick="setCategoryFilter('memory')">Mem (<span id="cnt-cat-memory">0</span>)</button>
                         <button class="cat-pill" id="pill-cat-filesystem" onclick="setCategoryFilter('filesystem')">FS (<span id="cnt-cat-filesystem">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-instances" onclick="setCategoryFilter('instances')">INST (<span id="cnt-cat-instances">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-server" onclick="setCategoryFilter('server')">SRV (<span id="cnt-cat-server">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-instances" onclick="setCategoryFilter('instances')">Inst (<span id="cnt-cat-instances">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-server" onclick="setCategoryFilter('server')">Server (<span id="cnt-cat-server">0</span>)</button>
                     </div>
 
                     <!-- Scrollable Tool List -->
                     <div class="tools-nav-scroll" id="tools-list-container">
                         <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:12px;">
-                            LOADING TOOLS...
+                            Loading tools...
                         </div>
                     </div>
                 </aside>
@@ -207,7 +204,7 @@
                 <!-- Right Detail Canvas -->
                 <main class="tool-detail-canvas" id="tool-inspector-panel">
                     <div class="empty-data-box">
-                        <div class="empty-data-title">SELECT A TOOL</div>
+                        <div class="empty-data-title">Select a tool</div>
                         <div class="empty-data-desc">
                             Select any tool from the directory sidebar to inspect schema specifications, AI parameter formats, and run live interactive executions.
                         </div>
@@ -221,29 +218,29 @@
             <div class="view-header">
                 <div class="view-title-group">
                     <h2 class="view-title">Dynamic Port Synchronization &amp; Router</h2>
-                    <span class="brand-status-chip online">ROUTER 58295 ACTIVE</span>
+                    <span class="brand-status-chip online">Router 58295 Active</span>
                 </div>
             </div>
 
             <div class="port-sync-grid">
-                <!-- Status Card -->
-                <div class="port-card">
+                <!-- Status Panel -->
+                <div class="port-panel">
                     <div class="port-card-head">
                         <span class="port-card-title">Port Architecture Status</span>
-                        <span class="brand-status-chip online">HEALTHY</span>
+                        <span class="brand-status-chip online">Healthy</span>
                     </div>
 
                     <div>
                         <div class="port-stat-row">
-                            <span class="port-stat-key">ACTIVE MAIN PACKAGE PORT</span>
+                            <span class="port-stat-key">Active Main Package Port</span>
                             <span class="port-stat-val" id="stat-cur-port">{{port}}</span>
                         </div>
                         <div class="port-stat-row">
-                            <span class="port-stat-key">DISCOVERY ROUTER PORT (BACKGROUND)</span>
-                            <span class="port-stat-val" id="stat-disc-port">58295 (FIXED ROUTER)</span>
+                            <span class="port-stat-key">Discovery Router Port (Background)</span>
+                            <span class="port-stat-val" id="stat-disc-port">58295 (Fixed Router)</span>
                         </div>
                         <div class="port-stat-row">
-                            <span class="port-stat-key">SAVED DEFAULT PORT CONFIG</span>
+                            <span class="port-stat-key">Saved Default Port Config</span>
                             <span class="port-stat-val" id="stat-saved-port">-</span>
                         </div>
                     </div>
@@ -253,8 +250,8 @@
                     </p>
                 </div>
 
-                <!-- Port Configuration Card -->
-                <div class="port-card">
+                <!-- Port Configuration Panel -->
+                <div class="port-panel">
                     <div class="port-card-head">
                         <span class="port-card-title">Configure Target Port</span>
                     </div>
@@ -265,51 +262,45 @@
 
                     <div class="port-input-control">
                         <input type="number" id="input-custom-port" min="1" max="65535" placeholder="e.g. 32100">
-                        <button class="btn btn-sm" onclick="checkPortAvailability()">CHECK PORT</button>
-                        <button class="btn btn-sm btn-invert" onclick="savePreferredPort()">SAVE DEFAULT</button>
+                        <button class="btn btn-sm" onclick="checkPortAvailability()">Check Port</button>
+                        <button class="btn btn-sm btn-invert" onclick="savePreferredPort()">Save Default</button>
                     </div>
 
                     <div id="port-check-status" style="font-size:12px;"></div>
 
                     <div style="border-top: 1px solid var(--border-hairline); padding-top: 0.75rem;">
-                        <span style="font-size:12px; color:var(--text-muted); letter-spacing:0.02em; text-transform:uppercase;">CLI LAUNCH SYNTAX</span>
-                        <div style="margin-top: 4px; font-family:var(--font-mono); font-size:12px; color:#ffffff; background:var(--bg-void); padding:6px 8px; border:1px solid var(--border-hairline);" id="code-cli-cmd">
-                            rblx-mcp start --port {{port}}
-                        </div>
+                        <span style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">CLI Launch Syntax</span>
+                        <pre style="margin-top: 6px; font-family:var(--font-mono); font-size:12px; color:#ffffff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-cli-cmd">rblx-mcp start --port {{port}}</pre>
                     </div>
                 </div>
 
-                <!-- Loaders Full Span Card -->
-                <div class="port-card" style="grid-column: 1 / -1;">
+                <!-- Loaders Full Span Panel -->
+                <div class="port-panel" style="grid-column: 1 / -1;">
                     <div class="port-card-head">
                         <span class="port-card-title">In-Game Injected Luau Loaders</span>
                     </div>
 
                     <div style="display:flex; flex-direction:column; gap:1.25rem;">
-                        <div>
+                        <div style="padding-bottom: 1rem; border-bottom: 1px solid var(--border-hairline);">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
                                 <span style="font-weight:700; color:#fff; font-size:13px;">1. Auto-Sync Discovery Loader (Recommended)</span>
-                                <button class="btn btn-sm btn-invert" onclick="copyLoader('discovery')">COPY AUTO-SYNC</button>
+                                <button class="btn btn-sm btn-invert" onclick="copyLoader('discovery')">Copy Auto-Sync</button>
                             </div>
                             <p style="font-size:12px; color:var(--text-muted); margin-bottom:0.4rem;">
                                 Queries the local background router (58295) and automatically resolves to whatever custom port this server is currently utilizing.
                             </p>
-                            <div style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-hairline);" id="code-disc-loader">
-                                loadstring(game:HttpGet("http://127.0.0.1:58295/mcp.lua"))()
-                            </div>
+                            <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:10px 12px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-disc-loader">loadstring(game:HttpGet("http://127.0.0.1:58295/mcp.lua"))()</pre>
                         </div>
 
                         <div>
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
                                 <span style="font-weight:700; color:#fff; font-size:13px;">2. Direct Custom Port Loader</span>
-                                <button class="btn btn-sm" onclick="copyLoader('direct')">COPY DIRECT</button>
+                                <button class="btn btn-sm" onclick="copyLoader('direct')">Copy Direct</button>
                             </div>
                             <p style="font-size:12px; color:var(--text-muted); margin-bottom:0.4rem;">
                                 Targets this exact server port directly ({{port}}). Bypasses discovery router lookup.
                             </p>
-                            <div style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-hairline);" id="code-direct-loader">
-                                loadstring(game:HttpGet("http://127.0.0.1:{{port}}/mcp.lua"))()
-                            </div>
+                            <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:10px 12px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-direct-loader">loadstring(game:HttpGet("http://127.0.0.1:{{port}}/mcp.lua"))()</pre>
                         </div>
                     </div>
                 </div>
@@ -321,16 +312,14 @@
             <div class="view-header">
                 <div class="view-title-group">
                     <h2 class="view-title">Universal Naming Convention (UNC) Audit</h2>
-                    <span class="brand-status-chip" id="unc-count-tag">38 FUNCTIONS</span>
+                    <span class="brand-status-chip" id="unc-count-tag">38 Functions</span>
                 </div>
-                <div class="brand-status-chip online" id="unc-executor-badge">EXECUTOR: AUTO-DETECT</div>
+                <div class="brand-status-chip online" id="unc-executor-badge">Executor: Auto-Detect</div>
             </div>
 
-            <div class="unc-matrix-wrapper">
-                <div class="unc-matrix-grid" id="unc-matrix-cells">
-                    <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:12px;">
-                        LOADING UNC SPECIFICATION AUDIT...
-                    </div>
+            <div class="unc-matrix-grid" id="unc-matrix-cells">
+                <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:12px;">
+                    Loading UNC specification audit...
                 </div>
             </div>
         </section>
@@ -340,13 +329,13 @@
             <div class="view-header">
                 <div class="view-title-group">
                     <h2 class="view-title">Server Operations &amp; Lifecycle Controls</h2>
-                    <span class="brand-status-chip online">DAEMON ONLINE</span>
+                    <span class="brand-status-chip online">Daemon Online</span>
                 </div>
             </div>
 
             <div class="ops-grid">
                 <!-- Transport Channel -->
-                <div class="ops-card">
+                <div class="ops-panel">
                     <div class="ops-card-head">
                         <span class="ops-card-title">Dual Transport Protocol</span>
                         <p class="ops-card-desc">
@@ -354,14 +343,14 @@
                         </p>
                     </div>
                     <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                        <button class="btn btn-sm btn-invert" onclick="setTransportMode('auto')">AUTO (DUAL)</button>
-                        <button class="btn btn-sm" onclick="setTransportMode('ws')">WEBSOCKET ONLY</button>
-                        <button class="btn btn-sm" onclick="setTransportMode('stream')">HTTP STREAM ONLY</button>
+                        <button class="btn btn-sm btn-invert" onclick="setTransportMode('auto')">Auto (Dual)</button>
+                        <button class="btn btn-sm" onclick="setTransportMode('ws')">WebSocket Only</button>
+                        <button class="btn btn-sm" onclick="setTransportMode('stream')">HTTP Stream Only</button>
                     </div>
                 </div>
 
                 <!-- Teleport Persistence -->
-                <div class="ops-card">
+                <div class="ops-panel">
                     <div class="ops-card-head">
                         <span class="ops-card-title">Teleport Autoexecution</span>
                         <p class="ops-card-desc">
@@ -369,12 +358,12 @@
                         </p>
                     </div>
                     <div>
-                        <button class="btn btn-sm btn-invert" onclick="toggleAutoexecute()">TOGGLE TELEPORT PERSISTENCE</button>
+                        <button class="btn btn-sm btn-invert" onclick="toggleAutoexecute()">Toggle Teleport Persistence</button>
                     </div>
                 </div>
 
                 <!-- Shutdown Daemon -->
-                <div class="ops-card">
+                <div class="ops-panel">
                     <div class="ops-card-head">
                         <span class="ops-card-title">Daemon Shutdown</span>
                         <p class="ops-card-desc">
@@ -382,15 +371,15 @@
                         </p>
                     </div>
                     <div>
-                        <button class="btn btn-sm btn-danger" onclick="shutdownServer()">SHUT DOWN SERVER</button>
+                        <button class="btn btn-sm btn-danger" onclick="shutdownServer()">Shut Down Server</button>
                     </div>
                 </div>
             </div>
         </section>
     </main>
 
-    <!-- Tactical Toast Notification -->
-    <div id="deck-toast">SYSTEM READY</div>
+    <!-- Tactical 3D Toast Notification -->
+    <div id="deck-toast">Ready</div>
 
     <!-- Injected Loader Selection Modal -->
     <div id="loader-modal" class="modal-overlay" onclick="closeLoaderModal(event)">
@@ -402,43 +391,39 @@
 
             <div class="modal-body">
                 <!-- Option 1: Auto-Sync Discovery -->
-                <div class="modal-loader-option primary">
+                <div class="modal-loader-row primary">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-weight:700; color:#fff; font-size:13px;">Auto-Sync Discovery Loader (Recommended)</span>
-                        <span class="brand-status-chip online">ROUTER 58295</span>
+                        <span class="brand-status-chip online">Router 58295</span>
                     </div>
                     <p style="font-size:12px; color:var(--text-muted); line-height:1.45;">
                         Connects through the persistent background discovery service. Automatically adapts to custom ports configured on the package without editing scripts.
                     </p>
-                    <div style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-hairline);">
-                        loadstring(game:HttpGet("http://127.0.0.1:58295/mcp.lua"))()
-                    </div>
+                    <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);">loadstring(game:HttpGet("http://127.0.0.1:58295/mcp.lua"))()</pre>
                     <div>
-                        <button class="btn btn-sm btn-invert" onclick="copyLoader('discovery')">COPY AUTO-SYNC LOADER</button>
+                        <button class="btn btn-sm btn-invert" onclick="copyLoader('discovery')">Copy Auto-Sync Loader</button>
                     </div>
                 </div>
 
                 <!-- Option 2: Direct Custom Port -->
-                <div class="modal-loader-option">
+                <div class="modal-loader-row">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-weight:700; color:#fff; font-size:13px;">Direct Custom Port Loader</span>
-                        <span class="brand-status-chip">PORT {{port}}</span>
+                        <span class="brand-status-chip">Port {{port}}</span>
                     </div>
                     <p style="font-size:12px; color:var(--text-muted); line-height:1.45;">
                         Directly targets active port {{port}}. Bypasses the auxiliary discovery router if your executor environment blocks secondary ports.
                     </p>
-                    <div style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-hairline);">
-                        loadstring(game:HttpGet("http://127.0.0.1:{{port}}/mcp.lua"))()
-                    </div>
+                    <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);">loadstring(game:HttpGet("http://127.0.0.1:{{port}}/mcp.lua"))()</pre>
                     <div>
-                        <button class="btn btn-sm" onclick="copyLoader('direct')">COPY DIRECT LOADER</button>
+                        <button class="btn btn-sm" onclick="copyLoader('direct')">Copy Direct Loader</button>
                     </div>
                 </div>
             </div>
 
             <div class="modal-footer">
-                <span>COMPATIBLE WITH SOLARA, WAVE, DELTA, REAL, AND STANDARD UNC EXECUTORS</span>
-                <button class="btn btn-sm" onclick="closeLoaderModal()">CLOSE [ESC]</button>
+                <span>Compatible with Solara, Wave, Delta, Real, and standard UNC executors.</span>
+                <button class="btn btn-sm" onclick="closeLoaderModal()">Close [ESC]</button>
             </div>
         </div>
     </div>

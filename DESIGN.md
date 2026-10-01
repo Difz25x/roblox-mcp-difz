@@ -1,34 +1,34 @@
 ---
 name: Roblox MCP Command Deck
-description: Datamatics Monochrome Sublime - High-density binary-contrast developer telemetry cockpit
+description: Tactile Monochrome Cockpit - Natural curves, physical 3D elevation, and high-density telemetry
 colors:
-  bg-void: "#000000"
-  bg-subtle: "#050608"
-  bg-surface: "#0a0c10"
-  bg-surface-hover: "#12151c"
-  bg-elevated: "#181b24"
+  bg-void: "#030406"
+  bg-subtle: "#090b10"
+  bg-surface: "#0f1218"
+  bg-surface-hover: "#161b24"
+  bg-elevated: "#1d222e"
   bg-active: "#ffffff"
   bg-active-hover: "#e6e6e6"
   text-active-contrast: "#262626"
-  border-hairline: "#1c202a"
-  border-mid: "#2d3342"
-  border-bright: "#4a546d"
+  border-hairline: "#1c212c"
+  border-mid: "#2b3344"
+  border-bright: "#44506b"
   border-active: "#ffffff"
   text-primary: "#ffffff"
   text-secondary: "#cbd5e1"
-  text-muted: "#8b95a8"
-  text-faint: "#555d6e"
+  text-muted: "#94a3b8"
+  text-faint: "#94a3b8"
   text-inverted: "#000000"
 typography:
   metric:
     fontFamily: 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace'
-    fontSize: "24px"
+    fontSize: "26px"
     fontWeight: 800
     lineHeight: 1.15
     letterSpacing: "-0.02em"
   headline:
     fontFamily: 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace'
-    fontSize: "20px"
+    fontSize: "21px"
     fontWeight: 800
     lineHeight: 1.15
     letterSpacing: "-0.01em"
@@ -37,7 +37,7 @@ typography:
     fontSize: "16px"
     fontWeight: 700
     lineHeight: 1.25
-    letterSpacing: "0.01em"
+    letterSpacing: "0.02em"
   title:
     fontFamily: 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace'
     fontSize: "15px"
@@ -69,101 +69,108 @@ typography:
     lineHeight: 1.2
     letterSpacing: "0.04em"
 rounded:
-  none: "0px"
-  sm: "2px"
-  md: "4px"
+  sm: "5px"
+  md: "8px"
+  lg: "12px"
+  xl: "16px"
+  pill: "9999px"
 components:
   button-primary:
     backgroundColor: "{colors.bg-active}"
     textColor: "{colors.text-inverted}"
-    rounded: "{rounded.none}"
+    rounded: "{rounded.md}"
     padding: "0 0.95rem"
     height: "32px"
   button-secondary:
     backgroundColor: "{colors.bg-surface}"
     textColor: "{colors.text-primary}"
-    rounded: "{rounded.none}"
+    rounded: "{rounded.md}"
     padding: "0 0.95rem"
     height: "32px"
   tab-active:
     backgroundColor: "{colors.bg-active}"
     textColor: "{colors.text-inverted}"
-    rounded: "{rounded.none}"
-    padding: "0 0.85rem"
+    rounded: "{rounded.pill}"
+    padding: "0 0.95rem"
     height: "32px"
 ---
 
-# Design System: Datamatics Monochrome Sublime
+# Design System: Tactile Monochrome Cockpit
 
 ## Overview
 
-The Roblox MCP Command Deck design system is built on **Datamatics Monochrome Sublime**: an ultra-dense, binary-contrast telemetry cockpit inspired by precision hardware logic analyzers, Ryoji Ikeda data graphics, and low-level machine registers. It rejects generic SaaS gradients, bloated card grids, and cookie-cutter dashboards in favor of raw informational clarity, tabular numerals, razor-sharp 1px hairlines, and instant high-contrast binary state transitions.
+The Roblox MCP Command Deck design system combines the informational rigor of **Datamatics Monochrome** with natural rounded geometries, tactile depth, subtle 3D rim lighting, and physical elevation. It eliminates rigid 90-degree square boxes in favor of smooth, ergonomic corner contours (`5px`, `8px`, `12px`, `16px`, and full pill capsules) paired with multi-layer ambient occlusion shadows and tactile inset console screens.
 
 ## Colors
 
-The palette is strictly calibrated for zero distraction and high focus:
+The palette preserves high-contrast monochrome clarity while introducing subtle surface gradients for 3D realism:
 
-- **Void Black (`#000000`)**: Base viewport ground and embedded terminal canvas.
-- **Deep Subtle (`#050608`)**: Container card panels and datagrid backdrop.
-- **Surface (`#0a0c10`)**: Header bars, table headers, and inactive button surfaces.
-- **Surface Hover (`#12151c`)**: Subtle tactile hover feedback state.
-- **Signal White (`#ffffff`)**: Primary text, active navigation tabs, inverted buttons, and focused borders.
-- **Silver Secondary (`#cbd5e1`)**: Readable body and parameter descriptions.
-- **Muted Slate (`#8b95a8`)**: Metadata labels, units, and secondary indicators.
-- **Faint Border Hairlines (`#1c202a`, `#2d3342`)**: Structural grid lines and panel dividers.
+- **Void Black (`#030406`)**: Ambient backdrop with subtle radial light vignette.
+- **Subtle Surface (`#090b10` to `#07090c`)**: Beveled container cards and panel backdrops.
+- **Surface Layer (`#0f1218`)**: Interactive bars, table headers, and tactile button chassis.
+- **Surface Hover (`#161b24`)**: Elevated interactive hover state.
+- **Signal White (`#ffffff`)**: Primary labels, active navigation capsules, and illuminated rim lights.
+- **Secondary Slate (`#cbd5e1`)**: High-legibility body descriptions and technical arguments.
+- **Muted Steel (`#8c97ad`)**: Metadata units, timecodes, and secondary tags.
+- **Beveled Borders (`#1c212c`, `#2b3344`, `#44506b`)**: Physical structural seams and highlighted edges.
 
 ## Typography
 
-A unified monospace typography stack (`ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace`) ensures exact character alignment for memory offsets, PIDs, JSON payloads, and execution latencies:
+Unified monospace typography stack (`ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace`) with strict tabular numeral alignment:
 
-- **Tabular Numerals**: Every numeric value uses `font-feature-settings: "tnum" 1, "zero" 1` and `font-variant-numeric: tabular-nums` to eliminate jitter during continuous polling.
+- **Tabular Numerals**: Numeric metrics and counters use `font-variant-numeric: tabular-nums` to eliminate layout shift during live background polling.
 - **Display Scale**:
-  - Metric Values: 24px, 800 weight, -0.02em tracking.
-  - Section Headlines: 20px / 15px, 700 weight, uppercase, 0.02em tracking.
+  - Metric Telemetry: 26px, 800 weight, -0.02em tracking.
+  - Section Headlines: 21px / 16px, 700 weight, 0.02em tracking.
   - Body Descriptions: 13px, 400 weight, 1.6 line height.
-  - Interface Text: 12px, 500 weight, 1.5 line height.
+  - Interface Text: 12px, 500 weight, 1.55 line height.
   - Labels & Badges: 11px, 700 weight, uppercase, 0.03em tracking.
-  - Micro Metadata: 10px, 600 weight, 1.2 line height.
 
 ## Layout
 
-- **Flush Top Deck**: Fixed 52px control bar with brand mark, view switcher tabs, autoexec toggle, and quick copy triggers.
-- **4-Column Telemetry Ribbon**: Fixed-aspect metrics grid displaying Roblox process count, worker sessions, registered tools, and total throughput.
-- **Split-Pane Tools Workspace**: 380px fixed sticky directory sidebar on the left paired with a comprehensive parameter and execution canvas on the right.
-- **Responsive Adaptations**: Fluid collapse from multi-column desktop grids into stacked single-column layouts below 1080px and 640px breakpoints.
+- **Floating Command Island**: Floating 54px navigation island with `16px` rounded corners, glassmorphic backdrop blur (16px), subtle inner rim light, and deep ambient shadow.
+- **Tactile Bento Telemetry Grid**: 4-column modular metric cards with individual `12px` rounded corners and subtle top-edge specular highlights.
+- **Split-Pane Tools Workspace**: 390px sticky directory sidebar with rounded search inputs and pill-shaped category chips paired with a rounded execution canvas.
+- **Responsive Adaptations**: Smooth fluid stacking for displays under 1080px and 640px.
 
 ## Elevation & Depth
 
-- **Zero Soft Shadows**: Eliminates diffuse box shadows (`box-shadow: none`) in favor of definite, laser-sharp 1px border edges.
-- **High-Contrast Modal Overlay**: Full-screen `#000000` backdrop (88% opacity) with a solid `#ffffff` 1px border container.
-- **Binary Inversion Depth**: Active or selected elements elevate through total polarity inversion (white surface `#ffffff` with black ink `#000000`).
+- **Tactile 3D Keypresses**: Buttons feature vertical linear gradients, subtle top rim highlights (`inset 0 1px 0 rgba(255, 255, 255, 0.12)`), and tangible depression on active press (`transform: translateY(1px)`).
+- **Recessed Sunken Screens**: Text inputs and live output terminal use inward shadow depth (`inset 0 2px 4px rgba(0, 0, 0, 0.65)`) to simulate sunken physical CRT/LCD panels.
+- **Multi-Layer Card Elevation**: Panels float with realistic dual-layer shadows (`0 6px 16px rgba(0, 0, 0, 0.5)` combined with top specular bevels).
+- **Elevated Modal Dialogs**: Floating dialog chassis with `16px` radius, deep backdrop blur, and 28px ambient occlusion shadow.
 
 ## Shapes
 
-- **Geometric Hard Edges**: Zero rounded corners (`border-radius: 0px`) or micro-subtle radii (`2px`) across buttons, cards, tables, and dialogs.
-- **Hairline Dividers**: 1px solid boundaries separating all table cells and panel headers.
+- **Natural Rounded Contours**:
+  - Small elements (quick chips, inner items): `5px` (`--radius-sm`).
+  - Controls, buttons, inputs, table rows: `8px` (`--radius-md`).
+  - Cards, panels, datagrid containers: `12px` (`--radius-lg`).
+  - Floating top island, modals: `16px` (`--radius-xl`).
+  - Badges, status chips, tab buttons: `9999px` (`--radius-pill`).
+- **Inner Rim Lighting**: 1px subtle top highlights (`rgba(255, 255, 255, 0.07)`) create tactile 3D physical boundaries.
 
 ## Components
 
-- **Navigation Tabs**: Pill-less, flush rectangular buttons with keyboard shortcut badges (`[1]`, `[2]`, `[3]`, `[4]`, `[5]`).
-- **Telemetry Cells**: Monospaced statistic blocks with micro-tag metadata headers.
-- **Interactive Datagrid**: Flush tabular rows with quick action buttons (`[SCREENSHOT]`, `[KILL]`) and live status badges.
-- **In-Page Screenshot Stage**: Integrated canvas frame that displays captured window buffers directly without external popups.
-- **Execution Terminal**: High-contrast command console with execution timing (ms) and formatted JSON-RPC 2.0 output.
-- **Tactile Toast**: High-contrast bottom-right notification pill (`#ffffff` fill, `#000000` text) with instant tactile snap.
+- **Capsule Navigation Rail**: Inset dark pill rail holding smooth pill buttons with keyboard shortcut badges.
+- **Tactile Telemetry Cards**: Elevated bento boxes with hover lift and micro-tag badges.
+- **Rounded Datagrid**: Table container with smooth outer corners, alternating hover rows, and pill status tags.
+- **In-Page Screenshot Frame**: Recessed black canvas stage with rounded corners.
+- **Physical Execution Terminal**: Sunken dark terminal with top control bar and tactile buttons.
+- **Floating 3D Toast**: Pill/rounded notification card with white gloss finish and drop shadow.
 
 ## Do's and Don'ts
 
 ### Do's
-- Always format numbers and latencies with tabular monospace styling.
-- Keep border dividing lines strictly at 1px thickness.
-- Use full white-on-black binary inversion for active states and primary triggers.
-- Provide instant tactile feedback (toast and console status) for every action.
-- Preserve keyboard navigation shortcuts (`/`, `1-5`, `L`, `R`, `Esc`).
+- Use consistent rounded corner tokens (`--radius-sm` through `--radius-pill`).
+- Pair outer drop shadows with subtle top-edge inner specular highlights for authentic 3D depth.
+- Give buttons physical tactile states (hover elevation and active press transform).
+- Recess input fields and code terminals with subtle inset shadows.
+- Keep numbers tabular and typography crisp.
 
 ### Don'ts
-- Never use rainbow gradients, colored borders, or decorative text shadows.
-- Never use font sizes below 11px for any functional UI text or labels.
-- Never use empty `<img>` tags or broken image placeholders.
-- Never add diffuse, cloudy drop-shadows on dark surfaces.
-- Never use nested cards or multi-layer containers.
+- Never use completely sharp 0px corners across containers and buttons.
+- Never use flat 1-color rectangles without depth or tactile elevation.
+- Never use blurry, diffuse zero-offset colored halos.
+- Never use text smaller than 11px for any functional element.
+- Never compromise performance with expensive heavy filters.
