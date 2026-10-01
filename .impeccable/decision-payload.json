@@ -1,0 +1,122 @@
+{
+  "title": "Choose the visual world for Roblox MCP Command Deck",
+  "question": "The roll assigned Tactical Avionics & Logic Analyzer Deck. Keep it, take an alternate, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Tactical Avionics & Logic Analyzer Deck",
+      "kicker": "THE ROLL",
+      "lineage": "Aerospace avionics MFDs & hardware logic analyzers",
+      "thesis": "Dense instrumentation console fusing low-level machine registers with high-precision aerospace telemetry.",
+      "palette": [
+        "#08090b",
+        "#0f1117",
+        "#00ff9d",
+        "#00e5ff",
+        "#f59e0b",
+        "#f43f5e"
+      ],
+      "materials": [
+        "matte carbon chassis",
+        "segmented LED displays",
+        "vector phosphor readouts"
+      ],
+      "viewport": "Top KPI status HUD with phosphor indicators, split-pane instance telemetry, collapsible tool explorer with live hex/JSON debugger.",
+      "risk": "Can feel overly intimidating if typography and hierarchy lack breathing room.",
+      "raised": [
+        {
+          "from": "brand-identity-canon-saville-catalog-sleeve",
+          "raise": "Tools and endpoints cataloged with sequential technical index codes and categorical industrial accents."
+        },
+        {
+          "from": "ikeda-datamatics",
+          "raise": "Ultra-crisp monospace tabular columns with instant high-contrast negative flash on state changes."
+        }
+      ]
+    },
+    {
+      "id": "model-pick",
+      "label": "Rackmount Telemetry Cockpit",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "Modular server racks & memory profiling workbenches",
+      "thesis": "High-density dark modular rack with dedicated telemetry meters and instant status indicators.",
+      "palette": [
+        "#0d1117",
+        "#161b22",
+        "#38bdf8",
+        "#34d399",
+        "#f8fafc"
+      ],
+      "materials": [
+        "brushed dark aluminum",
+        "soft backlit silicone keys"
+      ],
+      "viewport": "Floating control bar, live process memory monitor, and dual-column tool inspector.",
+      "risk": "Familiar to developers; risks resembling standard developer tooling if not sharply executed."
+    },
+    {
+      "id": "challenger-ikeda",
+      "label": "Datamatics Monochrome Sublime",
+      "verdict": "competitive",
+      "lineage": "Ryoji Ikeda datamatics & binary data streams",
+      "thesis": "Pure high-contrast black-and-white data sublime where barcode line densities structure the entire system.",
+      "palette": [
+        "#000000",
+        "#ffffff"
+      ],
+      "materials": [
+        "hairline rules",
+        "pure binary bitmap contrast"
+      ],
+      "viewport": "Relentless monospace data grid, streaming byte tickers, zero color distraction.",
+      "case": "Exceptional visual discipline and uncompromising density; slightly diminishes quick visual category triage.",
+      "risk": "Extreme starkness may fatigue eyes during prolonged debugging sessions."
+    },
+    {
+      "id": "challenger-saville",
+      "label": "Saville Factory Records Catalog",
+      "verdict": "declined",
+      "lineage": "Peter Saville Factory Records sleeve systems",
+      "palette": [
+        "#0b0b0c",
+        "#ffffff",
+        "#e11d48",
+        "#facc15"
+      ],
+      "materials": [
+        "matte black unprinted board",
+        "color block codes"
+      ],
+      "case": "Strong conceptual aesthetic, but cryptic color codes obscure fast parameter entry and real-time execution.",
+      "kept": "Sequential artifact numbering and clean categorical color blocks for tools."
+    }
+  ],
+  "reroll": {
+    "registers": [
+      "safer",
+      "bolder"
+    ]
+  },
+  "buildPath": {
+    "value": "code"
+  },
+  "canon": true,
+  "canonCard": {
+    "label": "The Category Standard",
+    "thesis": "Clean modern developer dashboard with dark slate surfaces, blue accents, and standard card grids.",
+    "palette": [
+      "#0f172a",
+      "#1e293b",
+      "#3b82f6",
+      "#10b981",
+      "#f8fafc"
+    ],
+    "materials": [
+      "subtle card borders",
+      "system sans-serif typography"
+    ],
+    "viewport": "Horizontal topbar, KPI cards row, instances grid, search input, and execution panel.",
+    "risk": "Safe and functional, but visually generic and indistinguishable from standard SaaS templates."
+  },
+  "steer": true
+}

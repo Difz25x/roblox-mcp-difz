@@ -74,13 +74,66 @@ if G_GET("MCP_RUNNING") then
 		G_SET("MCP_SPY_LOGS", nil)
 	end
 end
-local HOST = G_GET("MCP_HOST") or "127.0.0.1"
-local PORT = G_GET("MCP_PORT") or 28429
-local WS_URL = "ws://" .. HOST .. ":" .. PORT .. "/ws"
 local cloneref = cloneref or function(x)
 	return x
 end
 local HttpService = cloneref(game:GetService("HttpService"))
+
+local DISCOVERY_PORT = 58295
+local HOST = G_GET("MCP_HOST") or "127.0.0.1"
+local PORT = G_GET("MCP_PORT") or 28429
+
+-- Dynamic port discovery from fixed localhost discovery endpoint
+pcall(function()
+	local body = nil
+	local reqFn = (syn and syn.request) or (http and http.request) or http_request or request
+	if reqFn then
+		local res = reqFn({
+			Url = "http://" .. HOST .. ":" .. DISCOVERY_PORT .. "/port",
+			Method = "GET"
+		})
+		if res and (res.StatusCode == 200 or res.Status == 200) then
+			body = res.Body
+		end
+	end
+	if not body and game and game.HttpGet then
+		local ok, res = pcall(function()
+			return game:HttpGet("http://" .. HOST .. ":" .. DISCOVERY_PORT .. "/port")
+		end)
+		if ok and res then
+			body = res
+		end
+	end
+	if body and #body > 0 then
+		local ok, data = pcall(function() return HttpService:JSONDecode(body) end)
+		if ok and data and data.port then
+			PORT = tonumber(data.port) or PORT
+		else
+			local num = tonumber(body:match("%d+"))
+			if num and num > 0 and num <= 65535 then
+				PORT = num
+			end
+		end
+	end
+end)
+
+local WS_URL = "ws://" .. HOST .. ":" .. PORT .. "/ws"
+
+local function stopMcpHost()
+	local reqFn = (syn and syn.request) or (http and http.request) or http_request or request
+	pcall(function()
+		if reqFn then
+			reqFn({
+				Url = "http://" .. HOST .. ":" .. DISCOVERY_PORT .. "/stop",
+				Method = "POST"
+			})
+		elseif game and game.HttpGet then
+			game:HttpGet("http://" .. HOST .. ":" .. DISCOVERY_PORT .. "/stop")
+		end
+	end)
+end
+G_SET("stopMcpHost", stopMcpHost)
+
 local Players = cloneref(game:GetService("Players"))
 local LogService = cloneref(game:GetService("LogService"))
 local CoreGui = cloneref(game:GetService("CoreGui"))
@@ -3648,6 +3701,13 @@ local function handleSetAutoexecute(args)
 end
 
 local HANDLERS = {
+	["stop-server"] = function()
+		task.spawn(function()
+			task.wait(0.1)
+			stopMcpHost()
+		end)
+		return { success = true, message = "Stop signal sent to MCP host" }
+	end,
 	["get-player"] = handlePlayerState,
 	["get-players"] = handleDumpPlayers,
 	["list-remotes"] = handleDumpRemotes,

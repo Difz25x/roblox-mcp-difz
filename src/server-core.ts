@@ -7,6 +7,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const os = require('os');
 const PKG = require('../package.json');
 const { QueueManager: QueueManagerCls } = require('./queue-manager');
 const { McpHandler: McpHandlerCls } = require('./mcp-handler');
@@ -114,6 +115,57 @@ function createApp(opts?: CreateAppOptions): AppComponents {
 
     app.get('/mcp.lua', serveMcpLua);
     app.get('/mcp.luau', serveMcpLua);
+
+    // Live CSS / JS Assets endpoints (uncached, live reload from disk)
+    const serveDashboardCss: RequestHandler = (_req: Request, res: Response): void => {
+        try {
+            const cssPath = path.join(PKG_DIR, 'public', 'dashboard.css');
+            if (fs.existsSync(cssPath)) {
+                const content = fs.readFileSync(cssPath, 'utf-8');
+                res.setHeader('Content-Type', 'text/css; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+                res.send(content);
+                return;
+            }
+        } catch {}
+        res.status(404).send('/* dashboard.css not found */');
+    };
+    app.get('/css', serveDashboardCss);
+    app.get('/dashboard.css', serveDashboardCss);
+
+    const serveDashboardJs: RequestHandler = (_req: Request, res: Response): void => {
+        try {
+            const jsPath = path.join(PKG_DIR, 'public', 'dashboard.js');
+            if (fs.existsSync(jsPath)) {
+                const content = fs.readFileSync(jsPath, 'utf-8');
+                res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+                res.send(content);
+                return;
+            }
+        } catch {}
+        res.status(404).send('// dashboard.js not found');
+    };
+    app.get('/js', serveDashboardJs);
+    app.get('/dashboard.js', serveDashboardJs);
+
+    // Stop server endpoint
+    const handleStop: RequestHandler = (_req: Request, res: Response): void => {
+        res.json({ success: true, message: 'Server stopping...', pid: process.pid });
+        setTimeout(() => {
+            console.log(`\n  \x1b[33m⚡ Stop signal received via HTTP. Shutting down (PID ${process.pid})...\x1b[0m`);
+            process.exit(0);
+        }, 300);
+    };
+    app.get('/stop', handleStop);
+    app.post('/stop', handleStop);
+    app.get('/api/stop', handleStop);
+    app.post('/api/stop', handleStop);
+
     if (fs.existsSync(publicDir)) app.use(express.static(publicDir));
 
     const server: Server = http.createServer(app);
@@ -129,6 +181,9 @@ function createApp(opts?: CreateAppOptions): AppComponents {
             let html: string = fs.readFileSync(dashboardPath, 'utf-8');
             html = html.replace(/\{\{\s*port\s*\}\}/g, String(port)).replace(/\{\{\s*version\s*\}\}/g, PKG.version);
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
             res.send(html);
         } else {
             res.send(`<h1>Roblox MCP Server v${PKG.version}</h1><p>Port: ${port}</p>`);
@@ -260,6 +315,74 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         const { enabled } = req.body || {};
         autoexecuteEnabled = enabled !== undefined ? !!enabled : !autoexecuteEnabled;
         res.json({ success: true, enabled: autoexecuteEnabled });
+    });
+
+    // Port Configuration and Inspection APIs
+    app.get('/api/config/port', (_req: Request, res: Response): void => {
+        const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
+        const discPort = 58295;
+        let savedPort: number | null = null;
+        try {
+            const cfgPath = path.join(os.homedir(), '.roblox-mcp', 'config.json');
+            if (fs.existsSync(cfgPath)) {
+                const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+                if (cfg.port) savedPort = cfg.port;
+            }
+        } catch {}
+        res.json({
+            success: true,
+            currentPort: port,
+            discoveryPort: discPort,
+            savedPort,
+            pid: process.pid,
+        });
+    });
+
+    app.post('/api/config/port-check', (req: Request, res: Response): void => {
+        const target = parseInt(req.body?.port, 10);
+        if (isNaN(target) || target < 1 || target > 65535) {
+            res.status(400).json({ success: false, error: 'Port must be between 1 and 65535' });
+            return;
+        }
+        let inUse = false;
+        try {
+            if (process.platform === 'win32') {
+                const { spawnSync } = require('child_process');
+                const out = spawnSync('netstat.exe', ['-ano', '-p', 'tcp'], { encoding: 'utf-8', windowsHide: true });
+                if (out.stdout) {
+                    const lines = out.stdout.split('\n');
+                    for (const l of lines) {
+                        if (l.includes('LISTENING') && (l.includes(`:${target} `) || l.includes(`.${target} `))) {
+                            inUse = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch {}
+        res.json({ success: true, port: target, available: !inUse });
+    });
+
+    app.post('/api/config/port-save', (req: Request, res: Response): void => {
+        const target = parseInt(req.body?.port, 10);
+        if (isNaN(target) || target < 1 || target > 65535) {
+            res.status(400).json({ success: false, error: 'Port must be between 1 and 65535' });
+            return;
+        }
+        try {
+            const cfgDir = path.join(os.homedir(), '.roblox-mcp');
+            if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
+            const cfgPath = path.join(cfgDir, 'config.json');
+            let data: any = {};
+            if (fs.existsSync(cfgPath)) {
+                try { data = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')); } catch {}
+            }
+            data.port = target;
+            fs.writeFileSync(cfgPath, JSON.stringify(data, null, 2), 'utf-8');
+            res.json({ success: true, savedPort: target, message: `Preferred port saved as ${target}` });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
     });
 
     app.get('/api/tools', (_req: Request, res: Response): void => {

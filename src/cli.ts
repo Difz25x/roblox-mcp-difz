@@ -9,13 +9,38 @@ const os = require('os');
 
 import * as readline from 'readline';
 
+const { DiscoveryServer, getDiscoveryPort } = require('./discovery-server');
+
 const CONFIG_DIR = path.join(os.homedir(), '.roblox-mcp');
 try { if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true }); } catch {}
 const PID_FILE = path.join(CONFIG_DIR, 'server.pid');
 const DEFAULT_PORT = 28429;
 
 function getPort(): number {
-    return parseInt(process.env.MCP_PORT!, 10) || DEFAULT_PORT;
+    for (let i = 0; i < process.argv.length; i++) {
+        const arg = process.argv[i];
+        if (arg === '--port' || arg === '-p') {
+            const val = parseInt(process.argv[i + 1], 10);
+            if (!isNaN(val) && val > 0 && val <= 65535) return val;
+        } else if (arg.startsWith('--port=')) {
+            const val = parseInt(arg.slice(7), 10);
+            if (!isNaN(val) && val > 0 && val <= 65535) return val;
+        }
+    }
+    const envVal = parseInt(process.env.MCP_PORT!, 10);
+    if (!isNaN(envVal) && envVal > 0 && envVal <= 65535) return envVal;
+
+    try {
+        const cfgPath = path.join(CONFIG_DIR, 'config.json');
+        if (fs.existsSync(cfgPath)) {
+            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+            if (cfg.port && !isNaN(cfg.port) && cfg.port > 0 && cfg.port <= 65535) {
+                return cfg.port;
+            }
+        }
+    } catch {}
+
+    return DEFAULT_PORT;
 }
 
 // ── Helpers ─────────────────────────────────────────
@@ -23,12 +48,18 @@ function getPort(): number {
 function hideCursor(): void { process.stdout.write('\x1b[?25l'); }
 function showCursor(): void { process.stdout.write('\x1b[?25h'); }
 
-function printBanner(port: number, toolsCount: number, wsCount: number, pid: number): void {
+function printBanner(port: number, toolsCount: number, wsCount: number, pid: number, discoveryPort?: number): void {
     console.log(`  \x1b[1;36mRoblox MCP Server\x1b[0m \x1b[2mv${PKG.version}\x1b[0m`);
-    console.log(`  HTTP  http://localhost:${port}/mcp`);
-    console.log(`  WS    ws://localhost:${port}/ws`);
+    console.log(`  HTTP      http://localhost:${port}/mcp`);
+    console.log(`  WS        ws://localhost:${port}/ws`);
+    if (discoveryPort) {
+        console.log(`  Discovery http://localhost:${discoveryPort}/port`);
+    }
     console.log(`  Tools ${toolsCount}  Conns ${wsCount}  PID ${pid}`);
     console.log(`  \x1b[2mInject: loadstring(game:HttpGet("http://127.0.0.1:${port}/mcp.lua"))()\x1b[0m`);
+    if (discoveryPort && discoveryPort !== port) {
+        console.log(`  \x1b[2mAuto-sync: loadstring(game:HttpGet("http://127.0.0.1:${discoveryPort}/mcp.lua"))()\x1b[0m`);
+    }
 }
 
 // ── Interactive menu renderer (no scroll bug) ───────
@@ -159,19 +190,173 @@ async function cmdUpdate(): Promise<void> {
 }
 
 let _activeServer: any = null;
+let _discoveryServer: any = null;
+
+function getPidOnPort(port: number): number | null {
+    if (process.platform === 'win32') {
+        const res = spawnSync('netstat.exe', ['-ano', '-p', 'tcp'], { encoding: 'utf-8', windowsHide: true });
+        if (res.status === 0 && res.stdout) {
+            const lines = res.stdout.split('\n');
+            for (const rawLine of lines) {
+                const line = rawLine.trim();
+                if (!line.startsWith('TCP')) continue;
+                const parts = line.split(/\s+/);
+                if (parts.length >= 5 && parts[3] === 'LISTENING') {
+                    const localAddr = parts[1];
+                    const pidStr = parts[4];
+                    if (localAddr.endsWith(`:${port}`) || localAddr.endsWith(`.${port}`)) {
+                        const pid = parseInt(pidStr, 10);
+                        if (!isNaN(pid) && pid > 0 && pid !== process.pid) {
+                            return pid;
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        const res = spawnSync('lsof', ['-ti', `:${port}`], { encoding: 'utf-8' });
+        if (res.status === 0 && res.stdout) {
+            const pids = res.stdout.trim().split(/\s+/).map((p: string) => parseInt(p, 10)).filter((p: number) => !isNaN(p) && p > 0 && p !== process.pid);
+            if (pids.length > 0) return pids[0];
+        }
+    }
+    return null;
+}
+
+function killProcessByPid(pid: number): boolean {
+    if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return false;
+    try {
+        if (process.platform === 'win32') {
+            spawnSync('taskkill', ['/F', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
+        } else {
+            process.kill(pid, 'SIGKILL');
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function ensurePortAvailable(port: number): Promise<void> {
+    // 1. Check PID recorded in PID file
+    if (fs.existsSync(PID_FILE)) {
+        try {
+            const recordedPid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
+            if (!isNaN(recordedPid) && recordedPid > 0 && recordedPid !== process.pid) {
+                killProcessByPid(recordedPid);
+                try { fs.unlinkSync(PID_FILE); } catch {}
+            }
+        } catch {}
+    }
+
+    // 2. Check if any process is actively listening on this port
+    let conflictingPid = getPidOnPort(port);
+    if (conflictingPid) {
+        console.log(`  \x1b[33m⚠ Port ${port} is occupied by an existing host (PID ${conflictingPid}).\x1b[0m`);
+        console.log(`  \x1b[33m⚡ Terminating previous host and freeing port...\x1b[0m`);
+        killProcessByPid(conflictingPid);
+
+        // Wait up to 3 seconds for OS socket release
+        const start = Date.now();
+        while (Date.now() - start < 3000) {
+            await new Promise(r => setTimeout(r, 200));
+            conflictingPid = getPidOnPort(port);
+            if (!conflictingPid) break;
+        }
+
+        if (conflictingPid) {
+            killProcessByPid(conflictingPid);
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        console.log(`  \x1b[32m✔ Previous host terminated. Port ${port} is now available.\x1b[0m\n`);
+    }
+}
+
+function startListening(server: any, port: number, onListening: () => Promise<void> | void): Promise<void> {
+    return new Promise((resolve, reject) => {
+        let isResolved = false;
+
+        const onError = async (err: any) => {
+            if (err.code === 'EADDRINUSE') {
+                console.log(`  \x1b[33m⚠ Port ${port} is currently busy (EADDRINUSE). Forcing release...\x1b[0m`);
+                const pid = getPidOnPort(port);
+                if (pid) {
+                    killProcessByPid(pid);
+                    await new Promise(r => setTimeout(r, 400));
+                }
+                try {
+                    server.close();
+                } catch {}
+
+                server.once('error', (retryErr: any) => {
+                    if (!isResolved) {
+                        isResolved = true;
+                        reject(retryErr);
+                    }
+                });
+
+                server.listen(port, async () => {
+                    if (!isResolved) {
+                        isResolved = true;
+                        await onListening();
+                        resolve();
+                    }
+                });
+            } else {
+                if (!isResolved) {
+                    isResolved = true;
+                    reject(err);
+                }
+            }
+        };
+
+        server.once('error', onError);
+        server.listen(port, async () => {
+            if (!isResolved) {
+                isResolved = true;
+                server.removeListener('error', onError);
+                await onListening();
+                resolve();
+            }
+        });
+    });
+}
 
 async function cmdStart(isDaemon: boolean = false): Promise<void> {
-    const { createApp } = require('./server-core');
     const PORT = getPort();
+    const DISCOVERY_PORT = getDiscoveryPort();
+
+    await ensurePortAvailable(PORT);
+    if (DISCOVERY_PORT !== PORT) {
+        await ensurePortAvailable(DISCOVERY_PORT);
+    }
+
+    const { createApp } = require('./server-core');
     const { server, tools, wss } = createApp();
 
     _activeServer = server;
 
-    server.listen(PORT, async () => {
+    await startListening(server, PORT, async () => {
         const pid = process.pid;
 
         // Write PID file for stop command
         try { fs.writeFileSync(PID_FILE, String(pid), 'utf-8'); } catch {}
+
+        // Launch Discovery Server so mcp.lua can auto-sync to this custom port
+        if (DISCOVERY_PORT !== PORT) {
+            _discoveryServer = new DiscoveryServer({
+                activePort: PORT,
+                discoveryPort: DISCOVERY_PORT,
+                onStopRequest: () => {
+                    cleanupPidFile();
+                    if (_activeServer) {
+                        try { _activeServer.close(); } catch {}
+                    }
+                }
+            });
+            await _discoveryServer.start();
+        }
 
         if (isDaemon) {
             // Background process mode — start the tray and keep process alive
@@ -179,7 +364,7 @@ async function cmdStart(isDaemon: boolean = false): Promise<void> {
         } else {
             // Normal foreground mode
             console.clear();
-            printBanner(PORT, tools.count, wss.connectedCount, pid);
+            printBanner(PORT, tools.count, wss.connectedCount, pid, DISCOVERY_PORT !== PORT ? DISCOVERY_PORT : undefined);
             console.log('');
             showPostStartMenu(PORT, pid);
         }
@@ -201,13 +386,34 @@ async function cmdStdio(): Promise<void> {
     }
 
     const PORT = getPort();
-    const { app, queue, tools, sessions, processManager } = createApp();
+    const DISCOVERY_PORT = getDiscoveryPort();
+
+    await ensurePortAvailable(PORT);
+    if (DISCOVERY_PORT !== PORT) {
+        await ensurePortAvailable(DISCOVERY_PORT);
+    }
+
+    const { server, queue, tools, sessions, processManager } = createApp();
 
     const mcpServer = initMcpServer(queue, tools, sessions, processManager);
     await mcpServer.connect(new StdioServerTransport());
 
-    app.listen(PORT, () => {
-        process.stderr.write(`  \x1b[2m[rblx-mcp] MCP stdio transport ready — WS/HTTP listening on port ${PORT}\x1b[0m\n`);
+    if (DISCOVERY_PORT !== PORT) {
+        _discoveryServer = new DiscoveryServer({
+            activePort: PORT,
+            discoveryPort: DISCOVERY_PORT,
+            onStopRequest: () => {
+                cleanupPidFile();
+                if (_activeServer) {
+                    try { _activeServer.close(); } catch {}
+                }
+            }
+        });
+        await _discoveryServer.start();
+    }
+
+    await startListening(server, PORT, () => {
+        process.stderr.write(`  \x1b[2m[rblx-mcp] MCP stdio transport ready — WS/HTTP listening on port ${PORT} (discovery: ${DISCOVERY_PORT})\x1b[0m\n`);
     });
 }
 
@@ -434,27 +640,42 @@ async function startTray(port: number, pid: number): Promise<void> {
 // ── Stop command ────────────────────────────────────
 
 async function cmdStop(): Promise<void> {
-    if (!fs.existsSync(PID_FILE)) {
-        console.log(`  \x1b[33m⚠ No running server found.\x1b[0m`);
-        return;
-    }
-    const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
-    if (isNaN(pid)) {
-        console.log(`  \x1b[33m⚠ Invalid PID file.\x1b[0m`);
+    const PORT = getPort();
+    let stoppedAny = false;
+
+    if (fs.existsSync(PID_FILE)) {
+        const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
+        if (!isNaN(pid)) {
+            if (killProcessByPid(pid)) {
+                console.log(`  \x1b[32m✔\x1b[0m Stopped server from PID file (PID ${pid})`);
+                stoppedAny = true;
+            }
+        }
         cleanupPidFile();
-        return;
     }
-    try {
-        process.kill(pid, 'SIGTERM');
-        console.log(`  \x1b[32m✔\x1b[0m Stopped server (PID ${pid})`);
-    } catch (err: any) {
-        if (err.code === 'ESRCH') {
-            console.log(`  \x1b[2mServer (PID ${pid}) already stopped.\x1b[0m`);
-        } else {
-            console.log(`  \x1b[31m✖ Failed to stop PID ${pid}: ${err.message}\x1b[0m`);
+
+    const portPid = getPidOnPort(PORT);
+    if (portPid) {
+        if (killProcessByPid(portPid)) {
+            console.log(`  \x1b[32m✔\x1b[0m Stopped server listening on port ${PORT} (PID ${portPid})`);
+            stoppedAny = true;
         }
     }
-    cleanupPidFile();
+
+    const DISCOVERY_PORT = getDiscoveryPort();
+    if (DISCOVERY_PORT !== PORT) {
+        const discPid = getPidOnPort(DISCOVERY_PORT);
+        if (discPid && discPid !== portPid) {
+            if (killProcessByPid(discPid)) {
+                console.log(`  \x1b[32m✔\x1b[0m Stopped discovery server on port ${DISCOVERY_PORT} (PID ${discPid})`);
+                stoppedAny = true;
+            }
+        }
+    }
+
+    if (!stoppedAny) {
+        console.log(`  \x1b[33m⚠ No running server found on port ${PORT}.\x1b[0m`);
+    }
 }
 
 function cleanupPidFile(): void {
