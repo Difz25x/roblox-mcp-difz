@@ -152,9 +152,13 @@ async function cmdUpdate(): Promise<void> {
         const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
         const res = spawnSync(npmCmd, ['install', '-g', `${PKG.name}@latest`], {
             stdio: 'inherit',
-            timeout: 60000,
+            timeout: 120000,
+            shell: true,
             windowsHide: true,
         });
+        if (res.error) {
+            throw res.error;
+        }
         if (res.status !== 0) {
             throw new Error(`npm exited with code ${res.status}`);
         }
