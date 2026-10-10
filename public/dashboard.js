@@ -1,7 +1,3 @@
-// ==========================================================================
-// ROBLOX MCP COMMAND DECK — DATAMATICS CONTROLLER
-// High-Performance Event-Driven Operations Engine
-// ==========================================================================
 
 const PORT = parseInt(window.PORT || location.port || '28429', 10);
 let allTools = [];
@@ -11,9 +7,6 @@ let activeProcesses = [];
 let pollTimer = null;
 let currentUptimeSec = 0;
 
-// ==========================================================================
-// TACTICAL TOAST SYSTEM
-// ==========================================================================
 function notify(msg) {
     const el = document.getElementById('deck-toast');
     if (!el) return;
@@ -25,9 +18,6 @@ function notify(msg) {
     }, 2200);
 }
 
-// ==========================================================================
-// NAVIGATION & VIEW SWITCHING
-// ==========================================================================
 function switchView(tabId) {
     document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
@@ -45,16 +35,12 @@ function switchView(tabId) {
     }
 }
 
-// ==========================================================================
-// TELEMETRY REFRESH
-// ==========================================================================
 async function fetchTelemetry() {
     try {
         const res = await fetch('/health');
         if (!res.ok) throw new Error('Health check error');
         const data = await res.json();
 
-        // 1. Roblox Processes KPI
         const totalProcs = data.robloxProcesses ? data.robloxProcesses.total : 0;
         const connectedProcs = data.robloxProcesses && data.robloxProcesses.status ? data.robloxProcesses.status.connected : 0;
         const standbyProcs = Math.max(0, totalProcs - connectedProcs);
@@ -62,19 +48,16 @@ async function fetchTelemetry() {
         const elProcTotal = document.getElementById('kpi-proc-total');
         const elProcSplit = document.getElementById('kpi-proc-split');
         if (elProcTotal) elProcTotal.innerText = totalProcs;
-        if (elProcSplit) elProcSplit.innerText = `${connectedProcs} CONNECTED / ${standbyProcs} STANDBY`;
+        if (elProcSplit) elProcSplit.innerText = `${connectedProcs} connected • ${standbyProcs} standby`;
 
-        // 2. Active Workers KPI
         const elWorkers = document.getElementById('kpi-workers');
         const elTransportSplit = document.getElementById('kpi-transport-split');
         if (elWorkers) elWorkers.innerText = data.activeSessions || 0;
-        if (elTransportSplit) elTransportSplit.innerText = `${data.wsConnections || 0} WS ACTIVE`;
+        if (elTransportSplit) elTransportSplit.innerText = `${data.activeSessions || 0} active sessions`;
 
-        // 3. Tool Registry KPI
         const elTools = document.getElementById('kpi-tools');
         if (elTools && data.toolsRegistered) elTools.innerText = data.toolsRegistered;
 
-        // 4. System Throughput & Uptime
         const elProcessed = document.getElementById('kpi-processed');
         const elUptime = document.getElementById('kpi-uptime');
         if (elProcessed) elProcessed.innerText = data.totalProcessed || 0;
@@ -82,32 +65,27 @@ async function fetchTelemetry() {
             currentUptimeSec = data.uptime;
             const m = Math.floor(currentUptimeSec / 60);
             const s = Math.floor(currentUptimeSec % 60);
-            elUptime.innerText = `UPTIME: ${m}m ${s}s`;
+            elUptime.innerText = `Uptime: ${m}m ${s}s`;
         }
 
-        // 5. Header Status Indicator
         const statusChip = document.getElementById('brand-status-chip');
         if (statusChip) {
-            statusChip.className = 'brand-status-chip online';
-            statusChip.innerText = 'ONLINE';
+            statusChip.className = 'status-badge online';
+            statusChip.innerText = 'Online';
         }
 
-        // 6. MCP SDK Telemetry
         if (data.mcpSdk) {
             updateSdkDisplay(data.mcpSdk);
         }
     } catch {
         const statusChip = document.getElementById('brand-status-chip');
         if (statusChip) {
-            statusChip.className = 'brand-status-chip offline';
-            statusChip.innerText = 'OFFLINE';
+            statusChip.className = 'status-badge offline';
+            statusChip.innerText = 'Offline';
         }
     }
 }
 
-// ==========================================================================
-// VIEW 1: PROCESS MONITOR & INSTANCE CONTROLS
-// ==========================================================================
 async function loadProcesses() {
     try {
         const res = await fetch('/api/processes');
@@ -118,18 +96,18 @@ async function loadProcesses() {
 
         const list = data.processes || [];
         activeProcesses = list;
-        if (countBadge) countBadge.innerText = `${list.length} WINDOWS`;
+        if (countBadge) countBadge.innerText = `${list.length} Windows`;
 
         if (list.length === 0) {
             container.innerHTML = `
                 <tr>
-                    <td colspan="6" style="text-align:center; padding: 2.5rem 1rem;">
+                    <td colspan="6" style="text-align:center; padding: 3rem 1rem;">
                         <div class="empty-data-box">
-                            <div class="empty-data-title">NO ROBLOX PROCESSES DETECTED</div>
+                            <div class="empty-data-title">No Roblox process detected</div>
                             <div class="empty-data-desc">
-                                No active Roblox Player or Studio client was detected on this system. Launch Roblox to establish an automated MCP worker session.
+                                Start Roblox Player or Studio to connect. The server will detect the window automatically.
                             </div>
-                            <button class="btn btn-invert btn-sm" onclick="launchRoblox()">+ LAUNCH ROBLOX CLIENT</button>
+                            <button class="btn btn-primary btn-sm" onclick="launchRoblox()">+ Launch Roblox</button>
                         </div>
                     </td>
                 </tr>
@@ -139,46 +117,46 @@ async function loadProcesses() {
 
         container.innerHTML = list.map(p => `
             <tr>
-                <td style="font-weight:700; color:#fff;">PID ${p.pid}</td>
+                <td style="font-family:var(--font-mono); font-weight:600; color:#fff;">${p.pid}</td>
                 <td>${p.windowTitle || p.name || 'Roblox Window'}</td>
                 <td>
                     <span class="badge-state ${p.status === 'connected' ? 'connected' : 'standby'}">
-                        ${p.status === 'connected' ? 'CONNECTED' : 'STANDBY'}
+                        ${p.status === 'connected' ? 'Connected' : 'Standby'}
                     </span>
                 </td>
                 <td style="font-family:var(--font-mono);">${p.memoryMB ? p.memoryMB + ' MB' : 'N/A'}</td>
-                <td style="font-size:10px; color:var(--text-muted);">${(p.transport || 'AUTO').toUpperCase()}</td>
+                <td style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">${p.transport ? p.transport.toUpperCase() : 'AUTO'}</td>
                 <td style="text-align:right;">
-                    <div style="display:inline-flex; gap:4px;">
-                        <button class="btn btn-sm" onclick="captureWindowScreenshot(${p.pid})">SCREENSHOT</button>
-                        <button class="btn btn-sm btn-danger" onclick="killPid(${p.pid})">KILL</button>
+                    <div style="display:inline-flex; gap:6px;">
+                        <button class="btn btn-sm" onclick="captureWindowScreenshot(${p.pid})">Screenshot</button>
+                        <button class="btn btn-sm btn-danger" onclick="killPid(${p.pid})">Close</button>
                     </div>
                 </td>
             </tr>
         `).join('');
     } catch (err) {
-        console.error('Process list fetch error:', err);
+        console.error('Process query error:', err);
     }
 }
 
 async function launchRoblox() {
-    notify('LAUNCHING ROBLOX CLIENT...');
+    notify('Starting Roblox...');
     try {
         const res = await fetch('/api/processes/launch', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-            notify(`ROBLOX INITIATED (PID ${data.pid || 'ACTIVE'})`);
-            setTimeout(loadProcesses, 1600);
+            notify(`Roblox started (PID ${data.pid || 'active'})`);
+            setTimeout(loadProcesses, 1500);
         } else {
-            notify(`LAUNCH FAILED: ${data.error || 'UNKNOWN'}`);
+            notify(`Failed to start: ${data.error || 'Unknown error'}`);
         }
     } catch (err) {
-        notify('LAUNCH ERROR: ' + err.message);
+        notify('Launch error: ' + err.message);
     }
 }
 
 async function killPid(pid) {
-    if (!confirm(`Confirm termination of Roblox process PID ${pid}?`)) return;
+    if (!confirm(`Are you sure you want to close Roblox process PID ${pid}?`)) return;
     try {
         const res = await fetch('/api/processes/kill', {
             method: 'POST',
@@ -187,18 +165,18 @@ async function killPid(pid) {
         });
         const data = await res.json();
         if (data.success) {
-            notify(`PID ${pid} TERMINATED`);
+            notify(`Process ${pid} closed`);
             loadProcesses();
         } else {
-            notify(`TERMINATE FAILED: ${data.error || 'UNKNOWN'}`);
+            notify(`Could not close: ${data.error || 'Unknown error'}`);
         }
     } catch (err) {
-        notify('KILL ERROR: ' + err.message);
+        notify('Close error: ' + err.message);
     }
 }
 
 async function captureWindowScreenshot(pid) {
-    notify(`CAPTURING WINDOW PID ${pid}...`);
+    notify(`Capturing screenshot for PID ${pid}...`);
     try {
         const res = await fetch('/api/tools/execute', {
             method: 'POST',
@@ -216,18 +194,18 @@ async function captureWindowScreenshot(pid) {
         const meta = document.getElementById('screenshot-meta-tag');
 
         if (stage && frame && payload.image) {
-            frame.innerHTML = `<img src="${payload.image}" alt="Roblox Window Capture PID ${pid}" style="max-width:100%; height:auto; display:block;">`;
-            if (meta) meta.innerText = `PID ${pid} • ${new Date().toLocaleTimeString()}`;
+            frame.innerHTML = `<img src="${payload.image}" alt="Screenshot for PID ${pid}" style="max-width:100%; height:auto; display:block;">`;
+            if (meta) meta.innerText = `PID ${pid} &bull; ${new Date().toLocaleTimeString()}`;
             stage.classList.add('open');
             stage.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            notify('SCREENSHOT RENDERED');
+            notify('Screenshot ready');
         } else if (payload.file_path) {
-            notify(`SAVED TO: ${payload.file_path}`);
+            notify(`Saved to: ${payload.file_path}`);
         } else {
-            notify(payload.error || 'SCREENSHOT CAPTURED');
+            notify(payload.error || 'Screenshot captured');
         }
     } catch (err) {
-        notify('SCREENSHOT ERROR: ' + err.message);
+        notify('Screenshot error: ' + err.message);
     }
 }
 
@@ -235,12 +213,9 @@ function closeScreenshotStage() {
     const stage = document.getElementById('screenshot-stage');
     if (stage) stage.classList.remove('open');
     const frame = document.getElementById('screenshot-frame');
-    if (frame) frame.innerHTML = '<div style="color:var(--text-muted); font-size:12px; padding:2rem;">NO ACTIVE CAPTURE</div>';
+    if (frame) frame.innerHTML = '<div style="color:var(--text-muted); font-size:12px; padding:2rem;">No screenshot captured yet</div>';
 }
 
-// ==========================================================================
-// VIEW 2: TOOLS DIRECTORY & INTERACTIVE EXECUTION
-// ==========================================================================
 async function loadTools() {
     try {
         const res = await fetch('/api/tools');
@@ -252,7 +227,6 @@ async function loadTools() {
         if (elHeaderCount) elHeaderCount.innerText = allTools.length;
         if (elAllPill) elAllPill.innerText = allTools.length;
 
-        // Populate Category counts
         const catMap = {};
         allTools.forEach(t => {
             const c = (t.category || 'other').toLowerCase();
@@ -270,7 +244,7 @@ async function loadTools() {
 
         renderToolsList();
     } catch (err) {
-        console.error('Tools list fetch error:', err);
+        console.error('Tools list error:', err);
     }
 }
 
@@ -304,8 +278,8 @@ function renderToolsList() {
 
     if (filtered.length === 0) {
         container.innerHTML = `
-            <div style="padding: 2rem 1rem; text-align: center; color: var(--text-muted); font-size: 12px;">
-                NO TOOLS MATCHING "${query}"
+            <div style="padding: 2.5rem 1rem; text-align: center; color: var(--text-muted); font-size: 12px;">
+                No tools matching "${query}"
             </div>
         `;
         return;
@@ -346,8 +320,8 @@ function renderToolDetail(name) {
     if (!tool) {
         container.innerHTML = `
             <div class="empty-data-box">
-                <div class="empty-data-title">NO TOOL SELECTED</div>
-                <div class="empty-data-desc">Choose a tool from the directory to inspect arguments and execute.</div>
+                <div class="empty-data-title">Select a tool</div>
+                <div class="empty-data-desc">Pick any tool from the list to view its arguments and run live queries.</div>
             </div>
         `;
         return;
@@ -358,14 +332,13 @@ function renderToolDetail(name) {
     const reqList = schema.required || [];
     const propKeys = Object.keys(props);
 
-    // Build sample JSON-RPC 2.0 object
     const sampleArgs = {};
     propKeys.forEach(k => {
-        if (k === 'workerId') sampleArgs[k] = 'Worker_11420';
-        else if (k === 'pid') sampleArgs[k] = activeProcesses[0]?.pid || 11420;
+        if (k === 'workerId') sampleArgs[k] = 'Worker_14388';
+        else if (k === 'pid') sampleArgs[k] = activeProcesses[0]?.pid || 14388;
         else if (props[k].type === 'boolean') sampleArgs[k] = true;
         else if (props[k].type === 'number') sampleArgs[k] = 100;
-        else if (props[k].type === 'array') sampleArgs[k] = ['element_1'];
+        else if (props[k].type === 'array') sampleArgs[k] = ['item_1'];
         else sampleArgs[k] = props[k].description || 'sample_value';
     });
 
@@ -379,33 +352,30 @@ function renderToolDetail(name) {
             <div class="detail-title-line">
                 <div class="detail-tool-name">${tool.name}</div>
                 <div class="detail-badge-group">
-                    <span class="detail-badge active">${tool.category || 'GENERAL'}</span>
+                    <span class="detail-badge active">${tool.category || 'General'}</span>
                     <span class="detail-badge">JSON-RPC 2.0</span>
-                    <span class="detail-badge">MULTI-SESSION</span>
                 </div>
             </div>
-            <div class="detail-description">${tool.description || 'No tool description provided.'}</div>
+            <div class="detail-description">${tool.description || 'No description provided.'}</div>
         </div>
 
-        <!-- MCP Tool Call Schema & Signature -->
         <div>
-            <div class="param-section-title">AI MCP Call Schema</div>
+            <div class="param-section-title">Tool Call Example</div>
             <div class="terminal-code-box">
                 <div class="terminal-code-head">
-                    <span>CALL SPECIFICATION (JSON)</span>
-                    <button class="btn btn-sm" onclick="copySnippetText('code-spec-${tool.name}')">COPY JSON</button>
+                    <span>JSON-RPC Format</span>
+                    <button class="btn btn-sm" onclick="copySnippetText('code-spec-${tool.name}')">Copy JSON</button>
                 </div>
                 <pre class="terminal-code-body" id="code-spec-${tool.name}">${mcpSampleJson}</pre>
             </div>
         </div>
 
-        <!-- Parameter Table -->
         <div>
-            <div class="param-section-title">Parameters &amp; Arguments (${propKeys.length})</div>
+            <div class="param-section-title">Arguments (${propKeys.length})</div>
             <div class="param-grid-table">
                 ${propKeys.length === 0 ? `
                     <div style="padding:1rem; color:var(--text-muted); font-size:12px;">
-                        This tool accepts no additional arguments.
+                        This tool accepts no arguments.
                     </div>
                 ` : propKeys.map(k => {
                     const p = props[k];
@@ -416,7 +386,7 @@ function renderToolDetail(name) {
                         <div class="param-grid-row">
                             <div class="param-meta-col">
                                 <span class="param-name-label">${k}</span>
-                                <span class="param-type-label">${typeLabel} ${isReq ? '• REQUIRED' : '• OPTIONAL'}</span>
+                                <span class="param-type-label">${typeLabel} ${isReq ? '&bull; Required' : '&bull; Optional'}</span>
                                 ${k === 'pid' && activeProcesses.length > 0 ? `
                                     <div class="quick-chip-row">
                                         ${activeProcesses.map(proc => `
@@ -446,19 +416,18 @@ function renderToolDetail(name) {
             </div>
         </div>
 
-        <!-- Execution Control Deck -->
         <div>
-            <div class="param-section-title">Live Execution Terminal</div>
+            <div class="param-section-title">Test Runner</div>
             <div class="exec-control-bar">
-                <button class="btn btn-invert" id="btn-exec-${tool.name}" onclick="executeTool('${tool.name}')">
-                    <span>► EXECUTE ${tool.name.toUpperCase()}</span>
+                <button class="btn btn-primary" id="btn-exec-${tool.name}" onclick="executeTool('${tool.name}')">
+                    <span>Run Tool</span>
                 </button>
                 <div class="exec-meta-status" id="exec-status-${tool.name}">
-                    <span>READY FOR DISPATCH</span>
+                    <span>Ready</span>
                 </div>
-                <button class="btn btn-sm" onclick="clearTerminal('${tool.name}')">CLEAR OUTPUT</button>
+                <button class="btn btn-sm" onclick="clearTerminal('${tool.name}')">Clear Output</button>
             </div>
-            <pre class="output-terminal" id="terminal-out-${tool.name}">// Ready for dispatch. Click [EXECUTE ${tool.name.toUpperCase()}] to submit query over active session...</pre>
+            <pre class="output-terminal" id="terminal-out-${tool.name}">// Click "Run Tool" to send the request to connected game clients.</pre>
         </div>
     `;
 }
@@ -469,10 +438,9 @@ async function executeTool(name) {
 
     const outBox = document.getElementById('terminal-out-' + name);
     const statusBox = document.getElementById('exec-status-' + name);
-    const btn = document.getElementById('btn-exec-' + name);
 
-    if (outBox) outBox.innerText = '// DISPATCHING TO MCP QUEUE...';
-    if (statusBox) statusBox.innerHTML = '<span style="color:#ffffff;">PROCESSING TASK...</span>';
+    if (outBox) outBox.innerText = '// Running tool request...';
+    if (statusBox) statusBox.innerHTML = '<span>Running...</span>';
 
     const props = (tool.inputSchema && tool.inputSchema.properties) ? tool.inputSchema.properties : {};
     const args = {};
@@ -507,35 +475,32 @@ async function executeTool(name) {
         }
 
         if (outBox) {
-            outBox.innerText = `// STATUS: 200 OK | COMPLETED IN ${elapsed}ms\n` + (typeof display === 'string' ? display : JSON.stringify(display, null, 2));
+            outBox.innerText = `// Completed in ${elapsed}ms\n` + (typeof display === 'string' ? display : JSON.stringify(display, null, 2));
         }
-        if (statusBox) statusBox.innerHTML = `<span>COMPLETED (${elapsed}ms)</span>`;
-        notify(`${name} EXECUTED (${elapsed}ms)`);
+        if (statusBox) statusBox.innerHTML = `<span>Completed (${elapsed}ms)</span>`;
+        notify(`${name} finished (${elapsed}ms)`);
     } catch (err) {
-        if (outBox) outBox.innerText = `// EXECUTION ERROR: ${err.message}`;
-        if (statusBox) statusBox.innerHTML = `<span style="color:#ffffff;">FAILED</span>`;
-        notify('EXECUTION ERROR: ' + err.message);
+        if (outBox) outBox.innerText = `// Error: ${err.message}`;
+        if (statusBox) statusBox.innerHTML = `<span style="color:var(--rose);">Failed</span>`;
+        notify('Execution error: ' + err.message);
     }
 }
 
 function clearTerminal(name) {
     const outBox = document.getElementById('terminal-out-' + name);
-    if (outBox) outBox.innerText = '// Console output cleared.';
+    if (outBox) outBox.innerText = '// Output cleared.';
 }
 
 function copySnippetText(elemId) {
     const el = document.getElementById(elemId);
     if (!el) return;
     navigator.clipboard.writeText(el.innerText).then(() => {
-        notify('SNIPPET COPIED TO CLIPBOARD');
+        notify('JSON snippet copied');
     }).catch(() => {
         prompt('Copy snippet:', el.innerText);
     });
 }
 
-// ==========================================================================
-// VIEW 3: CUSTOM PORT & DISCOVERY ROUTER SYNC
-// ==========================================================================
 async function loadPortConfig() {
     try {
         const res = await fetch('/api/config/port');
@@ -547,11 +512,10 @@ async function loadPortConfig() {
         const elInp = document.getElementById('input-custom-port');
 
         if (elCur) elCur.innerText = data.currentPort;
-        if (elDisc) elDisc.innerText = `${data.discoveryPort} (FIXED ROUTER)`;
-        if (elSaved) elSaved.innerText = data.savedPort ? data.savedPort : '(DEFAULT)';
+        if (elDisc) elDisc.innerText = `${data.discoveryPort} (router)`;
+        if (elSaved) elSaved.innerText = data.savedPort ? data.savedPort : '(Default)';
         if (elInp && !elInp.value) elInp.value = data.currentPort;
 
-        // Snippets
         const snipDirect = document.getElementById('code-direct-loader');
         const snipDisc = document.getElementById('code-disc-loader');
         const snipCli = document.getElementById('code-cli-cmd');
@@ -560,7 +524,7 @@ async function loadPortConfig() {
         if (snipDisc) snipDisc.innerText = `loadstring(game:HttpGet("http://127.0.0.1:${data.discoveryPort || 58295}/mcp.lua"))()`;
         if (snipCli) snipCli.innerText = `rblx-mcp start --port ${data.currentPort}`;
     } catch (err) {
-        console.error('Load port config error:', err);
+        console.error('Port config error:', err);
     }
 }
 
@@ -571,11 +535,11 @@ async function checkPortAvailability() {
 
     const portNum = parseInt(inp.value.trim(), 10);
     if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-        out.innerHTML = '<span style="color:#ffffff;">INVALID PORT RANGE (1-65535)</span>';
+        out.innerHTML = '<span style="color:var(--rose);">Port must be between 1 and 65535</span>';
         return;
     }
 
-    out.innerHTML = '<span style="color:var(--text-muted);">CHECKING PORT ACCESSIBILITY...</span>';
+    out.innerHTML = '<span style="color:var(--text-muted);">Checking port...</span>';
     try {
         const res = await fetch('/api/config/port-check', {
             method: 'POST',
@@ -584,12 +548,12 @@ async function checkPortAvailability() {
         });
         const data = await res.json();
         if (data.available) {
-            out.innerHTML = `<span style="color:#ffffff; font-weight:700;">PORT ${portNum} IS FREE &amp; AVAILABLE</span>`;
+            out.innerHTML = `<span style="color:var(--emerald);">Port ${portNum} is free and ready to use</span>`;
         } else {
-            out.innerHTML = `<span style="color:var(--text-secondary); font-weight:700;">PORT ${portNum} IS CURRENTLY IN USE</span>`;
+            out.innerHTML = `<span style="color:var(--amber);">Port ${portNum} is currently in use by another app</span>`;
         }
     } catch (err) {
-        out.innerHTML = `<span style="color:var(--text-muted);">CHECK ERROR: ${err.message}</span>`;
+        out.innerHTML = `<span style="color:var(--rose);">Check failed: ${err.message}</span>`;
     }
 }
 
@@ -598,7 +562,7 @@ async function savePreferredPort() {
     if (!inp) return;
     const portNum = parseInt(inp.value.trim(), 10);
     if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-        notify('ENTER A VALID PORT NUMBER (1-65535)');
+        notify('Enter a valid port (1-65535)');
         return;
     }
 
@@ -610,19 +574,16 @@ async function savePreferredPort() {
         });
         const data = await res.json();
         if (data.success) {
-            notify(`DEFAULT PORT SAVED AS ${portNum}`);
+            notify(`Default port saved: ${portNum}`);
             loadPortConfig();
         } else {
-            notify(`SAVE ERROR: ${data.error}`);
+            notify(`Could not save: ${data.error}`);
         }
     } catch (err) {
-        notify('SAVE FAILED: ' + err.message);
+        notify('Save failed: ' + err.message);
     }
 }
 
-// ==========================================================================
-// VIEW 4: UNC MATRIX AUDIT
-// ==========================================================================
 async function loadUncMatrix() {
     try {
         const res = await fetch('/api/unc');
@@ -632,9 +593,9 @@ async function loadUncMatrix() {
         const execTag = document.getElementById('unc-executor-badge');
 
         const list = data.standardFunctions || [];
-        if (countTag) countTag.innerText = `${list.length} FUNCTIONS`;
+        if (countTag) countTag.innerText = `${list.length} Functions`;
         if (execTag && data.capabilities) {
-            execTag.innerText = `EXECUTOR: ${data.capabilities.executorName || 'AUTO-DETECT'} (${data.capabilities.supported || 0}/${data.capabilities.total || list.length})`;
+            execTag.innerText = `Executor: ${data.capabilities.executorName || 'None'} (${data.capabilities.supported || 0}/${data.capabilities.total || list.length})`;
         }
 
         if (container) {
@@ -645,20 +606,17 @@ async function loadUncMatrix() {
                         <span class="unc-func-cat">${item.category}</span>
                     </div>
                     <div class="unc-func-desc">${item.desc}</div>
-                    <div class="unc-fallback-meta">FALLBACK: ${item.fallback}</div>
+                    <div class="unc-fallback-meta">Fallback: ${item.fallback}</div>
                 </div>
             `).join('');
         }
     } catch (err) {
-        console.error('UNC matrix fetch error:', err);
+        console.error('UNC load error:', err);
     }
 }
 
-// ==========================================================================
-// VIEW 5: OPERATIONS & SERVER CONTROL
-// ==========================================================================
 async function setTransportMode(mode) {
-    notify(`SWITCHING TRANSPORT TO ${mode.toUpperCase()}...`);
+    notify(`Setting transport to ${mode}...`);
     try {
         const res = await fetch('/api/transport', {
             method: 'POST',
@@ -667,12 +625,10 @@ async function setTransportMode(mode) {
         });
         const data = await res.json();
         if (data.success) {
-            notify(`TRANSPORT ACTIVE: ${mode.toUpperCase()}`);
-            const chip = document.getElementById('active-transport-chip');
-            if (chip) chip.innerText = mode.toUpperCase();
+            notify(`Transport active: ${mode}`);
         }
     } catch (err) {
-        notify('TRANSPORT ERROR: ' + err.message);
+        notify('Transport error: ' + err.message);
     }
 }
 
@@ -680,23 +636,23 @@ async function toggleAutoexecute() {
     try {
         const res = await fetch('/api/autoexecute', { method: 'POST' });
         const data = await res.json();
-        const stateStr = data.enabled ? 'ACTIVE' : 'DISABLED';
-        notify(`TELEPORT PERSISTENCE: ${stateStr}`);
+        const stateStr = data.enabled ? 'On' : 'Off';
+        notify(`Teleport autoexec: ${stateStr}`);
         const chip = document.getElementById('quick-autoexec-chip');
         if (chip) chip.innerText = stateStr;
     } catch (err) {
-        notify('AUTOEXEC ERROR: ' + err.message);
+        notify('Autoexec error: ' + err.message);
     }
 }
 
 async function shutdownServer() {
-    if (!confirm('CONFIRM SERVER SHUTDOWN: Terminate active daemon and close all client WebSockets?')) return;
+    if (!confirm('Are you sure you want to stop the server? This will disconnect all connected clients.')) return;
     try {
         await fetch('/stop', { method: 'POST' });
-        notify('SERVER SHUTTING DOWN...');
+        notify('Server shutting down...');
         setTimeout(() => location.reload(), 1500);
     } catch {
-        notify('SHUTDOWN SIGNAL TRANSMITTED');
+        notify('Server stopped');
     }
 }
 
@@ -709,29 +665,26 @@ function updateSdkDisplay(diag) {
 
     if (elVer) elVer.innerText = `v${diag.version || '1.30.0'}`;
     if (elProt) elProt.innerText = diag.latestProtocolVersion || '2025-11-25';
-    if (elStrat) elStrat.innerText = diag.resolvedStrategy ? diag.resolvedStrategy.replace('-', ' ').toUpperCase() : 'STANDARD EXPORTS';
+    if (elStrat) elStrat.innerText = diag.resolvedStrategy ? diag.resolvedStrategy.replace('-', ' ') : 'standard exports';
     if (elSummary) {
         elSummary.innerText = diag.available
-            ? `Verified ${diag.availableSchemas ? diag.availableSchemas.length : 40} protocol schemas. Engine operational.`
-            : `Warning: ${diag.warnings ? diag.warnings.join('; ') : 'Check SDK installation'}`;
+            ? `Verified ${diag.availableSchemas ? diag.availableSchemas.length : 40} protocol schemas. SDK is operational.`
+            : `Warning: ${diag.warnings ? diag.warnings.join('; ') : 'Check SDK install'}`;
     }
 }
 
 async function runSdkScan() {
-    notify('SCANNING MCP SDK ENVIRONMENT...');
+    notify('Scanning MCP SDK...');
     try {
         const res = await fetch('/api/mcp/sdk');
         const data = await res.json();
         updateSdkDisplay(data);
-        notify(`MCP SDK v${data.version || ''} VERIFIED (${data.scanDurationMs || 0}ms)`);
+        notify(`SDK scan complete (${data.scanDurationMs || 0}ms)`);
     } catch (err) {
-        notify('SDK SCAN ERROR: ' + err.message);
+        notify('Scan error: ' + err.message);
     }
 }
 
-// ==========================================================================
-// MODAL & LOADER INJECTION ACTIONS
-// ==========================================================================
 function openLoaderModal() {
     const modal = document.getElementById('loader-modal');
     if (modal) modal.classList.add('open');
@@ -754,16 +707,13 @@ function copyLoader(type) {
     }
 
     navigator.clipboard.writeText(code).then(() => {
-        notify(`${type === 'discovery' ? 'AUTO-SYNC' : 'DIRECT'} LOADER COPIED`);
+        notify('Loader script copied');
         closeLoaderModal();
     }).catch(() => {
         prompt('Copy snippet:', code);
     });
 }
 
-// ==========================================================================
-// AI SKILL DEPLOYMENT & COPY ACTIONS
-// ==========================================================================
 function openSkillModal() {
     const modal = document.getElementById('skill-modal');
     if (modal) modal.classList.add('open');
@@ -778,9 +728,9 @@ function closeSkillModal(e) {
 }
 
 async function deploySkillTarget(targetId) {
-    notify(`DEPLOYING SKILL TO ${targetId.toUpperCase()}...`);
+    notify(`Installing skill to ${targetId}...`);
     const feedback = document.getElementById('skill-deploy-feedback');
-    if (feedback) feedback.innerText = `Deploying to ${targetId}...`;
+    if (feedback) feedback.innerText = `Installing to ${targetId}...`;
 
     try {
         const res = await fetch('/api/skill/install', {
@@ -790,23 +740,23 @@ async function deploySkillTarget(targetId) {
         });
         const data = await res.json();
         if (data.success && data.results && data.results[0] && data.results[0].success) {
-            notify(`SKILL DEPLOYED: ${data.results[0].name}`);
-            if (feedback) feedback.innerText = `Successfully deployed to ${data.results[0].destinationPath}`;
+            notify(`Skill installed: ${data.results[0].name}`);
+            if (feedback) feedback.innerText = `Saved to: ${data.results[0].destinationPath}`;
         } else {
-            const err = data.results?.[0]?.error || 'Deployment failed';
-            notify(`DEPLOY ERROR: ${err}`);
+            const err = data.results?.[0]?.error || 'Install failed';
+            notify(`Error: ${err}`);
             if (feedback) feedback.innerText = `Error: ${err}`;
         }
     } catch (err) {
-        notify(`DEPLOY ERROR: ${err.message}`);
+        notify(`Error: ${err.message}`);
         if (feedback) feedback.innerText = `Error: ${err.message}`;
     }
 }
 
 async function deployAllSkillTargets() {
-    notify('DEPLOYING SKILL TO ALL TARGETS...');
+    notify('Installing skill to all targets...');
     const feedback = document.getElementById('skill-deploy-feedback');
-    if (feedback) feedback.innerText = 'Deploying to Claude Code, Cursor, and Windsurf...';
+    if (feedback) feedback.innerText = 'Installing to Claude Code, Cursor, and Windsurf...';
 
     try {
         const targets = ['claude-code-global', 'cursor-project', 'windsurf-project'];
@@ -817,42 +767,38 @@ async function deployAllSkillTargets() {
         });
         const data = await res.json();
         if (data.success) {
-            notify(`SKILL DEPLOYED TO ${data.count || 0} TARGETS`);
-            if (feedback) feedback.innerText = `Successfully deployed to ${data.count} AI target configurations!`;
+            notify(`Skill installed to ${data.count || 0} targets`);
+            if (feedback) feedback.innerText = `Installed to ${data.count} AI target configurations.`;
         } else {
-            notify('DEPLOY FAILED');
-            if (feedback) feedback.innerText = 'Failed to deploy to all targets.';
+            notify('Installation failed');
+            if (feedback) feedback.innerText = 'Could not install to all targets.';
         }
     } catch (err) {
-        notify(`DEPLOY ERROR: ${err.message}`);
+        notify(`Error: ${err.message}`);
         if (feedback) feedback.innerText = `Error: ${err.message}`;
     }
 }
 
 async function copySkillMarkdown() {
-    notify('FETCHING SKILL MARKDOWN...');
+    notify('Reading skill markdown...');
     try {
         const res = await fetch('/api/skill');
         const data = await res.json();
         if (data.markdown) {
             navigator.clipboard.writeText(data.markdown).then(() => {
-                notify('ROBLOX-MCP SKILL MARKDOWN COPIED!');
+                notify('Skill markdown copied to clipboard');
                 const feedback = document.getElementById('skill-deploy-feedback');
-                if (feedback) feedback.innerText = 'SKILL.md copied to clipboard. You can paste it into any AI system.';
+                if (feedback) feedback.innerText = 'SKILL.md copied. Paste it into your AI assistant rules.';
             }).catch(() => {
-                prompt('Copy SKILL.md content:', data.markdown.slice(0, 100) + '...');
+                prompt('Copy SKILL.md:', data.markdown.slice(0, 100) + '...');
             });
         }
     } catch (err) {
-        notify(`FETCH ERROR: ${err.message}`);
+        notify(`Error: ${err.message}`);
     }
 }
 
-// ==========================================================================
-// KEYBOARD COMMAND DISPATCHER
-// ==========================================================================
 window.addEventListener('keydown', (e) => {
-    // Escape closes modals and screenshot stage
     if (e.key === 'Escape') {
         closeLoaderModal();
         closeSkillModal();
@@ -860,7 +806,6 @@ window.addEventListener('keydown', (e) => {
         return;
     }
 
-    // Skip if focused inside an active input or textarea
     const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
     if (activeTag === 'input' || activeTag === 'textarea') return;
 
@@ -883,22 +828,18 @@ window.addEventListener('keydown', (e) => {
     } else if (e.key.toLowerCase() === 'r') {
         loadProcesses();
         fetchTelemetry();
-        notify('DATA REFRESHED');
+        notify('Data refreshed');
     }
 });
 
-// ==========================================================================
-// SYSTEM BOOTSTRAP
-// ==========================================================================
 document.addEventListener('DOMContentLoaded', () => {
     fetchTelemetry();
     loadProcesses();
     loadTools();
     loadPortConfig();
 
-    // 2-second continuous polling cadence
     pollTimer = setInterval(() => {
         fetchTelemetry();
         loadProcesses();
-    }, 2000);
+    }, 2500);
 });

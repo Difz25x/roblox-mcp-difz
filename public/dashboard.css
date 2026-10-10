@@ -1,47 +1,56 @@
-/* ==========================================================================
-   ROBLOX MCP COMMAND DECK — TACTILE MONOCHROME COCKPIT
-   Natural Curves, Tactile Depth & Physical 3D Elevation
-   ========================================================================== */
+
 
 :root {
-    --bg-void: #030406;
-    --bg-subtle: #090b10;
-    --bg-surface: #0f1218;
-    --bg-surface-hover: #161b24;
-    --bg-elevated: #1d222e;
-    --bg-active: #ffffff;
-    --bg-active-hover: #e6e6e6;
+    --bg-base: #08090d;
+    --bg-subtle: #0d1017;
+    --bg-surface: #121722;
+    --bg-surface-hover: #182030;
+    --bg-surface-active: #1e283d;
+    --bg-elevated: #161d2b;
+    --bg-sunken: #050608;
 
-    --border-hairline: #1c212c;
-    --border-mid: #2b3344;
-    --border-bright: #44506b;
-    --border-active: #ffffff;
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-mid: #1e2638;
+    --border-bright: #2f3b54;
+    --border-focus: #3b82f6;
 
-    --text-primary: #ffffff;
+    --text-primary: #f8fafc;
     --text-secondary: #cbd5e1;
     --text-muted: #94a3b8;
     --text-faint: #94a3b8;
-    --text-inverted: #000000;
-    --text-active-contrast: #262626;
 
+    --accent: #1d4ed8;
+    --accent-hover: #1e40af;
+    --accent-dim: rgba(29, 78, 216, 0.15);
+
+    --emerald: #10b981;
+    --emerald-dim: rgba(16, 185, 129, 0.12);
+
+    --rose: #ef4444;
+    --rose-dim: rgba(239, 68, 68, 0.12);
+
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.12);
+
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", sans-serif;
     --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-    --radius-sm: 5px;
+    --radius-xs: 4px;
+    --radius-sm: 6px;
     --radius-md: 8px;
     --radius-lg: 12px;
     --radius-xl: 16px;
     --radius-pill: 9999px;
 
-    --shadow-shallow: 0 2px 4px rgba(0, 0, 0, 0.4);
-    --shadow-card: 0 3px 8px rgba(0, 0, 0, 0.5);
-    --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.7);
-    --shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.65);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --shadow-md: 0 3px 8px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 4px 14px rgba(0, 0, 0, 0.5);
+    --shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.5);
 
-    --ease-tactile: cubic-bezier(0.16, 1, 0.3, 1);
+    --transition-fast: 0.12s ease;
+    --transition-normal: 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Base reset */
 *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
@@ -51,29 +60,20 @@
 html, body {
     width: 100%;
     min-height: 100vh;
-    background-color: var(--bg-void);
-    background-image: linear-gradient(180deg, var(--bg-void) 0%, var(--bg-subtle) 100%);
-    background-attachment: fixed;
+    background-color: var(--bg-base);
     color: var(--text-secondary);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 13px;
-    line-height: 1.6;
-    letter-spacing: normal;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
 }
 
-/* Tabular numerals everywhere */
-body, button, input, select, textarea, pre, code, .tnum {
+.tnum, pre, code, .metric-number, .stat-value, .badge, .mono {
+    font-family: var(--font-mono);
     font-feature-settings: "tnum" 1, "zero" 1;
     font-variant-numeric: tabular-nums;
-}
-
-/* Custom browser surfaces: selection, scrollbar, caret */
-::selection {
-    background: #ffffff;
-    color: #000000;
 }
 
 ::-webkit-scrollbar {
@@ -81,37 +81,41 @@ body, button, input, select, textarea, pre, code, .tnum {
     height: 6px;
 }
 ::-webkit-scrollbar-track {
-    background: var(--bg-void);
+    background: transparent;
 }
 ::-webkit-scrollbar-thumb {
     background: var(--border-mid);
     border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--text-muted);
 }
 
-/* ==========================================================================
-   FLOATING 3D COMMAND DECK NAVBAR
-   ========================================================================== */
+::selection {
+    background: var(--accent);
+    color: #ffffff;
+}
+
 .top-deck {
     position: sticky;
-    top: 10px;
+    top: 12px;
     z-index: 100;
     width: calc(100% - 2.5rem);
-    max-width: 1600px;
-    margin: 10px auto 0 auto;
-    background: rgba(15, 18, 24, 0.95);
+    max-width: 1560px;
+    margin: 12px auto 0 auto;
+    background: rgba(18, 23, 34, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-elevated);
+    box-shadow: var(--shadow-md);
 }
 
 .top-bar-inner {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 54px;
+    height: 52px;
     padding: 0 1.25rem;
     gap: 1rem;
 }
@@ -127,123 +131,122 @@ body, button, input, select, textarea, pre, code, .tnum {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
-    background: var(--bg-active);
-    color: var(--text-inverted);
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: #ffffff;
+    font-family: var(--font-mono);
     font-weight: 800;
-    font-size: 13px;
-    letter-spacing: -0.05em;
+    font-size: 12px;
+    letter-spacing: -0.04em;
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-shallow);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .brand-meta {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    align-items: center;
+    gap: 0.65rem;
 }
 
 .brand-title {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 600;
     color: var(--text-primary);
-    letter-spacing: 0.02em;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    letter-spacing: -0.01em;
 }
 
-.brand-status-chip {
+.brand-port-pill {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    padding: 1px 7px;
+    border-radius: var(--radius-sm);
+}
+
+.status-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 500;
     padding: 2px 8px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-mid);
     border-radius: var(--radius-pill);
-    color: var(--text-primary);
-    text-transform: uppercase;
-    box-shadow: var(--shadow-shallow);
 }
 
-.brand-status-chip.online::before {
+.status-badge.online {
+    background: var(--emerald-dim);
+    color: var(--emerald);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.status-badge.online::before {
     content: "";
-    display: inline-block;
     width: 6px;
     height: 6px;
-    background: #ffffff;
-    border-radius: var(--radius-pill);
+    background: var(--emerald);
+    border-radius: 50%;
 }
 
-.brand-subtitle {
-    font-size: 11px;
-    color: var(--text-muted);
+.status-badge.offline {
+    background: var(--rose-dim);
+    color: var(--rose);
+    border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
-/* Central View Tabs */
 .nav-tab-rail {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: var(--bg-void);
-    border: 1px solid var(--border-hairline);
+    background: rgba(8, 10, 15, 0.65);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-pill);
     padding: 3px;
-    box-shadow: var(--shadow-inset);
-    overflow-x: auto;
 }
 
 .nav-tab-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    height: 32px;
+    gap: 0.4rem;
+    height: 30px;
     padding: 0 0.95rem;
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--radius-pill);
     color: var(--text-secondary);
-    font-family: var(--font-mono);
     font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+    font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.15s var(--ease-tactile);
+    transition: all var(--transition-fast);
 }
 
 .nav-tab-btn:hover {
     color: var(--text-primary);
-    background: var(--bg-surface-hover);
-    border-color: var(--border-mid);
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .nav-tab-btn.active {
-    background: var(--bg-active);
-    color: var(--text-inverted);
-    border-color: var(--border-active);
-    box-shadow: var(--shadow-shallow);
+    background: var(--bg-surface-active);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .nav-tab-key {
-    font-size: 11px;
-    font-weight: 700;
-    opacity: 0.75;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    opacity: 0.6;
 }
 
-/* Quick Actions Right */
 .top-actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    flex-shrink: 0;
 }
 
-/* Generic Tactile 3D Button System */
 .btn {
     display: inline-flex;
     align-items: center;
@@ -251,24 +254,23 @@ body, button, input, select, textarea, pre, code, .tnum {
     gap: 0.45rem;
     height: 32px;
     padding: 0 0.95rem;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    background: var(--bg-surface);
+    font-weight: 500;
+    background: linear-gradient(180deg, #1e2638 0%, #151c2a 100%);
     color: var(--text-primary);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-shallow);
+    box-shadow: var(--shadow-sm);
     cursor: pointer;
-    transition: all 0.12s var(--ease-tactile);
+    transition: all var(--transition-fast);
     user-select: none;
 }
 
 .btn:hover {
-    background: var(--bg-surface-hover);
+    background: linear-gradient(180deg, #253147 0%, #1a2233 100%);
     border-color: var(--border-bright);
-    box-shadow: var(--shadow-card);
+    color: #ffffff;
 }
 
 .btn:active {
@@ -277,67 +279,62 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .btn:focus-visible {
-    outline: 2px solid #ffffff;
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
 
-.btn-primary, .btn-invert {
-    background: var(--bg-active);
-    color: var(--text-inverted);
-    border: 1px solid var(--border-active);
-    box-shadow: var(--shadow-shallow);
+.btn-primary {
+    background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%);
+    color: #ffffff;
+    border: 1px solid #2563eb;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
-.btn-primary:hover, .btn-invert:hover {
-    background: var(--bg-active-hover);
-    color: var(--text-inverted);
-    border-color: var(--border-active);
-    box-shadow: var(--shadow-card);
+
+.btn-primary:hover {
+    background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+    border-color: #3b82f6;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
 .btn-sm {
     height: 28px;
     padding: 0 0.75rem;
-    font-size: 11px;
+    font-size: 12px;
     border-radius: var(--radius-sm);
 }
 
 .btn-danger {
-    background: var(--bg-surface);
-    color: var(--text-primary);
-    border: 1px solid var(--border-bright);
-}
-.btn-danger:hover {
-    background: var(--bg-active);
-    color: var(--text-inverted);
-    border-color: var(--border-active);
-    box-shadow: var(--shadow-shallow);
+    background: linear-gradient(180deg, #2a151b 0%, #1f0f13 100%);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-/* ==========================================================================
-   TELEMETRY REGISTER RIBBON (TACTILE BENTO GRID)
-   ========================================================================== */
+.btn-danger:hover {
+    background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+    color: #ffffff;
+    border-color: #f87171;
+}
+
 .telemetry-ribbon {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 0.85rem;
     width: 100%;
-    max-width: 1600px;
+    max-width: 1560px;
     margin: 1.25rem auto 0 auto;
     padding: 0 1.25rem;
 }
 
 .telemetry-cell {
     padding: 1rem 1.25rem;
-    background: var(--bg-subtle);
+    background: linear-gradient(180deg, #111622 0%, #0c0f17 100%);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.15s var(--ease-tactile), border-color 0.15s;
+    gap: 0.3rem;
+    transition: transform var(--transition-fast), border-color var(--transition-fast);
 }
 
 .telemetry-cell:hover {
@@ -346,55 +343,37 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .telemetry-tag {
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 12px;
+    font-weight: 500;
     color: var(--text-muted);
-    letter-spacing: 0.03em;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.telemetry-tag span {
-    font-size: 11px;
-    color: var(--text-faint);
-    background: var(--bg-void);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
-    padding: 1px 6px;
 }
 
 .telemetry-val {
-    font-size: 26px;
-    font-weight: 800;
+    font-family: var(--font-mono);
+    font-size: 24px;
+    font-weight: 700;
     color: var(--text-primary);
     line-height: 1.15;
     letter-spacing: -0.02em;
     display: flex;
     align-items: baseline;
-    gap: 0.4rem;
+    gap: 0.35rem;
 }
 
 .telemetry-val .unit {
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 400;
     color: var(--text-muted);
 }
 
 .telemetry-sub {
     font-size: 12px;
     color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
 }
 
-/* ==========================================================================
-   MAIN VIEWPORT & TAB PANELS
-   ========================================================================== */
 .main-viewport {
     width: 100%;
-    max-width: 1600px;
+    max-width: 1560px;
     margin: 0 auto;
     padding: 1.25rem;
     min-height: calc(100vh - 150px);
@@ -402,38 +381,37 @@ body, button, input, select, textarea, pre, code, .tnum {
 
 .tab-view {
     display: none;
-    animation: fadeIn 0.15s var(--ease-tactile);
 }
 .tab-view.active {
     display: block;
+    animation: tabEnter 0.15s var(--transition-normal);
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(3px); }
+@keyframes tabEnter {
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Section Header Structure */
 .view-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding-bottom: 0.85rem;
     margin-bottom: 1.25rem;
-    border-bottom: 1px solid var(--border-hairline);
+    border-bottom: 1px solid var(--border-mid);
 }
 
 .view-title-group {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.75rem;
 }
 
 .view-title {
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 600;
     color: var(--text-primary);
-    letter-spacing: 0.01em;
+    letter-spacing: -0.01em;
 }
 
 .view-subtitle {
@@ -441,9 +419,6 @@ body, button, input, select, textarea, pre, code, .tnum {
     color: var(--text-muted);
 }
 
-/* ==========================================================================
-   VIEW 1: INSTANCES & PROCESS MONITOR
-   ========================================================================== */
 .instances-layout {
     display: grid;
     grid-template-columns: 1fr;
@@ -452,11 +427,11 @@ body, button, input, select, textarea, pre, code, .tnum {
 
 .datagrid-container {
     width: 100%;
-    background: var(--bg-subtle);
+    background: linear-gradient(180deg, #111622 0%, #0c0f17 100%);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
-    padding: 14px;
+    box-shadow: var(--shadow-sm);
+    padding: 12px;
     overflow: hidden;
 }
 
@@ -469,29 +444,23 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .datagrid-table th {
-    padding: 0.85rem 1rem;
-    background: var(--bg-surface);
+    padding: 0.75rem 1rem;
+    background: rgba(22, 29, 43, 0.6);
     color: var(--text-muted);
     font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.02em;
     border-bottom: 1px solid var(--border-mid);
     white-space: nowrap;
 }
-.datagrid-table th:first-child {
-    border-top-left-radius: var(--radius-md);
-}
-.datagrid-table th:last-child {
-    border-top-right-radius: var(--radius-md);
-}
+.datagrid-table th:first-child { border-top-left-radius: var(--radius-sm); }
+.datagrid-table th:last-child { border-top-right-radius: var(--radius-sm); }
 
 .datagrid-table td {
-    padding: 0.95rem 1rem;
-    border-bottom: 1px solid var(--border-hairline);
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border-subtle);
     color: var(--text-primary);
     vertical-align: middle;
-    transition: background 0.1s;
 }
 
 .datagrid-table tr:last-child td {
@@ -499,7 +468,7 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .datagrid-table tr:hover td {
-    background: var(--bg-surface-hover);
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .badge-state {
@@ -507,31 +476,30 @@ body, button, input, select, textarea, pre, code, .tnum {
     align-items: center;
     gap: 0.35rem;
     font-size: 11px;
-    font-weight: 700;
-    padding: 3px 8px;
+    font-weight: 500;
+    padding: 2px 8px;
     border-radius: var(--radius-pill);
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    box-shadow: var(--shadow-shallow);
 }
+
 .badge-state.connected {
-    background: var(--bg-active);
-    color: var(--text-inverted);
+    background: var(--emerald-dim);
+    color: var(--emerald);
+    border: 1px solid rgba(16, 185, 129, 0.25);
 }
+
 .badge-state.standby {
-    background: transparent;
+    background: rgba(255, 255, 255, 0.04);
     color: var(--text-muted);
     border: 1px solid var(--border-mid);
 }
 
-/* In-Dashboard Screenshot Stage */
 .screenshot-stage {
     display: none;
     margin-top: 1.25rem;
-    background: var(--bg-subtle);
+    background: var(--bg-surface);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-md);
     padding: 1.25rem;
 }
 .screenshot-stage.open {
@@ -544,7 +512,7 @@ body, button, input, select, textarea, pre, code, .tnum {
     justify-content: space-between;
     margin-bottom: 0.85rem;
     padding-bottom: 0.6rem;
-    border-bottom: 1px solid var(--border-hairline);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .stage-view-frame {
@@ -564,49 +532,45 @@ body, button, input, select, textarea, pre, code, .tnum {
     max-width: 100%;
     height: auto;
     display: block;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
 }
 
-/* Empty State Box */
 .empty-data-box {
-    padding: 3.5rem 1.5rem;
+    padding: 3rem 1.5rem;
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.85rem;
+    gap: 0.75rem;
 }
 
 .empty-data-title {
-    font-size: 15px;
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 600;
     color: var(--text-primary);
 }
 
 .empty-data-desc {
     font-size: 13px;
     color: var(--text-secondary);
-    max-width: 520px;
-    line-height: 1.6;
+    max-width: 460px;
+    line-height: 1.55;
 }
 
-/* ==========================================================================
-   VIEW 2: TOOLS DIRECTORY & LIVE TERMINAL EXPLORER
-   ========================================================================== */
 .tools-workspace {
     display: grid;
-    grid-template-columns: 390px 1fr;
+    grid-template-columns: 380px 1fr;
     gap: 1.25rem;
     align-items: start;
     min-height: 720px;
 }
 
 .tools-sidebar {
-    background: var(--bg-subtle);
+    background: linear-gradient(180deg, #111622 0%, #0c0f17 100%);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     height: calc(100vh - 220px);
@@ -617,11 +581,10 @@ body, button, input, select, textarea, pre, code, .tnum {
 
 .sidebar-search-bar {
     padding: 0.85rem;
-    border-bottom: 1px solid var(--border-hairline);
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    background: var(--bg-surface);
 }
 
 .search-input-wrap {
@@ -633,32 +596,33 @@ body, button, input, select, textarea, pre, code, .tnum {
 
 .search-input-wrap input {
     width: 100%;
-    height: 36px;
-    background: var(--bg-void);
+    height: 34px;
+    background: var(--bg-sunken);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-inset);
     padding: 0 2rem 0 0.85rem;
-    font-family: var(--font-mono);
-    font-size: 12px;
+    font-family: var(--font-sans);
+    font-size: 13px;
     color: var(--text-primary);
-    transition: all 0.15s;
+    transition: all var(--transition-fast);
 }
 
 .search-input-wrap input:focus {
     outline: none;
-    border-color: #ffffff;
+    border-color: var(--accent);
     box-shadow: var(--shadow-inset);
 }
 
 .search-kbd-hint {
     position: absolute;
-    right: 10px;
+    right: 8px;
+    font-family: var(--font-mono);
     font-size: 11px;
-    padding: 1px 6px;
+    padding: 1px 5px;
     background: var(--bg-surface);
     border: 1px solid var(--border-mid);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     color: var(--text-muted);
     pointer-events: none;
 }
@@ -668,34 +632,31 @@ body, button, input, select, textarea, pre, code, .tnum {
     flex-wrap: wrap;
     gap: 4px;
     padding: 0.75rem 0.85rem;
-    background: var(--bg-subtle);
-    border-bottom: 1px solid var(--border-hairline);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .cat-pill {
     padding: 3px 8px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-muted);
     background: transparent;
-    border: 1px solid var(--border-hairline);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-pill);
     cursor: pointer;
-    text-transform: uppercase;
-    transition: all 0.1s;
+    transition: all var(--transition-fast);
 }
 
 .cat-pill:hover {
     color: var(--text-primary);
     border-color: var(--border-bright);
-    background: var(--bg-surface-hover);
+    background: rgba(255, 255, 255, 0.03);
 }
 
 .cat-pill.active {
-    background: var(--bg-active);
-    color: var(--text-inverted);
-    border-color: var(--border-active);
-    box-shadow: var(--shadow-shallow);
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
 }
 
 .tools-nav-scroll {
@@ -707,26 +668,25 @@ body, button, input, select, textarea, pre, code, .tnum {
 .tool-entry-row {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
     padding: 0.75rem 0.85rem;
     margin-bottom: 3px;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     cursor: pointer;
     background: transparent;
-    transition: all 0.1s var(--ease-tactile);
+    transition: all var(--transition-fast);
 }
 
 .tool-entry-row:hover {
-    background: var(--bg-surface-hover);
-    border-color: var(--border-hairline);
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border-subtle);
 }
 
 .tool-entry-row.active {
-    background: var(--bg-active);
-    color: var(--text-inverted);
-    border-color: var(--border-active);
-    box-shadow: var(--shadow-shallow);
+    background: var(--bg-surface-active);
+    border-color: var(--border-bright);
+    box-shadow: var(--shadow-sm);
 }
 
 .tool-entry-header {
@@ -736,35 +696,30 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .tool-entry-name {
+    font-family: var(--font-mono);
     font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.01em;
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 .tool-entry-cat {
     font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
     padding: 1px 6px;
-    border: 1px solid currentColor;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-pill);
-    opacity: 0.75;
+    color: var(--text-muted);
 }
 
 .tool-entry-desc {
     font-size: 12px;
     color: var(--text-muted);
-    line-height: 1.45;
+    line-height: 1.4;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.tool-entry-row.active .tool-entry-desc {
-    color: var(--text-active-contrast);
-}
-
-/* Tool Main Inspector */
 .tool-detail-canvas {
     background: transparent;
     border: none;
@@ -772,18 +727,18 @@ body, button, input, select, textarea, pre, code, .tnum {
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.4rem;
 }
 
 .detail-head-banner {
-    background: var(--bg-subtle);
+    background: linear-gradient(180deg, #111622 0%, #0c0f17 100%);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
-    padding: 1.25rem 1.5rem;
+    box-shadow: var(--shadow-sm);
+    padding: 1.25rem 1.4rem;
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.5rem;
 }
 
 .detail-title-line {
@@ -794,8 +749,9 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .detail-tool-name {
-    font-size: 21px;
-    font-weight: 800;
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.01em;
 }
@@ -808,31 +764,28 @@ body, button, input, select, textarea, pre, code, .tnum {
 
 .detail-badge {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 500;
     padding: 2px 8px;
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-pill);
     color: var(--text-secondary);
-    text-transform: uppercase;
-    background: var(--bg-surface);
+    background: rgba(255, 255, 255, 0.03);
 }
 
 .detail-badge.active {
-    background: var(--bg-active);
-    color: var(--text-inverted);
-    border-color: var(--border-active);
-    box-shadow: var(--shadow-shallow);
+    background: var(--accent-dim);
+    color: #93c5fd;
+    border-color: rgba(59, 130, 246, 0.3);
 }
 
 .detail-description {
     font-size: 13px;
     color: var(--text-secondary);
-    line-height: 1.6;
+    line-height: 1.55;
 }
 
-/* Code Preview Box */
 .terminal-code-box {
-    background: var(--bg-void);
+    background: var(--bg-sunken);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-md);
     overflow: hidden;
@@ -843,16 +796,15 @@ body, button, input, select, textarea, pre, code, .tnum {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.55rem 0.95rem;
-    background: var(--bg-surface);
-    border-bottom: 1px solid var(--border-hairline);
+    padding: 0.5rem 0.85rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid var(--border-subtle);
     font-size: 11px;
-    font-weight: 600;
     color: var(--text-muted);
 }
 
 .terminal-code-body {
-    padding: 1rem;
+    padding: 0.95rem;
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--text-primary);
@@ -863,13 +815,10 @@ body, button, input, select, textarea, pre, code, .tnum {
     line-height: 1.5;
 }
 
-/* Parameters Section */
 .param-section-title {
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text-muted);
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
     margin-bottom: 0.6rem;
 }
 
@@ -878,16 +827,16 @@ body, button, input, select, textarea, pre, code, .tnum {
     flex-direction: column;
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-md);
-    background: var(--bg-void);
+    background: var(--bg-sunken);
     overflow: hidden;
 }
 
 .param-grid-row {
     display: grid;
-    grid-template-columns: 220px 1fr 240px;
+    grid-template-columns: 210px 1fr 240px;
     gap: 0.85rem;
-    padding: 0.95rem;
-    border-bottom: 1px solid var(--border-hairline);
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border-subtle);
     align-items: start;
 }
 .param-grid-row:last-child {
@@ -897,12 +846,13 @@ body, button, input, select, textarea, pre, code, .tnum {
 .param-meta-col {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
 }
 
 .param-name-label {
+    font-family: var(--font-mono);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text-primary);
 }
 
@@ -914,26 +864,26 @@ body, button, input, select, textarea, pre, code, .tnum {
 .param-desc-col {
     font-size: 12px;
     color: var(--text-secondary);
-    line-height: 1.5;
+    line-height: 1.45;
 }
 
 .param-input-col input {
     width: 100%;
-    height: 34px;
-    background: var(--bg-void);
+    height: 32px;
+    background: var(--bg-surface);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-inset);
-    padding: 0 0.75rem;
+    box-shadow: var(--shadow-sm);
+    padding: 0 0.65rem;
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--text-primary);
-    transition: all 0.12s;
+    transition: all var(--transition-fast);
 }
 .param-input-col input:focus {
     outline: none;
-    border-color: #ffffff;
-    box-shadow: var(--shadow-inset);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-sm);
 }
 
 .quick-chip-row {
@@ -944,33 +894,31 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .quick-chip {
+    font-family: var(--font-mono);
     font-size: 11px;
-    padding: 2px 7px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-mid);
-    border-radius: var(--radius-pill);
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
     color: var(--text-secondary);
     cursor: pointer;
-    box-shadow: var(--shadow-shallow);
-    transition: all 0.1s;
+    transition: all var(--transition-fast);
 }
 .quick-chip:hover {
-    color: var(--text-inverted);
-    background: var(--bg-active);
-    border-color: var(--border-active);
+    color: #ffffff;
+    background: var(--accent);
+    border-color: var(--accent);
 }
 
-/* Execution Deck Bar */
 .exec-control-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    padding: 0.95rem 1.15rem;
-    background: var(--bg-surface);
+    padding: 0.85rem 1rem;
+    background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-shallow);
 }
 
 .exec-meta-status {
@@ -982,14 +930,14 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .output-terminal {
-    background: var(--bg-void);
+    background: var(--bg-sunken);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-inset);
-    padding: 1.15rem;
+    padding: 1rem;
     font-family: var(--font-mono);
     font-size: 12px;
-    line-height: 1.55;
+    line-height: 1.5;
     color: var(--text-primary);
     max-height: 320px;
     overflow-y: auto;
@@ -997,9 +945,6 @@ body, button, input, select, textarea, pre, code, .tnum {
     word-break: break-all;
 }
 
-/* ==========================================================================
-   VIEW 3: CUSTOM PORT & DISCOVERY ROUTER SYNC
-   ========================================================================== */
 .port-sync-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1007,36 +952,35 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .port-panel {
-    background: var(--bg-subtle);
+    background: linear-gradient(180deg, #111622 0%, #0c0f17 100%);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
-    padding: 1.4rem;
+    box-shadow: var(--shadow-sm);
+    padding: 1.25rem 1.4rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
 }
 
-.port-card-head {
+.port-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding-bottom: 0.65rem;
-    border-bottom: 1px solid var(--border-hairline);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
-.port-card-title {
+.port-title {
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text-primary);
-    letter-spacing: 0.01em;
 }
 
 .port-stat-row {
     display: flex;
     justify-content: space-between;
-    padding: 0.6rem 0;
-    border-bottom: 1px solid var(--border-hairline);
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--border-subtle);
     font-size: 12px;
 }
 
@@ -1049,7 +993,8 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 .port-stat-val {
     color: var(--text-primary);
-    font-weight: 700;
+    font-family: var(--font-mono);
+    font-weight: 500;
 }
 
 .port-input-control {
@@ -1059,54 +1004,42 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .port-input-control input {
-    height: 34px;
-    width: 150px;
-    background: var(--bg-void);
+    height: 32px;
+    width: 140px;
+    background: var(--bg-sunken);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-inset);
-    padding: 0 0.75rem;
+    padding: 0 0.65rem;
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--text-primary);
 }
 .port-input-control input:focus {
     outline: none;
-    border-color: #ffffff;
-    box-shadow: var(--shadow-inset);
-}
-
-/* ==========================================================================
-   VIEW 4: UNC MATRIX & EXECUTOR AUDIT
-   ========================================================================== */
-.unc-matrix-wrapper {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    padding: 0;
+    border-color: var(--accent);
 }
 
 .unc-matrix-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.75rem;
 }
 
 .unc-cell {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    background: linear-gradient(180deg, #111622 0%, #0c0f17 100%);
+    border: 1px solid var(--border-mid);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-shallow);
-    padding: 0.95rem 1.05rem;
+    box-shadow: var(--shadow-sm);
+    padding: 0.95rem 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    transition: all 0.12s;
+    gap: 0.35rem;
+    transition: all var(--transition-fast);
 }
 
 .unc-cell:hover {
-    background: var(--bg-surface-hover);
-    border-color: var(--border-mid);
+    border-color: var(--border-bright);
     transform: translateY(-1px);
 }
 
@@ -1117,75 +1050,69 @@ body, button, input, select, textarea, pre, code, .tnum {
 }
 
 .unc-func-name {
+    font-family: var(--font-mono);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text-primary);
 }
 
 .unc-func-cat {
     font-size: 11px;
     padding: 1px 6px;
-    border: 1px solid var(--border-mid);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-pill);
     color: var(--text-muted);
-    text-transform: uppercase;
 }
 
 .unc-func-desc {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     line-height: 1.45;
 }
 
 .unc-fallback-meta {
     font-size: 12px;
-    color: var(--text-faint);
+    color: var(--text-muted);
     margin-top: 2px;
 }
 
-/* ==========================================================================
-   VIEW 5: OPERATIONS & SETTINGS
-   ========================================================================== */
 .ops-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 1.25rem;
 }
 
 .ops-panel {
-    background: var(--bg-subtle);
+    background: linear-gradient(180deg, #111622 0%, #0c0f17 100%);
     border: 1px solid var(--border-mid);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
-    padding: 1.4rem;
+    box-shadow: var(--shadow-sm);
+    padding: 1.25rem 1.4rem;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     gap: 1.25rem;
 }
 
-.ops-card-head {
+.ops-head {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.4rem;
 }
 
-.ops-card-title {
+.ops-title {
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text-primary);
-    letter-spacing: 0.01em;
 }
 
-.ops-card-desc {
+.ops-desc {
     font-size: 13px;
     color: var(--text-secondary);
-    line-height: 1.6;
+    line-height: 1.55;
 }
 
-/* ==========================================================================
-   MODAL & TOAST SYSTEMS
-   ========================================================================== */
 .modal-overlay {
     display: none;
     position: fixed;
@@ -1193,7 +1120,9 @@ body, button, input, select, textarea, pre, code, .tnum {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.88);
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     z-index: 2000;
     align-items: center;
     justify-content: center;
@@ -1202,16 +1131,21 @@ body, button, input, select, textarea, pre, code, .tnum {
 
 .modal-overlay.open {
     display: flex;
-    animation: fadeIn 0.15s var(--ease-tactile);
+    animation: modalIn 0.15s var(--transition-normal);
+}
+
+@keyframes modalIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 .modal-chassis {
     width: 100%;
-    max-width: 640px;
-    background: var(--bg-surface);
+    max-width: 600px;
+    background: #0f1420;
     border: 1px solid var(--border-bright);
     border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-elevated);
+    box-shadow: var(--shadow-lg);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1222,15 +1156,14 @@ body, button, input, select, textarea, pre, code, .tnum {
     align-items: center;
     justify-content: space-between;
     padding: 0.95rem 1.25rem;
-    background: var(--bg-subtle);
-    border-bottom: 1px solid var(--border-hairline);
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .modal-title {
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text-primary);
-    letter-spacing: 0.01em;
 }
 
 .modal-close-btn {
@@ -1238,31 +1171,29 @@ body, button, input, select, textarea, pre, code, .tnum {
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 16px;
+    font-size: 18px;
     padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    transition: color 0.1s;
+    border-radius: var(--radius-xs);
+    transition: color var(--transition-fast);
 }
 .modal-close-btn:hover {
     color: #ffffff;
 }
 
 .modal-body {
-    padding: 1.4rem;
+    padding: 1.25rem 1.4rem;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1.15rem;
 }
 
 .modal-loader-row {
     background: transparent;
-    border: none;
-    border-bottom: 1px solid var(--border-hairline);
-    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 1.15rem;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.65rem;
 }
 
 .modal-loader-row:last-child {
@@ -1274,33 +1205,30 @@ body, button, input, select, textarea, pre, code, .tnum {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.95rem 1.25rem;
-    background: var(--bg-subtle);
-    border-top: 1px solid var(--border-hairline);
+    padding: 0.85rem 1.25rem;
+    background: rgba(0, 0, 0, 0.25);
+    border-top: 1px solid var(--border-subtle);
     font-size: 12px;
     color: var(--text-muted);
 }
 
-/* Tactical 3D Toast */
 #deck-toast {
     position: fixed;
     bottom: 1.5rem;
     right: 1.5rem;
     z-index: 3000;
-    padding: 0.75rem 1.25rem;
-    background: var(--bg-active);
-    color: var(--text-inverted);
-    border: 1px solid var(--border-active);
+    padding: 0.65rem 1.1rem;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-bright);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-elevated);
-    font-family: var(--font-mono);
+    box-shadow: var(--shadow-lg);
     font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    transform: translateY(16px);
+    font-weight: 500;
+    transform: translateY(12px);
     opacity: 0;
     pointer-events: none;
-    transition: all 0.15s var(--ease-tactile);
+    transition: all var(--transition-fast);
 }
 
 #deck-toast.show {
@@ -1308,42 +1236,17 @@ body, button, input, select, textarea, pre, code, .tnum {
     opacity: 1;
 }
 
-/* Responsive Breakpoints */
 @media (max-width: 1080px) {
-    .tools-workspace {
-        grid-template-columns: 1fr;
-    }
-    .tools-sidebar {
-        height: 420px;
-        position: static;
-    }
-    .telemetry-ribbon {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    .port-sync-grid {
-        grid-template-columns: 1fr;
-    }
-    .top-deck {
-        width: calc(100% - 1.5rem);
-    }
+    .tools-workspace { grid-template-columns: 1fr; }
+    .tools-sidebar { height: 400px; position: static; }
+    .telemetry-ribbon { grid-template-columns: repeat(2, 1fr); }
+    .port-sync-grid { grid-template-columns: 1fr; }
+    .top-deck { width: calc(100% - 1.5rem); }
 }
 
 @media (max-width: 640px) {
-    .telemetry-ribbon {
-        grid-template-columns: 1fr;
-    }
-    .top-deck {
-        width: 100%;
-        margin: 0;
-        border-radius: 0;
-    }
-    .top-bar-inner {
-        height: auto;
-        padding: 0.75rem;
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .nav-tab-rail {
-        justify-content: flex-start;
-    }
+    .telemetry-ribbon { grid-template-columns: 1fr; }
+    .top-deck { width: 100%; margin: 0; border-radius: 0; }
+    .top-bar-inner { height: auto; padding: 0.75rem; flex-direction: column; align-items: stretch; }
+    .nav-tab-rail { justify-content: flex-start; }
 }

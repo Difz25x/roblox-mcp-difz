@@ -30,6 +30,37 @@ local function safeLoad(code)
 	end
 	return ls(code)
 end
+
+local SCRIPT_INSTANCE_ID = tostring(tick()) .. "_" .. tostring(math.random(1, 10000000))
+local IS_ALIVE = true
+local WS = nil
+local WS_CONNECTED = false
+local WS_BUFFER = {}
+local WS_GOT_PONG = true
+
+-- Terminate and clean up any previously running instance completely
+pcall(function()
+	local prevCleanup = G_GET("MCP_CLEANUP")
+	if type(prevCleanup) == "function" then
+		prevCleanup()
+	end
+end)
+G_SET("MCP_INSTANCE_ID", SCRIPT_INSTANCE_ID)
+
+local function cleanupInstance()
+	IS_ALIVE = false
+	WS_CONNECTED = false
+	pcall(function()
+		local wsToClose = WS or G_GET("MCP_WS")
+		if wsToClose then
+			wsToClose:Close()
+		end
+	end)
+	WS = nil
+	G_SET("MCP_WS", nil)
+end
+G_SET("MCP_CLEANUP", cleanupInstance)
+
 if G_GET("MCP_RUNNING") then
 	pcall(function()
 		local prevWS = G_GET("MCP_WS")
@@ -181,13 +212,14 @@ local isfile = isfile
 local delfile = delfile
 local WORKER_ID = nil
 local savedWorkerId = G_GET("MCP_WORKER_ID")
-if savedWorkerId then
+if savedWorkerId and type(savedWorkerId) == "string" and savedWorkerId ~= "" then
 	WORKER_ID = savedWorkerId
 else
 	local ok, guid = pcall(function()
 		return HttpService:GenerateGuid(false)
 	end)
 	WORKER_ID = ok and guid or (tostring(tick()) .. tostring(math.random(1, 999999)))
+	G_SET("MCP_WORKER_ID", WORKER_ID)
 end
 local PROCESS_PID = nil
 local function getPid()
@@ -336,8 +368,7 @@ local function serialize(v, d, seen)
 	return tostring(v)
 end
 
-local WS, WS_CONNECTED, WS_BUFFER = nil, false, {}
-local WS_GOT_PONG = true
+WS_BUFFER = {}
 
 local RECONNECT_DELAY = 3
 
@@ -427,226 +458,239 @@ pcall(function()
 	MCP_CAPABILITIES = testUncCapabilities()
 end)
 
+local isConnecting = false
 local function wsReconnect()
-	WS_BUFFER = {}
-	if WS then
-		pcall(function()
-			WS:Close()
-		end)
+	if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+		return false, "Instance superseded by newer script execution"
 	end
-	WS = nil
-	WS_CONNECTED = false
-	local connectFn = (typeof(WebSocket) == "table" and WebSocket.connect) or nil
-	if not connectFn then
-		return false, "No WebSocket support"
+	if isConnecting then
+		return false, "Connection in progress"
 	end
-	local ok, s = pcall(connectFn, WS_URL)
-	if not ok or not s then
-		return false, tostring(s)
-	end
-	if type(s) == "string" then
-		return false, s
-	end
-	if type(s) == "boolean" then
-		return false, "WebSocket.connect returned false"
-	end
-	if type(s) == "table" and s.error then
-		return false, tostring(s.error)
-	end
+	isConnecting = true
 
-	-- Find the message event/signal. Do not strictly require OnClose, because some
-	-- executors (or fallback wrappers) do not provide OnClose.
-	--
-	-- Real (and similar executors) expose the socket as a plain table where the
-	-- message event is an Instance-backed bindable: __on_message_bind (an Instance
-	-- whose .Event is the signal) rather than a direct OnMessage signal. Probe all
-	-- the shapes we know about before giving up.
-	local function resolveSignal(container, names, instanceFields)
-		if container == nil then
-			return nil
-		end
-		local found = nil
-		for _, n in ipairs(names) do
-			local ok, v = pcall(function()
-				return container[n]
+	local function _doConnect()
+		WS_BUFFER = {}
+		if WS then
+			pcall(function()
+				WS:Close()
 			end)
-			if ok and v ~= nil then
-				if type(v) == "table" and v.Connect then
-					return v
+		end
+		WS = nil
+		WS_CONNECTED = false
+		local connectFn = (typeof(WebSocket) == "table" and WebSocket.connect) or nil
+		if not connectFn then
+			return false, "No WebSocket support"
+		end
+		local ok, s = pcall(connectFn, WS_URL)
+		if not ok or not s then
+			return false, tostring(s)
+		end
+		if type(s) == "string" then
+			return false, s
+		end
+		if type(s) == "boolean" then
+			return false, "WebSocket.connect returned false"
+		end
+		if type(s) == "table" and s.error then
+			return false, tostring(s.error)
+		end
+
+		if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+			pcall(function() s:Close() end)
+			return false, "Instance superseded"
+		end
+
+		local function resolveSignal(container, names, instanceFields)
+			if container == nil then
+				return nil
+			end
+			local found = nil
+			for _, n in ipairs(names) do
+				local ok, v = pcall(function()
+					return container[n]
+				end)
+				if ok and v ~= nil then
+					if type(v) == "table" and v.Connect then
+						return v
+					end
+					if type(v) == "userdata" then
+						return v
+					end
+					if typeof(v) == "Instance" then
+						local ev = nil
+						pcall(function()
+							ev = v.Event
+						end)
+						if ev ~= nil then
+							return ev
+						end
+					end
+					if not found then
+						found = v
+					end
 				end
-				if type(v) == "userdata" then
-					return v
-				end
-				if typeof(v) == "Instance" then
+			end
+			for _, f in ipairs(instanceFields) do
+				local ok, inst = pcall(function()
+					return container[f]
+				end)
+				if ok and inst ~= nil and typeof(inst) == "Instance" then
 					local ev = nil
 					pcall(function()
-						ev = v.Event
+						ev = inst.Event
 					end)
 					if ev ~= nil then
 						return ev
 					end
 				end
-				if not found then
-					found = v
-				end
 			end
+			return nil
 		end
-		-- __on_message_bind style: an Instance whose .Event is the real signal.
-		for _, f in ipairs(instanceFields) do
-			local ok, inst = pcall(function()
-				return container[f]
-			end)
-			if ok and inst ~= nil and typeof(inst) == "Instance" then
-				local ev = nil
-				pcall(function()
-					ev = inst.Event
-				end)
-				if ev ~= nil then
-					return ev
-				end
-			end
-		end
-		return nil
-	end
 
-	local MSG_NAMES = {
-		"OnMessage", "onMessage", "onmessage", "Message", "message",
-		"On_Message", "on_message", "Receive", "receive", "OnText", "onText",
-	}
-	local CLOSE_NAMES = { "OnClose", "onClose", "onclose", "Close", "Closed", "OnClosed", "on_closed" }
+		local MSG_NAMES = {
+			"OnMessage", "onMessage", "onmessage", "Message", "message",
+			"On_Message", "on_message", "Receive", "receive", "OnText", "onText",
+		}
+		local CLOSE_NAMES = { "OnClose", "onClose", "onclose", "Close", "Closed", "OnClosed", "on_closed" }
 
-	local onMsg = resolveSignal(s, MSG_NAMES, { "__on_message_bind", "__onMessageBind", "__message_bind" })
+		local onMsg = resolveSignal(s, MSG_NAMES, { "__on_message_bind", "__onMessageBind", "__message_bind" })
 
-	-- If s is a wrapper table holding an inner socket, descend into it once.
-	if not onMsg and type(s) == "table" then
-		pcall(function()
-			for _, key in ipairs({ "ws", "socket", "connection", "client", "inner", "_ws", "Socket", "Ws" }) do
-				local inner = s[key]
-				if inner then
-					local innerOnMsg = resolveSignal(inner, MSG_NAMES, { "__on_message_bind", "__onMessageBind", "__message_bind" })
-					if innerOnMsg then
-						s = inner
-						onMsg = innerOnMsg
-						break
-					end
-				end
-			end
-		end)
-	end
-	if not onMsg then
-		local keys = {}
-		pcall(function()
-			for k, v in pairs(s) do
-				table.insert(keys, tostring(k) .. ":" .. typeof(v))
-			end
-		end)
-		local mt = getmetatable(s)
-		local mtInfo = ""
-		if type(mt) == "table" then
-			local mtList = {}
-			for k, v in pairs(mt) do
-				table.insert(mtList, tostring(k) .. ":" .. typeof(v))
-			end
-			if type(mt.__index) == "table" then
-				for k, v in pairs(mt.__index) do
-					table.insert(mtList, "__index." .. tostring(k) .. ":" .. typeof(v))
-				end
-			end
-			mtInfo = " mt=[" .. table.concat(mtList, ", ") .. "]"
-		elseif mt ~= nil then
-			mtInfo = " mt=" .. typeof(mt)
-		end
-		local desc = tostring(s)
-		pcall(function()
-			s:Close()
-		end)
-		return false, "WebSocket has no OnMessage (type=" .. typeof(s) .. " keys=[" .. table.concat(keys, ", ") .. "]" .. mtInfo .. ")"
-	end
-
-	-- Capture the socket NOW. GetProductInfo below is a network call inside pcall,
-	-- and pcall is yieldable in Luau -- WS could be swapped during that yield, which
-	-- would send the register packet on the wrong socket.
-	local savedWS = s
-	WS = s
-	G_SET("MCP_WS", s)
-	local placeName = ""
-	pcall(function()
-		local pi = MarketplaceService:GetProductInfo(game.PlaceId)
-		if pi and pi.Name then
-			placeName = pi.Name
-		end
-	end)
-	local regData = {
-		type = "register",
-		worker_id = WORKER_ID,
-		username = LocalPlayer and LocalPlayer.Name or "Unknown",
-		userId = LocalPlayer and LocalPlayer.UserId or 0,
-		placeId = game.PlaceId,
-		jobId = game.JobId,
-		placeName = placeName,
-		capabilities = MCP_CAPABILITIES,
-	}
-	local ok, sent = pcall(function()
-		savedWS:Send(HttpService:JSONEncode(regData))
-	end)
-	if not ok then
-		pcall(function()
-			savedWS:Close()
-		end)
-		WS = nil
-		WS_CONNECTED = false
-		G_SET("MCP_WS", nil)
-		return false, "Register send failed"
-	end
-	local hookOk, hookErr = pcall(function()
-		if onMsg and type(onMsg.Connect) == "function" then
-			onMsg:Connect(function(msg)
-				if WS ~= savedWS then
-					return
-				end
-				local okDecode, d = pcall(function()
-					return HttpService:JSONDecode(msg)
-				end)
-				if okDecode and d then
-					if d.type == "pong" then
-						WS_GOT_PONG = true
-					end
-					if d.type == "task" then
-						if d.workerId and d.workerId ~= WORKER_ID then
-							return
+		if not onMsg and type(s) == "table" then
+			pcall(function()
+				for _, key in ipairs({ "ws", "socket", "connection", "client", "inner", "_ws", "Socket", "Ws" }) do
+					local inner = s[key]
+					if inner then
+						local innerOnMsg = resolveSignal(inner, MSG_NAMES, { "__on_message_bind", "__onMessageBind", "__message_bind" })
+						if innerOnMsg then
+							s = inner
+							onMsg = innerOnMsg
+							break
 						end
-						table.insert(WS_BUFFER, d)
 					end
 				end
 			end)
 		end
-
-		local onClose = resolveSignal(s, CLOSE_NAMES, { "__on_close_bind", "__onCloseBind", "__close_bind" })
-		if onClose and type(onClose.Connect) == "function" then
-			onClose:Connect(function()
-				if WS == savedWS then
-					WS_CONNECTED = false
-					WS = nil
-					-- Clear the genv copy too, otherwise a dead socket lingers there
-					-- forever and gets closed again on the next injection.
-					G_SET("MCP_WS", nil)
+		if not onMsg then
+			local keys = {}
+			pcall(function()
+				for k, v in pairs(s) do
+					table.insert(keys, tostring(k) .. ":" .. typeof(v))
 				end
 			end)
+			local mt = getmetatable(s)
+			local mtInfo = ""
+			if type(mt) == "table" then
+				local mtList = {}
+				for k, v in pairs(mt) do
+					table.insert(mtList, tostring(k) .. ":" .. typeof(v))
+				end
+				if type(mt.__index) == "table" then
+					for k, v in pairs(mt.__index) do
+						table.insert(mtList, "__index." .. tostring(k) .. ":" .. typeof(v))
+					end
+				end
+				mtInfo = " mt=[" .. table.concat(mtList, ", ") .. "]"
+			elseif mt ~= nil then
+				mtInfo = " mt=" .. typeof(mt)
+			end
+			pcall(function()
+				s:Close()
+			end)
+			return false, "WebSocket has no OnMessage (type=" .. typeof(s) .. " keys=[" .. table.concat(keys, ", ") .. "]" .. mtInfo .. ")"
 		end
-	end)
-	if not hookOk then
+
+		local savedWS = s
+		WS = s
+		G_SET("MCP_WS", s)
+		local placeName = ""
 		pcall(function()
-			savedWS:Close()
+			local pi = MarketplaceService:GetProductInfo(game.PlaceId)
+			if pi and pi.Name then
+				placeName = pi.Name
+			end
 		end)
-		WS = nil
-		WS_CONNECTED = false
-		G_SET("MCP_WS", nil)
-		return false, "Failed to attach socket handlers: " .. tostring(hookErr)
+		local regData = {
+			type = "register",
+			worker_id = WORKER_ID,
+			username = LocalPlayer and LocalPlayer.Name or "Unknown",
+			userId = LocalPlayer and LocalPlayer.UserId or 0,
+			placeId = game.PlaceId,
+			jobId = game.JobId,
+			placeName = placeName,
+			capabilities = MCP_CAPABILITIES,
+			pid = getPid(),
+		}
+		local ok, sent = pcall(function()
+			savedWS:Send(HttpService:JSONEncode(regData))
+		end)
+		if not ok then
+			pcall(function()
+				savedWS:Close()
+			end)
+			WS = nil
+			WS_CONNECTED = false
+			G_SET("MCP_WS", nil)
+			return false, "Register send failed"
+		end
+		local hookOk, hookErr = pcall(function()
+			if onMsg and type(onMsg.Connect) == "function" then
+				onMsg:Connect(function(msg)
+					if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+						return
+					end
+					if WS ~= savedWS then
+						return
+					end
+					local okDecode, d = pcall(function()
+						return HttpService:JSONDecode(msg)
+					end)
+					if okDecode and d then
+						if d.type == "pong" then
+							WS_GOT_PONG = true
+						end
+						if d.type == "task" then
+							if d.workerId and d.workerId ~= WORKER_ID then
+								return
+							end
+							table.insert(WS_BUFFER, d)
+						end
+					end
+				end)
+			end
+
+			local onClose = resolveSignal(s, CLOSE_NAMES, { "__on_close_bind", "__onCloseBind", "__close_bind" })
+			if onClose and type(onClose.Connect) == "function" then
+				onClose:Connect(function()
+					if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+						return
+					end
+					if WS == savedWS then
+						WS_CONNECTED = false
+						WS = nil
+						G_SET("MCP_WS", nil)
+					end
+				end)
+			end
+		end)
+		if not hookOk then
+			pcall(function()
+				savedWS:Close()
+			end)
+			WS = nil
+			WS_CONNECTED = false
+			G_SET("MCP_WS", nil)
+			return false, "Failed to attach socket handlers: " .. tostring(hookErr)
+		end
+		WS_CONNECTED = true
+		return true
 	end
-	-- Only mark connected once the handlers are attached; if anything above failed we
-	-- would otherwise leave the main loop thinking it has a live socket.
-	WS_CONNECTED = true
-	return true
+
+	local pok, res1, res2 = pcall(_doConnect)
+	isConnecting = false
+	if not pok then
+		return false, tostring(res1)
+	end
+	return res1, res2
 end
 
 local function wsPoll()
@@ -3748,6 +3792,8 @@ local HANDLERS = {
 	end,
 	["disable-anticheat"] = handleDisableAntiCheat,	["set-autoexecute"] = handleSetAutoexecute,
 	["get-metadata"] = handleGetMetadata,
+	["get_metadata"] = handleGetMetadata,
+	["get_game_metadata"] = handleGetMetadata,
 	["dump-workspace-players"] = handleDumpPlayers,
 	["get-local-player"] = handlePlayerState,
 	["dump-remote-events"] = handleDumpRemotes,
@@ -4232,18 +4278,24 @@ local function runStreamWorker()
 
 	local registered, regErr = streamRegister()
 	local regBackoff = RECONNECT_DELAY
-	while not registered do
+	while not registered and IS_ALIVE and G_GET("MCP_INSTANCE_ID") == SCRIPT_INSTANCE_ID do
 		print("[MCP] Stream register failed: " .. tostring(regErr) .. " (retry in " .. regBackoff .. "s)")
 		task.wait(regBackoff)
 		regBackoff = math.min(MAX_BACKOFF, regBackoff * 2)
 		registered, regErr = streamRegister()
 	end
+	if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+		return
+	end
 	print("[MCP] Stream registered | Worker: " .. WORKER_ID)
 	STREAM_LAST_PONG = tick()
 
 	local lastPing = tick()
-	while STREAM_ACTIVE do
+	while STREAM_ACTIVE and IS_ALIVE and G_GET("MCP_INSTANCE_ID") == SCRIPT_INSTANCE_ID do
 		local tsk = streamPoll(20000)
+		if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+			break
+		end
 		if tsk then
 			local resultData = dispatchTask(tsk)
 			local sentOk = streamSend(tsk.id, resultData, nil, tsk.pid)
@@ -4264,10 +4316,16 @@ if transportMode == "stream" then
 	return
 end
 
-while true do
+while IS_ALIVE and G_GET("MCP_INSTANCE_ID") == SCRIPT_INSTANCE_ID do
 	if not WS_CONNECTED or not WS then
+		if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+			break
+		end
 		print("[MCP] Connecting...")
 		local pok, connOk, connErr = pcall(wsReconnect)
+		if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+			break
+		end
 		if pok and connOk then
 			print("[MCP] Connected | Worker: " .. WORKER_ID)
 			WS_GOT_PONG = true
@@ -4287,6 +4345,9 @@ while true do
 			task.wait(currentBackoff)
 			currentBackoff = math.min(MAX_BACKOFF, currentBackoff * 2)
 		end
+	end
+	if not IS_ALIVE or G_GET("MCP_INSTANCE_ID") ~= SCRIPT_INSTANCE_ID then
+		break
 	end
 	if WS_CONNECTED and WS and tick() - lastSentPing >= PING_INTERVAL then
 		lastSentPing = tick()

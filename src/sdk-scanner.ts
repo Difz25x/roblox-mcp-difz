@@ -41,15 +41,10 @@ export interface LoadedMcpSdk {
 let _cachedDiagnostics: McpSdkDiagnostics | null = null;
 let _cachedSdk: LoadedMcpSdk | null = null;
 
-/**
- * Searches for the installed path of @modelcontextprotocol/sdk using multiple fallback strategies.
- */
 function resolveSdkLocation(): { packagePath: string | null; strategy: McpSdkDiagnostics['resolvedStrategy'] } {
-    // Strategy 1: Standard node exports resolution
     try {
         const resolved = require.resolve('@modelcontextprotocol/sdk/server/index.js');
         if (resolved && fs.existsSync(resolved)) {
-            // Find root package directory containing package.json
             let cur = path.dirname(resolved);
             while (cur && cur !== path.dirname(cur)) {
                 if (fs.existsSync(path.join(cur, 'package.json'))) {
@@ -64,12 +59,10 @@ function resolveSdkLocation(): { packagePath: string | null; strategy: McpSdkDia
         }
     } catch {}
 
-    // Strategy 2: package.json resolution
     try {
         const pkgJson = require.resolve('@modelcontextprotocol/sdk/package.json');
         if (pkgJson && fs.existsSync(pkgJson)) {
             const dir = path.dirname(pkgJson);
-            // If it resolved to dist/cjs/package.json, step up to main package root
             const rootCandidate = path.resolve(dir, '..', '..');
             if (fs.existsSync(path.join(rootCandidate, 'package.json'))) {
                 return { packagePath: rootCandidate, strategy: 'require-resolve' };
@@ -78,7 +71,6 @@ function resolveSdkLocation(): { packagePath: string | null; strategy: McpSdkDia
         }
     } catch {}
 
-    // Strategy 3: Direct local node_modules lookup relative to project root
     const localCandidates = [
         path.resolve(__dirname, '..', 'node_modules', '@modelcontextprotocol', 'sdk'),
         path.resolve(__dirname, 'node_modules', '@modelcontextprotocol', 'sdk'),
@@ -90,7 +82,6 @@ function resolveSdkLocation(): { packagePath: string | null; strategy: McpSdkDia
         }
     }
 
-    // Strategy 4: Ascending directory walk to discover hoisted dependencies (monorepos / pnpm / yarn)
     let currentDir = __dirname;
     for (let i = 0; i < 6; i++) {
         const checkPath = path.join(currentDir, 'node_modules', '@modelcontextprotocol', 'sdk');
@@ -105,9 +96,6 @@ function resolveSdkLocation(): { packagePath: string | null; strategy: McpSdkDia
     return { packagePath: null, strategy: 'not-found' };
 }
 
-/**
- * Scans @modelcontextprotocol/sdk, verifies exports, protocol schemas, and computes diagnostic health.
- */
 export function scanMcpSdk(forceRefresh: boolean = false): McpSdkDiagnostics {
     if (_cachedDiagnostics && !forceRefresh) {
         return _cachedDiagnostics;
@@ -126,7 +114,7 @@ export function scanMcpSdk(forceRefresh: boolean = false): McpSdkDiagnostics {
             warnings.push('Failed to read SDK package.json metadata.');
         }
     } else {
-        warnings.push('@modelcontextprotocol/sdk was not found in node_modules or global resolution path.');
+        warnings.push('@modelcontextprotocol/sdk was not found.');
     }
 
     let serverFound = false;
@@ -134,7 +122,6 @@ export function scanMcpSdk(forceRefresh: boolean = false): McpSdkDiagnostics {
     let typesFound = false;
     let typesObj: any = null;
 
-    // Test load server
     try {
         const s = require('@modelcontextprotocol/sdk/server/index.js');
         serverFound = typeof s.Server === 'function';
@@ -149,7 +136,6 @@ export function scanMcpSdk(forceRefresh: boolean = false): McpSdkDiagnostics {
         }
     }
 
-    // Test load stdio transport
     try {
         const st = require('@modelcontextprotocol/sdk/server/stdio.js');
         stdioFound = typeof st.StdioServerTransport === 'function';
@@ -164,7 +150,6 @@ export function scanMcpSdk(forceRefresh: boolean = false): McpSdkDiagnostics {
         }
     }
 
-    // Test load types & request schemas
     try {
         typesObj = require('@modelcontextprotocol/sdk/types.js');
         typesFound = typesObj && typeof typesObj === 'object';
@@ -223,10 +208,6 @@ export function scanMcpSdk(forceRefresh: boolean = false): McpSdkDiagnostics {
     return _cachedDiagnostics;
 }
 
-/**
- * Loads and returns all active components of @modelcontextprotocol/sdk.
- * Throws a clear, informative error with troubleshooting guidance if the SDK is missing.
- */
 export function getMcpSdk(forceReload: boolean = false): LoadedMcpSdk {
     if (_cachedSdk && !forceReload) {
         return _cachedSdk;
@@ -236,16 +217,15 @@ export function getMcpSdk(forceReload: boolean = false): LoadedMcpSdk {
     if (!diag.available) {
         const errorMsg = [
             '------------------------------------------------------------------',
-            '✖ CRITICAL ERROR: @modelcontextprotocol/sdk could not be resolved.',
+            'Error: @modelcontextprotocol/sdk could not be found.',
             '------------------------------------------------------------------',
-            `Package Location: ${diag.packagePath || 'None found'}`,
-            `Resolution Strategy: ${diag.resolvedStrategy}`,
+            `Location: ${diag.packagePath || 'None found'}`,
+            `Resolution: ${diag.resolvedStrategy}`,
             `Warnings: ${diag.warnings.join(' | ')}`,
             '',
-            'Remediation:',
+            'To fix:',
             '  1. Run: npm install @modelcontextprotocol/sdk',
-            '  2. If using global CLI: npm install -g roblox-mcp-difz',
-            '  3. Check node_modules permissions in this environment.',
+            '  2. Or install globally: npm install -g roblox-mcp-difz',
             '------------------------------------------------------------------',
         ].join('\n');
         throw new Error(errorMsg);
@@ -285,34 +265,31 @@ export function getMcpSdk(forceReload: boolean = false): LoadedMcpSdk {
     return _cachedSdk;
 }
 
-/**
- * Formats a terminal-friendly ASCII diagnostic summary.
- */
 export function formatSdkReport(diag: McpSdkDiagnostics): string {
     const lines = [
-        '┌────────────────────────────────────────────────────────────────┐',
-        '│              MCP SDK SCANNER & DIAGNOSTICS REPORT              │',
-        '├────────────────────────────────────────────────────────────────┤',
-        `│  Status:            ${diag.available ? '✔ READY & OPERATIONAL' : '✖ UNHEALTHY / INCOMPLETE'}`,
-        `│  SDK Version:       ${diag.version}`,
-        `│  Resolved Via:      ${diag.resolvedStrategy}`,
-        `│  Package Path:      ${diag.packagePath || 'Not found'}`,
-        `│  Latest Protocol:   ${diag.latestProtocolVersion}`,
-        `│  Supported Prots:   ${diag.supportedProtocolVersions.slice(0, 3).join(', ')}...`,
-        `│  Scan Duration:     ${diag.scanDurationMs}ms`,
-        '├────────────────────────────────────────────────────────────────┤',
-        `│  Capabilities:`,
-        `│    • Server Engine:       ${diag.capabilities.server ? '✔ YES' : '✖ NO'}`,
-        `│    • Stdio Transport:     ${diag.capabilities.stdioTransport ? '✔ YES' : '✖ NO'}`,
-        `│    • Tool Handlers:       ${diag.capabilities.tools ? '✔ YES' : '✖ NO'}`,
-        `│    • Resource Provider:   ${diag.capabilities.resources ? '✔ YES' : '✖ NO'}`,
-        `│    • Prompt Templates:    ${diag.capabilities.prompts ? '✔ YES' : '✖ NO'}`,
-        `│  Total Schemas:     ${diag.availableSchemas.length} loaded`,
-        '└────────────────────────────────────────────────────────────────┘',
+        '------------------------------------------------------------------',
+        'MCP SDK Diagnostics',
+        '------------------------------------------------------------------',
+        `Status:            ${diag.available ? 'Ready' : 'Not ready'}`,
+        `SDK Version:       ${diag.version}`,
+        `Resolved Via:      ${diag.resolvedStrategy}`,
+        `Package Path:      ${diag.packagePath || 'Not found'}`,
+        `Latest Protocol:   ${diag.latestProtocolVersion}`,
+        `Supported Prots:   ${diag.supportedProtocolVersions.slice(0, 3).join(', ')}`,
+        `Scan Time:         ${diag.scanDurationMs}ms`,
+        '------------------------------------------------------------------',
+        `Capabilities:`,
+        `  Server Engine:     ${diag.capabilities.server ? 'Yes' : 'No'}`,
+        `  Stdio Transport:   ${diag.capabilities.stdioTransport ? 'Yes' : 'No'}`,
+        `  Tool Handlers:     ${diag.capabilities.tools ? 'Yes' : 'No'}`,
+        `  Resource Provider: ${diag.capabilities.resources ? 'Yes' : 'No'}`,
+        `  Prompt Templates:  ${diag.capabilities.prompts ? 'Yes' : 'No'}`,
+        `Total Schemas:     ${diag.availableSchemas.length} loaded`,
+        '------------------------------------------------------------------',
     ];
     if (diag.warnings.length > 0) {
-        lines.push('  Warnings:');
-        diag.warnings.forEach(w => lines.push(`    ⚠ ${w}`));
+        lines.push('Warnings:');
+        diag.warnings.forEach(w => lines.push(`  - ${w}`));
     }
     return lines.join('\n');
 }

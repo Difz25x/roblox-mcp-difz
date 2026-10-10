@@ -1,5 +1,3 @@
-
-
 import * as fs from 'fs';
 import * as path from 'path';
 import { normalizeToolArguments } from './tool-definitions';
@@ -32,6 +30,8 @@ interface SessionManager {
     readonly activeCount: number;
     listActive?(): ActiveSession[];
     countByTransport?(): { ws: number; stream: number };
+    getByPid?(pid: string | number): ActiveSession | undefined;
+    isPidConnected?(pid: string | number): boolean;
 }
 
 interface TransportControl {
@@ -140,9 +140,7 @@ class McpHandler {
         this.serverInfo = {
             name: 'roblox-difz-server',
             version: '1.0.0',
-            description:
-                'Roblox MCP — full game control, reverse engineering, ' +
-                'and security testing framework via Model Context Protocol.',
+            description: 'Roblox MCP server.',
         };
         this.initialized = false;
     }
@@ -156,7 +154,7 @@ class McpHandler {
             }
 
             if (!this.initialized && method !== 'initialize' && method !== 'ping') {
-                this.initialized = true; // Auto-initialize on direct tool call or dashboard runner
+                this.initialized = true;
             }
 
             switch (method) {
@@ -263,7 +261,7 @@ class McpHandler {
                             type: 'text',
                             text: JSON.stringify({
                                 success: false,
-                                error: 'No Roblox executor is connected. Launch or inject Roblox first.',
+                                error: 'No Roblox client connected.',
                             }, null, 2),
                         }],
                         isError: true,
@@ -282,7 +280,6 @@ class McpHandler {
             const taskName = LUA_TASK_NAME_MAP[name] || name;
             const activeSessions = this.sessions.listActive ? this.sessions.listActive() : [];
 
-            // Resolve targetWorker dynamically (by exact workerId, PID, username, or substring)
             let resolvedWorkerId: string | undefined = undefined;
             if (rawTarget) {
                 const targetStr = String(rawTarget).trim();
@@ -297,7 +294,6 @@ class McpHandler {
                 resolvedWorkerId = matched ? matched.workerId : targetStr;
             }
 
-            // Case 1: Targeted by specific workerId / session
             if (resolvedWorkerId) {
                 const result = await this.queue.submitTask(taskName, args || {}, { workerId: resolvedWorkerId, timeoutMs });
                 const elapsed = Date.now() - startTime;
@@ -312,7 +308,6 @@ class McpHandler {
                 };
             }
 
-            // Case 2: Targeted by specific PID
             if (targetPid !== undefined) {
                 const result = await this.queue.submitTask(taskName, args || {}, { targetPid, timeoutMs });
                 const elapsed = Date.now() - startTime;
@@ -327,7 +322,6 @@ class McpHandler {
                 };
             }
 
-            // Case 3: Exactly 1 session connected -> execute directly
             if (activeSessions.length <= 1) {
                 const singleWorker = activeSessions[0]?.workerId;
                 const result = await this.queue.submitTask(taskName, args || {}, { workerId: singleWorker, timeoutMs });
@@ -343,7 +337,6 @@ class McpHandler {
                 };
             }
 
-            // Case 4: Multiple sessions connected and no target specified -> Fanout across all sessions
             const sessionResults: Record<string, any> = {};
             await Promise.all(activeSessions.map(async (worker: any) => {
                 const wid = worker.workerId;
@@ -418,7 +411,7 @@ class McpHandler {
                 let connectedCount = 0;
                 let unconnectedCount = 0;
                 const enriched = procs.map((p: any) => {
-                    const sess = pidToSession.get(p.pid);
+                    const sess = pidToSession.get(p.pid) || (this.sessions.getByPid ? this.sessions.getByPid(p.pid) : null);
                     const isConnected = !!sess;
                     if (isConnected) connectedCount++;
                     else unconnectedCount++;
@@ -589,7 +582,7 @@ class McpHandler {
                     contents: [{
                         uri,
                         mimeType: 'application/json',
-                        text: JSON.stringify({ success: false, error: 'No Roblox executor connected' })
+                        text: JSON.stringify({ success: false, error: 'No Roblox client connected' })
                     }]
                 }
             };
@@ -616,8 +609,8 @@ class McpHandler {
         return {
             result: {
                 prompts: [
-                    { name: 'analyze_game', description: 'Dumps game metadata, remotes, and player data in one shot.', arguments: [] },
-                    { name: 'audit_game_security', description: 'Inspect game network remotes and workspace scripts to evaluate security integrity.', arguments: [] },
+                    { name: 'analyze_game', description: 'Dumps game metadata, remotes, and player data.', arguments: [] },
+                    { name: 'audit_game_security', description: 'Inspect game network remotes and workspace scripts.', arguments: [] },
                 ],
             },
         };
@@ -653,7 +646,7 @@ class McpHandler {
         return {
             result: {
                 success: true,
-                message: 'To install to Claude Desktop/Code, use the CLI wizard (`roblox-mcp-difz setup`).',
+                message: 'To install to Claude Code, run `rblx-mcp setup`.',
                 url: `http://localhost:${port}/mcp`,
             },
         };
@@ -661,3 +654,4 @@ class McpHandler {
 }
 
 module.exports = { McpHandler };
+export { McpHandler };

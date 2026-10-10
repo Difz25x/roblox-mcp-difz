@@ -17,7 +17,6 @@ export interface DiscoveryServerOptions {
     discoveryPort?: number;
 }
 
-// Global registry of all active discovery server instances for graceful process exit
 const activeDiscoveryInstances: Set<DiscoveryServer> = new Set();
 
 export function stopAllDiscoveryServers(): void {
@@ -29,7 +28,6 @@ export function stopAllDiscoveryServers(): void {
     activeDiscoveryInstances.clear();
 }
 
-// Auto-cleanup on process termination
 process.on('exit', () => {
     stopAllDiscoveryServers();
 });
@@ -83,7 +81,6 @@ export class DiscoveryServer {
 
             const parsedUrl = req.url ? req.url.split('?')[0] : '/';
 
-            // 1. Port discovery endpoint (mcp.lua and clients use this to discover active port)
             if (parsedUrl === '/port' || parsedUrl === '/discovery' || parsedUrl === '/api/port') {
                 const payload = JSON.stringify({
                     success: true,
@@ -99,7 +96,6 @@ export class DiscoveryServer {
                 return;
             }
 
-            // 2. Serve mcp.lua with dynamically injected active port
             if (parsedUrl === '/mcp.lua' || parsedUrl === '/mcp.luau') {
                 try {
                     if (fs.existsSync(mcpLuaPath)) {
@@ -118,7 +114,6 @@ export class DiscoveryServer {
                 return;
             }
 
-            // Fallback status response (Notice: NO /stop endpoint here — lifecycle tied strictly to roblox-mcp)
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({
                 name: 'roblox-mcp-discovery-router',
@@ -129,7 +124,6 @@ export class DiscoveryServer {
             }));
         });
 
-        // Track all incoming sockets to destroy them immediately upon server stop
         this.server.on('connection', (socket) => {
             this.sockets.add(socket);
             socket.on('close', () => {
@@ -141,7 +135,7 @@ export class DiscoveryServer {
 
         return new Promise((resolve) => {
             this.server?.once('error', (err: any) => {
-                console.error(`  \x1b[33m[Discovery] Notice: Could not bind discovery router to port ${this.discoveryPort}: ${err.message}\x1b[0m`);
+                console.error(`  [Discovery] Notice: Could not bind router to port ${this.discoveryPort}: ${err.message}`);
                 resolve();
             });
 
@@ -154,7 +148,6 @@ export class DiscoveryServer {
     public stop(): void {
         activeDiscoveryInstances.delete(this);
 
-        // Instantly destroy all open client keep-alive sockets
         for (const socket of this.sockets) {
             try {
                 socket.destroy();
@@ -175,4 +168,3 @@ export class DiscoveryServer {
         }
     }
 }
-

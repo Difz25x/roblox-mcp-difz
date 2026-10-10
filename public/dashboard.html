@@ -3,117 +3,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roblox MCP — Command Deck</title>
+    <title>Roblox MCP</title>
     <link rel="stylesheet" href="/dashboard.css">
     <script>window.PORT = parseInt('{{port}}', 10) || 28429;</script>
     <script src="/dashboard.js" defer></script>
 </head>
 <body>
-    <!-- Top Command Deck & Navigation Bar -->
+    
     <header class="top-deck">
         <div class="top-bar-inner">
-            <!-- Brand Mark -->
+            
             <div class="brand-section">
-                <div class="brand-mark">RM</div>
+                <div class="brand-mark">R</div>
                 <div class="brand-meta">
-                    <div class="brand-title">
-                        Roblox MCP // Command Deck
-                        <span class="brand-status-chip online" id="brand-status-chip">ONLINE</span>
-                    </div>
-                    <div class="brand-subtitle">Port {{port}} &bull; Daemon active</div>
+                    <span class="brand-title">Roblox MCP</span>
+                    <span class="brand-port-pill">Port {{port}}</span>
+                    <span class="status-badge online" id="brand-status-chip">Online</span>
                 </div>
             </div>
 
-            <!-- Central View Navigation Tabs -->
-            <nav class="nav-tab-rail" aria-label="Views">
+            <nav class="nav-tab-rail" aria-label="Main Navigation">
                 <button class="nav-tab-btn active" id="nav-btn-instances" onclick="switchView('instances')">
-                    <span class="nav-tab-key">[1]</span>
+                    <span class="nav-tab-key">1</span>
                     <span>Instances</span>
                 </button>
                 <button class="nav-tab-btn" id="nav-btn-tools" onclick="switchView('tools')">
-                    <span class="nav-tab-key">[2]</span>
-                    <span>Tools Directory</span>
+                    <span class="nav-tab-key">2</span>
+                    <span>Tools</span>
                 </button>
                 <button class="nav-tab-btn" id="nav-btn-port-sync" onclick="switchView('port-sync')">
-                    <span class="nav-tab-key">[3]</span>
-                    <span>Port Sync</span>
+                    <span class="nav-tab-key">3</span>
+                    <span>Port &amp; Discovery</span>
                 </button>
                 <button class="nav-tab-btn" id="nav-btn-unc" onclick="switchView('unc')">
-                    <span class="nav-tab-key">[4]</span>
+                    <span class="nav-tab-key">4</span>
                     <span>UNC Matrix</span>
                 </button>
                 <button class="nav-tab-btn" id="nav-btn-settings" onclick="switchView('settings')">
-                    <span class="nav-tab-key">[5]</span>
-                    <span>Operations</span>
+                    <span class="nav-tab-key">5</span>
+                    <span>Settings</span>
                 </button>
             </nav>
 
-            <!-- Quick Action Triggers -->
             <div class="top-actions">
                 <button class="btn btn-sm" id="btn-quick-autoexec" onclick="toggleAutoexecute()">
-                    <span>Autoexec: <strong id="quick-autoexec-chip">ON</strong></span>
+                    <span>Autoexec: <strong id="quick-autoexec-chip">On</strong></span>
                 </button>
-                <button class="btn btn-invert btn-sm" onclick="openLoaderModal()">
-                    <span>Copy Loader [L]</span>
+                <button class="btn btn-primary btn-sm" onclick="openLoaderModal()">
+                    <span>Copy Loader</span>
                 </button>
             </div>
         </div>
     </header>
 
-    <!-- Top Telemetry Ribbon (Bento 3D Grid) -->
-    <section class="telemetry-ribbon" aria-label="Telemetry">
+    <section class="telemetry-ribbon" aria-label="System Telemetry">
         <div class="telemetry-cell">
-            <div class="telemetry-tag">
-                <span>SYSTEM</span>
-                Roblox Processes
-            </div>
+            <div class="telemetry-tag">Roblox Windows</div>
             <div class="telemetry-val" id="kpi-proc-total">0</div>
-            <div class="telemetry-sub" id="kpi-proc-split">0 Connected / 0 Standby</div>
+            <div class="telemetry-sub" id="kpi-proc-split">0 connected &bull; 0 standby</div>
         </div>
 
         <div class="telemetry-cell">
-            <div class="telemetry-tag">
-                <span>CLIENTS</span>
-                Active Workers
-            </div>
+            <div class="telemetry-tag">Active Workers</div>
             <div class="telemetry-val" id="kpi-workers">0</div>
-            <div class="telemetry-sub" id="kpi-transport-split">0 WS Active</div>
+            <div class="telemetry-sub" id="kpi-transport-split">0 active sessions</div>
         </div>
 
         <div class="telemetry-cell">
-            <div class="telemetry-tag">
-                <span>MCP SPEC</span>
-                Tool Registry
-            </div>
+            <div class="telemetry-tag">Tools Registered</div>
             <div class="telemetry-val">
                 <span id="kpi-tools">80</span>
-                <span class="unit">TOOLS</span>
+                <span class="unit">tools</span>
             </div>
-            <div class="telemetry-sub">Universal workerId &amp; PID routing</div>
+            <div class="telemetry-sub">Supports workerId &amp; PID targeting</div>
         </div>
 
         <div class="telemetry-cell">
-            <div class="telemetry-tag">
-                <span>THROUGHPUT</span>
-                Tasks Processed
-            </div>
+            <div class="telemetry-tag">Requests Processed</div>
             <div class="telemetry-val" id="kpi-processed">0</div>
             <div class="telemetry-sub" id="kpi-uptime">Uptime: 0m 0s</div>
         </div>
     </section>
 
-    <!-- Main Viewport Area -->
     <main class="main-viewport">
-        <!-- ==================== VIEW 1: INSTANCES ==================== -->
+        
         <section class="tab-view active" id="view-instances">
             <div class="view-header">
                 <div class="view-title-group">
-                    <h2 class="view-title">Roblox Client Windows &amp; Process Telemetry</h2>
-                    <span class="brand-status-chip" id="instances-count-badge">0 Windows</span>
+                    <h2 class="view-title">Running Roblox Processes</h2>
+                    <span class="status-badge" id="instances-count-badge">0 Windows</span>
                 </div>
                 <div style="display:flex; gap:0.4rem;">
-                    <button class="btn btn-sm btn-invert" onclick="launchRoblox()">+ Launch Roblox</button>
-                    <button class="btn btn-sm" onclick="loadProcesses()">Refresh [R]</button>
+                    <button class="btn btn-sm btn-primary" onclick="launchRoblox()">+ Launch Roblox</button>
+                    <button class="btn btn-sm" onclick="loadProcesses()">Refresh</button>
                 </div>
             </div>
 
@@ -122,54 +104,50 @@
                     <table class="datagrid-table">
                         <thead>
                             <tr>
-                                <th style="width: 120px;">PROCESS ID</th>
-                                <th>WINDOW / CLIENT TITLE</th>
-                                <th style="width: 140px;">SESSION STATE</th>
-                                <th style="width: 140px;">MEMORY (RAM)</th>
-                                <th style="width: 120px;">TRANSPORT</th>
-                                <th style="width: 170px; text-align: right;">OPERATIONS</th>
+                                <th style="width: 110px;">PID</th>
+                                <th>Window Title</th>
+                                <th style="width: 130px;">Status</th>
+                                <th style="width: 130px;">RAM</th>
+                                <th style="width: 120px;">Transport</th>
+                                <th style="width: 160px; text-align: right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="instances-table-body">
                             <tr>
                                 <td colspan="6" style="text-align:center; padding: 2rem; color: var(--text-muted); font-size: 12px;">
-                                    Querying local Windows processes...
+                                    Scanning for running Roblox processes...
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                <!-- In-Dashboard Screenshot Stage -->
                 <div class="screenshot-stage" id="screenshot-stage">
                     <div class="stage-head">
                         <div style="display:flex; align-items:center; gap:0.5rem;">
-                            <span class="brand-status-chip online">Captured Frame</span>
-                            <span style="font-weight:700; color:#fff; font-size:12px;" id="screenshot-meta-tag">PID 0</span>
+                            <span class="status-badge online">Capture</span>
+                            <span style="font-weight:600; color:#fff; font-size:12px;" id="screenshot-meta-tag">PID 0</span>
                         </div>
-                        <div style="display:flex; gap:0.4rem;">
-                            <button class="btn btn-sm" onclick="closeScreenshotStage()">Close [ESC]</button>
-                        </div>
+                        <button class="btn btn-sm" onclick="closeScreenshotStage()">Close</button>
                     </div>
                     <div class="stage-view-frame" id="screenshot-frame">
-                        <div style="color:var(--text-muted); font-size:12px; padding:2rem;">No active capture in buffer</div>
+                        <div style="color:var(--text-muted); font-size:12px; padding:2rem;">No screenshot captured yet</div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- ==================== VIEW 2: TOOLS DIRECTORY ==================== -->
         <section class="tab-view" id="view-tools">
             <div class="view-header">
                 <div class="view-title-group">
-                    <h2 class="view-title">Interactive Tool Directory &amp; Dispatcher</h2>
-                    <span class="brand-status-chip"><span id="tools-total-count">80</span> Registered</span>
+                    <h2 class="view-title">Tools Explorer</h2>
+                    <span class="status-badge"><span id="tools-total-count">80</span> Tools</span>
                 </div>
-                <div class="view-subtitle">Press [/] to search tools &bull; JSON-RPC 2.0</div>
+                <div class="view-subtitle">Filter with categories or press / to search</div>
             </div>
 
             <div class="tools-workspace">
-                <!-- Left Directory Sidebar -->
+                
                 <aside class="tools-sidebar">
                     <div class="sidebar-search-bar">
                         <div class="search-input-wrap">
@@ -178,22 +156,20 @@
                         </div>
                     </div>
 
-                    <!-- Category Pills -->
                     <div class="category-filter-strip">
                         <button class="cat-pill active" id="pill-cat-all" onclick="setCategoryFilter('all')">All (<span id="cnt-cat-all">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-network" onclick="setCategoryFilter('network')">Net (<span id="cnt-cat-network">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-network" onclick="setCategoryFilter('network')">Network (<span id="cnt-cat-network">0</span>)</button>
                         <button class="cat-pill" id="pill-cat-player" onclick="setCategoryFilter('player')">Player (<span id="cnt-cat-player">0</span>)</button>
                         <button class="cat-pill" id="pill-cat-inspection" onclick="setCategoryFilter('inspection')">Inspect (<span id="cnt-cat-inspection">0</span>)</button>
                         <button class="cat-pill" id="pill-cat-gui" onclick="setCategoryFilter('gui')">GUI (<span id="cnt-cat-gui">0</span>)</button>
                         <button class="cat-pill" id="pill-cat-input" onclick="setCategoryFilter('input')">Input (<span id="cnt-cat-input">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-scripting" onclick="setCategoryFilter('scripting')">Script (<span id="cnt-cat-scripting">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-memory" onclick="setCategoryFilter('memory')">Mem (<span id="cnt-cat-memory">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-filesystem" onclick="setCategoryFilter('filesystem')">FS (<span id="cnt-cat-filesystem">0</span>)</button>
-                        <button class="cat-pill" id="pill-cat-instances" onclick="setCategoryFilter('instances')">Inst (<span id="cnt-cat-instances">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-scripting" onclick="setCategoryFilter('scripting')">Scripting (<span id="cnt-cat-scripting">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-memory" onclick="setCategoryFilter('memory')">Memory (<span id="cnt-cat-memory">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-filesystem" onclick="setCategoryFilter('filesystem')">Files (<span id="cnt-cat-filesystem">0</span>)</button>
+                        <button class="cat-pill" id="pill-cat-instances" onclick="setCategoryFilter('instances')">Instances (<span id="cnt-cat-instances">0</span>)</button>
                         <button class="cat-pill" id="pill-cat-server" onclick="setCategoryFilter('server')">Server (<span id="cnt-cat-server">0</span>)</button>
                     </div>
 
-                    <!-- Scrollable Tool List -->
                     <div class="tools-nav-scroll" id="tools-list-container">
                         <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:12px;">
                             Loading tools...
@@ -201,145 +177,153 @@
                     </div>
                 </aside>
 
-                <!-- Right Detail Canvas -->
                 <main class="tool-detail-canvas" id="tool-inspector-panel">
                     <div class="empty-data-box">
                         <div class="empty-data-title">Select a tool</div>
                         <div class="empty-data-desc">
-                            Select any tool from the directory sidebar to inspect schema specifications, AI parameter formats, and run live interactive executions.
+                            Pick any tool from the list to view its arguments and run live queries against connected clients.
                         </div>
                     </div>
                 </main>
             </div>
         </section>
 
-        <!-- ==================== VIEW 3: CUSTOM PORT & SYNC ==================== -->
         <section class="tab-view" id="view-port-sync">
             <div class="view-header">
                 <div class="view-title-group">
-                    <h2 class="view-title">Dynamic Port Synchronization &amp; Router</h2>
-                    <span class="brand-status-chip online">Router 58295 Active</span>
+                    <h2 class="view-title">Port &amp; Discovery Sync</h2>
+                    <span class="status-badge online">Router 58295 Active</span>
                 </div>
             </div>
 
             <div class="port-sync-grid">
-                <!-- Status Panel -->
+                
                 <div class="port-panel">
-                    <div class="port-card-head">
-                        <span class="port-card-title">Port Architecture Status</span>
-                        <span class="brand-status-chip online">Healthy</span>
+                    <div class="port-head">
+                        <span class="port-title">Port Status</span>
+                        <span class="status-badge online">Active</span>
                     </div>
 
                     <div>
                         <div class="port-stat-row">
-                            <span class="port-stat-key">Active Main Package Port</span>
+                            <span class="port-stat-key">Server Port</span>
                             <span class="port-stat-val" id="stat-cur-port">{{port}}</span>
                         </div>
                         <div class="port-stat-row">
-                            <span class="port-stat-key">Discovery Router Port (Background)</span>
-                            <span class="port-stat-val" id="stat-disc-port">58295 (Fixed Router)</span>
+                            <span class="port-stat-key">Discovery Router Port</span>
+                            <span class="port-stat-val" id="stat-disc-port">58295</span>
                         </div>
                         <div class="port-stat-row">
-                            <span class="port-stat-key">Saved Default Port Config</span>
+                            <span class="port-stat-key">Saved Default Port</span>
                             <span class="port-stat-val" id="stat-saved-port">-</span>
                         </div>
                     </div>
 
                     <p style="font-size:12px; color:var(--text-muted); line-height:1.5;">
-                        When running on a custom port, the persistent discovery service on port <strong>58295</strong> automatically signals the dynamic port to injected Roblox clients.
+                        The background router on port <strong>58295</strong> tells injected scripts which port this server is currently using.
                     </p>
                 </div>
 
-                <!-- Port Configuration Panel -->
                 <div class="port-panel">
-                    <div class="port-card-head">
-                        <span class="port-card-title">Configure Target Port</span>
+                    <div class="port-head">
+                        <span class="port-title">Change Server Port</span>
                     </div>
 
                     <p style="font-size:12px; color:var(--text-secondary);">
-                        Test port availability or save a preferred default port to your local environment:
+                        Check availability or save a new default port:
                     </p>
 
                     <div class="port-input-control">
                         <input type="number" id="input-custom-port" min="1" max="65535" placeholder="e.g. 32100">
                         <button class="btn btn-sm" onclick="checkPortAvailability()">Check Port</button>
-                        <button class="btn btn-sm btn-invert" onclick="savePreferredPort()">Save Default</button>
+                        <button class="btn btn-sm btn-primary" onclick="savePreferredPort()">Save Default</button>
                     </div>
 
                     <div id="port-check-status" style="font-size:12px;"></div>
 
-                    <div style="border-top: 1px solid var(--border-hairline); padding-top: 0.75rem;">
-                        <span style="font-size:11px; color:var(--text-muted); font-weight:600;">CLI Launch Syntax</span>
-                        <pre style="margin-top: 6px; font-family:var(--font-mono); font-size:12px; color:#ffffff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-cli-cmd">rblx-mcp start --port {{port}}</pre>
+                    <div style="border-top: 1px solid var(--border-subtle); padding-top: 0.75rem;">
+                        <span style="font-size:11px; color:var(--text-muted); font-weight:600;">CLI Launch Command</span>
+                        <pre style="margin-top: 6px; font-family:var(--font-mono); font-size:12px; color:#ffffff; background:var(--bg-sunken); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-cli-cmd">rblx-mcp start --port {{port}}</pre>
                     </div>
                 </div>
 
-                <!-- Loaders Full Span Panel -->
                 <div class="port-panel" style="grid-column: 1 / -1;">
-                    <div class="port-card-head">
-                        <span class="port-card-title">In-Game Injected Luau Loaders</span>
+                    <div class="port-head">
+                        <span class="port-title">In-Game Executor Loaders</span>
                     </div>
 
                     <div style="display:flex; flex-direction:column; gap:1.25rem;">
-                        <div style="padding-bottom: 1rem; border-bottom: 1px solid var(--border-hairline);">
+                        <div style="padding-bottom: 1rem; border-bottom: 1px solid var(--border-subtle);">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
-                                <span style="font-weight:700; color:#fff; font-size:13px;">1. Auto-Sync Discovery Loader (Recommended)</span>
-                                <button class="btn btn-sm btn-invert" onclick="copyLoader('discovery')">Copy Auto-Sync</button>
+                                <span style="font-weight:600; color:#fff; font-size:13px;">1. Auto-Sync Discovery (Recommended)</span>
+                                <button class="btn btn-sm btn-primary" onclick="copyLoader('discovery')">Copy Script</button>
                             </div>
                             <p style="font-size:12px; color:var(--text-muted); margin-bottom:0.4rem;">
-                                Queries the local background router (58295) and automatically resolves to whatever custom port this server is currently utilizing.
+                                Queries port 58295 and connects to whichever port this server is using.
                             </p>
-                            <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:10px 12px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-disc-loader">loadstring(game:HttpGet("http://127.0.0.1:58295/mcp.lua"))()</pre>
+                            <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-sunken); padding:10px 12px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-disc-loader">loadstring(game:HttpGet("http://127.0.0.1:58295/mcp.lua"))()</pre>
                         </div>
 
                         <div>
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
-                                <span style="font-weight:700; color:#fff; font-size:13px;">2. Direct Custom Port Loader</span>
-                                <button class="btn btn-sm" onclick="copyLoader('direct')">Copy Direct</button>
+                                <span style="font-weight:600; color:#fff; font-size:13px;">2. Direct Port Loader</span>
+                                <button class="btn btn-sm" onclick="copyLoader('direct')">Copy Script</button>
                             </div>
                             <p style="font-size:12px; color:var(--text-muted); margin-bottom:0.4rem;">
-                                Targets this exact server port directly ({{port}}). Bypasses discovery router lookup.
+                                Connects straight to port {{port}} without discovery lookups.
                             </p>
-                            <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:10px 12px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-direct-loader">loadstring(game:HttpGet("http://127.0.0.1:{{port}}/mcp.lua"))()</pre>
+                            <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-sunken); padding:10px 12px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);" id="code-direct-loader">loadstring(game:HttpGet("http://127.0.0.1:{{port}}/mcp.lua"))()</pre>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- ==================== VIEW 4: UNC MATRIX ==================== -->
         <section class="tab-view" id="view-unc">
             <div class="view-header">
                 <div class="view-title-group">
-                    <h2 class="view-title">Universal Naming Convention (UNC) Audit</h2>
-                    <span class="brand-status-chip" id="unc-count-tag">38 Functions</span>
+                    <h2 class="view-title">UNC Function Compatibility</h2>
+                    <span class="status-badge" id="unc-count-tag">38 Functions</span>
                 </div>
-                <div class="brand-status-chip online" id="unc-executor-badge">Executor: Auto-Detect</div>
+                <div class="status-badge online" id="unc-executor-badge">Executor: Auto-Detect</div>
             </div>
 
             <div class="unc-matrix-grid" id="unc-matrix-cells">
                 <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:12px;">
-                    Loading UNC specification audit...
+                    Loading UNC specifications...
                 </div>
             </div>
         </section>
 
-        <!-- ==================== VIEW 5: OPERATIONS & SETTINGS ==================== -->
         <section class="tab-view" id="view-settings">
             <div class="view-header">
                 <div class="view-title-group">
-                    <h2 class="view-title">Server Operations &amp; Lifecycle Controls</h2>
-                    <span class="brand-status-chip online">Daemon Online</span>
+                    <h2 class="view-title">Settings &amp; Server Control</h2>
+                    <span class="status-badge online">Running</span>
                 </div>
             </div>
 
             <div class="ops-grid">
-                <!-- MCP Protocol Engine -->
+                
                 <div class="ops-panel">
-                    <div class="ops-card-head">
-                        <span class="ops-card-title">Model Context Protocol Engine</span>
-                        <p class="ops-card-desc" id="ops-sdk-summary">
-                            Intelligent @modelcontextprotocol/sdk multi-path scanner &amp; runtime diagnostics.
+                    <div class="ops-head">
+                        <span class="ops-title">Transport Protocol</span>
+                        <p class="ops-desc">
+                            Select how tasks stream between the server and game clients. WebSockets run in real time; HTTP streams act as a fallback.
+                        </p>
+                    </div>
+                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-primary" onclick="setTransportMode('auto')">Auto (Dual)</button>
+                        <button class="btn btn-sm" onclick="setTransportMode('ws')">WebSocket Only</button>
+                        <button class="btn btn-sm" onclick="setTransportMode('stream')">HTTP Stream Only</button>
+                    </div>
+                </div>
+
+                <div class="ops-panel">
+                    <div class="ops-head">
+                        <span class="ops-title">Protocol SDK Diagnostics</span>
+                        <p class="ops-desc" id="ops-sdk-summary">
+                            Diagnostic scanner for @modelcontextprotocol/sdk.
                         </p>
                     </div>
                     <div>
@@ -352,71 +336,53 @@
                             <span class="port-stat-val" id="ops-sdk-protocol">2025-11-25</span>
                         </div>
                         <div class="port-stat-row" style="margin-bottom: 0.75rem;">
-                            <span class="port-stat-key">Resolution Strategy:</span>
+                            <span class="port-stat-key">Resolved Via:</span>
                             <span class="port-stat-val" id="ops-sdk-strategy">Standard Exports</span>
                         </div>
-                        <button class="btn btn-sm btn-invert" onclick="runSdkScan()">Re-Scan MCP SDK</button>
+                        <button class="btn btn-sm" onclick="runSdkScan()">Re-Scan SDK</button>
                     </div>
                 </div>
 
-                <!-- Transport Channel -->
                 <div class="ops-panel">
-                    <div class="ops-card-head">
-                        <span class="ops-card-title">Dual Transport Protocol</span>
-                        <p class="ops-card-desc">
-                            Select communication channel for client tasks. Dual-transport runs real-time WebSockets with automatic fallback to HTTP stream polling.
-                        </p>
-                    </div>
-                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                        <button class="btn btn-sm btn-invert" onclick="setTransportMode('auto')">Auto (Dual)</button>
-                        <button class="btn btn-sm" onclick="setTransportMode('ws')">WebSocket Only</button>
-                        <button class="btn btn-sm" onclick="setTransportMode('stream')">HTTP Stream Only</button>
-                    </div>
-                </div>
-
-                <!-- AI Agent Skill & Rules Integration -->
-                <div class="ops-panel">
-                    <div class="ops-card-head">
-                        <span class="ops-card-title">AI Skill &amp; Agent Context</span>
-                        <p class="ops-card-desc">
-                            Deploy the dedicated <code>roblox-mcp</code> skill to your AI assistant (Claude Code, Cursor, Windsurf) so it masters all 80+ tools, workflows, and aliases automatically.
+                    <div class="ops-head">
+                        <span class="ops-title">AI Assistant Skill</span>
+                        <p class="ops-desc">
+                            Install the roblox-mcp skill so Claude Code, Cursor, and Windsurf know every tool, argument, and workflow automatically.
                         </p>
                     </div>
                     <div>
                         <div class="port-stat-row">
-                            <span class="port-stat-key">Skill Specification:</span>
-                            <span class="port-stat-val">roblox-mcp (v1.6)</span>
+                            <span class="port-stat-key">Skill:</span>
+                            <span class="port-stat-val">roblox-mcp</span>
                         </div>
                         <div class="port-stat-row" style="margin-bottom: 0.75rem;">
-                            <span class="port-stat-key">Target Support:</span>
+                            <span class="port-stat-key">Targets:</span>
                             <span class="port-stat-val">Claude, Cursor, Windsurf</span>
                         </div>
                         <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                            <button class="btn btn-sm btn-invert" onclick="openSkillModal()">Deploy AI Skill</button>
-                            <button class="btn btn-sm" onclick="copySkillMarkdown()">Copy Skill (.md)</button>
+                            <button class="btn btn-sm btn-primary" onclick="openSkillModal()">Install Skill</button>
+                            <button class="btn btn-sm" onclick="copySkillMarkdown()">Copy Markdown</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Teleport Persistence -->
                 <div class="ops-panel">
-                    <div class="ops-card-head">
-                        <span class="ops-card-title">Teleport Autoexecution</span>
-                        <p class="ops-card-desc">
-                            Automatically re-injects the MCP worker payload across server hops and place transitions using <code>queue_on_teleport</code>.
+                    <div class="ops-head">
+                        <span class="ops-title">Teleport Autoexec</span>
+                        <p class="ops-desc">
+                            Re-executes the client script automatically after place teleports via queue_on_teleport.
                         </p>
                     </div>
                     <div>
-                        <button class="btn btn-sm btn-invert" onclick="toggleAutoexecute()">Toggle Teleport Persistence</button>
+                        <button class="btn btn-sm" onclick="toggleAutoexecute()">Toggle Autoexec</button>
                     </div>
                 </div>
 
-                <!-- Shutdown Daemon -->
                 <div class="ops-panel">
-                    <div class="ops-card-head">
-                        <span class="ops-card-title">Daemon Shutdown</span>
-                        <p class="ops-card-desc">
-                            Cleanly disconnect active Roblox WebSocket workers, close HTTP and discovery servers, and terminate the Node.js daemon process.
+                    <div class="ops-head">
+                        <span class="ops-title">Shutdown Server</span>
+                        <p class="ops-desc">
+                            Disconnect all connected workers, stop the discovery router, and terminate this server.
                         </p>
                     </div>
                     <div>
@@ -427,124 +393,112 @@
         </section>
     </main>
 
-    <!-- Tactical 3D Toast Notification -->
     <div id="deck-toast">Ready</div>
 
-    <!-- Injected Loader Selection Modal -->
     <div id="loader-modal" class="modal-overlay" onclick="closeLoaderModal(event)">
         <div class="modal-chassis" onclick="event.stopPropagation()">
             <div class="modal-head">
-                <span class="modal-title">Select In-Game Luau Loader</span>
+                <span class="modal-title">Copy In-Game Loader</span>
                 <button class="modal-close-btn" onclick="closeLoaderModal()" aria-label="Close dialog">&times;</button>
             </div>
 
             <div class="modal-body">
-                <!-- Option 1: Auto-Sync Discovery -->
-                <div class="modal-loader-row primary">
+                <div class="modal-loader-row">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:700; color:#fff; font-size:13px;">Auto-Sync Discovery Loader (Recommended)</span>
-                        <span class="brand-status-chip online">Router 58295</span>
+                        <span style="font-weight:600; color:#fff; font-size:13px;">Auto-Sync Discovery (Recommended)</span>
+                        <span class="status-badge online">Port 58295</span>
                     </div>
                     <p style="font-size:12px; color:var(--text-muted); line-height:1.45;">
-                        Connects through the persistent background discovery service. Automatically adapts to custom ports configured on the package without editing scripts.
+                        Connects through the background router and routes to this server automatically, even if the port changes.
                     </p>
-                    <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);">loadstring(game:HttpGet("http://127.0.0.1:58295/mcp.lua"))()</pre>
+                    <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-sunken); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);">loadstring(game:HttpGet("http://127.0.0.1:58295/mcp.lua"))()</pre>
                     <div>
-                        <button class="btn btn-sm btn-invert" onclick="copyLoader('discovery')">Copy Auto-Sync Loader</button>
+                        <button class="btn btn-sm btn-primary" onclick="copyLoader('discovery')">Copy Discovery Script</button>
                     </div>
                 </div>
 
-                <!-- Option 2: Direct Custom Port -->
                 <div class="modal-loader-row">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:700; color:#fff; font-size:13px;">Direct Custom Port Loader</span>
-                        <span class="brand-status-chip">Port {{port}}</span>
+                        <span style="font-weight:600; color:#fff; font-size:13px;">Direct Port Loader</span>
+                        <span class="brand-port-pill">Port {{port}}</span>
                     </div>
                     <p style="font-size:12px; color:var(--text-muted); line-height:1.45;">
-                        Directly targets active port {{port}}. Bypasses the auxiliary discovery router if your executor environment blocks secondary ports.
+                        Connects directly to port {{port}}. Use this if port 58295 is blocked in your setup.
                     </p>
-                    <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-void); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);">loadstring(game:HttpGet("http://127.0.0.1:{{port}}/mcp.lua"))()</pre>
+                    <pre style="font-family:var(--font-mono); font-size:12px; color:#fff; background:var(--bg-sunken); padding:8px 10px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); box-shadow:var(--shadow-inset);">loadstring(game:HttpGet("http://127.0.0.1:{{port}}/mcp.lua"))()</pre>
                     <div>
-                        <button class="btn btn-sm" onclick="copyLoader('direct')">Copy Direct Loader</button>
+                        <button class="btn btn-sm" onclick="copyLoader('direct')">Copy Direct Script</button>
                     </div>
                 </div>
             </div>
 
             <div class="modal-footer">
-                <span>Compatible with Solara, Wave, Delta, Real, and standard UNC executors.</span>
-                <button class="btn btn-sm" onclick="closeLoaderModal()">Close [ESC]</button>
+                <span>Runs on Solara, Wave, Delta, and all standard UNC executors.</span>
+                <button class="btn btn-sm" onclick="closeLoaderModal()">Close</button>
             </div>
         </div>
     </div>
 
-    <!-- AI Skill Deployment Modal -->
     <div id="skill-modal" class="modal-overlay" onclick="closeSkillModal(event)">
         <div class="modal-chassis" onclick="event.stopPropagation()">
             <div class="modal-head">
-                <span class="modal-title">Deploy Dedicated roblox-mcp AI Skill</span>
+                <span class="modal-title">Install roblox-mcp AI Skill</span>
                 <button class="modal-close-btn" onclick="closeSkillModal()" aria-label="Close dialog">&times;</button>
             </div>
 
             <div class="modal-body">
                 <p style="font-size:12px; color:var(--text-secondary); line-height:1.55;">
-                    Installing the dedicated <code>roblox-mcp</code> skill instructs your AI assistant with the complete catalog of all 80+ tools, optimal reverse engineering workflows, and automatic parameter aliases.
+                    The skill teaches your AI assistant the entire catalog of 80+ tools, parameter aliases, and workflows.
                 </p>
 
-                <!-- Target 1: Claude Code -->
                 <div class="modal-loader-row">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:700; color:#fff; font-size:13px;">🤖 Claude Code (CLI &amp; Global)</span>
-                        <span class="brand-status-chip online">~/.claude/skills</span>
+                        <span style="font-weight:600; color:#fff; font-size:13px;">Claude Code (Global)</span>
+                        <span class="brand-port-pill">~/.claude/skills</span>
                     </div>
                     <p style="font-size:12px; color:var(--text-muted); line-height:1.45;">
-                        Installs to <code>~/.claude/skills/roblox-mcp/SKILL.md</code>. Available across all Claude Code CLI sessions globally.
+                        Installs to <code>~/.claude/skills/roblox-mcp/SKILL.md</code>. Available in all Claude Code sessions.
                     </p>
                     <div>
-                        <button class="btn btn-sm btn-invert" onclick="deploySkillTarget('claude-code-global')">Deploy to Claude Code (Global)</button>
+                        <button class="btn btn-sm btn-primary" onclick="deploySkillTarget('claude-code-global')">Install to Claude Code</button>
                     </div>
                 </div>
 
-                <!-- Target 2: Cursor IDE -->
                 <div class="modal-loader-row">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:700; color:#fff; font-size:13px;">🔷 Cursor IDE (.cursor/rules)</span>
-                        <span class="brand-status-chip">Rules .mdc</span>
+                        <span style="font-weight:600; color:#fff; font-size:13px;">Cursor (.cursor/rules)</span>
+                        <span class="brand-port-pill">Project Rules</span>
                     </div>
                     <p style="font-size:12px; color:var(--text-muted); line-height:1.45;">
-                        Installs to <code>.cursor/rules/roblox-mcp.mdc</code> for Cursor Composer &amp; Agent mode.
+                        Installs to <code>.cursor/rules/roblox-mcp.mdc</code> for Cursor Composer &amp; Agent.
                     </p>
                     <div>
-                        <button class="btn btn-sm" onclick="deploySkillTarget('cursor-project')">Deploy to Cursor Project</button>
+                        <button class="btn btn-sm btn-primary" onclick="deploySkillTarget('cursor-project')">Install to Cursor</button>
                     </div>
                 </div>
 
-                <!-- Target 3: Windsurf -->
                 <div class="modal-loader-row">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:700; color:#fff; font-size:13px;">🏄 Windsurf Cascade</span>
-                        <span class="brand-status-chip">.windsurf/rules</span>
+                        <span style="font-weight:600; color:#fff; font-size:13px;">Windsurf (.windsurf/rules)</span>
+                        <span class="brand-port-pill">Project Rules</span>
                     </div>
                     <p style="font-size:12px; color:var(--text-muted); line-height:1.45;">
-                        Installs to <code>.windsurf/rules/roblox-mcp.md</code> for Windsurf Cascade AI.
+                        Installs to <code>.windsurf/rules/roblox-mcp.md</code> for Windsurf Cascade.
                     </p>
                     <div>
-                        <button class="btn btn-sm" onclick="deploySkillTarget('windsurf-project')">Deploy to Windsurf Project</button>
+                        <button class="btn btn-sm btn-primary" onclick="deploySkillTarget('windsurf-project')">Install to Windsurf</button>
                     </div>
                 </div>
 
-                <!-- Deploy All -->
                 <div style="display:flex; justify-content:space-between; align-items:center; padding-top:0.5rem;">
-                    <span style="font-size:12px; color:var(--text-muted);">Need manual configuration?</span>
-                    <div style="display:flex; gap:0.4rem;">
-                        <button class="btn btn-sm" onclick="copySkillMarkdown()">Copy Skill Markdown</button>
-                        <button class="btn btn-sm btn-invert" onclick="deployAllSkillTargets()">Deploy to All Targets</button>
-                    </div>
+                    <button class="btn btn-sm" onclick="copySkillMarkdown()">Copy Raw Markdown</button>
+                    <button class="btn btn-sm btn-primary" onclick="deployAllSkillTargets()">Install to All Targets</button>
                 </div>
             </div>
 
             <div class="modal-footer">
-                <span id="skill-deploy-feedback">Select an AI environment to deploy the skill.</span>
-                <button class="btn btn-sm" onclick="closeSkillModal()">Close [ESC]</button>
+                <span id="skill-deploy-feedback">Select an environment to install the skill.</span>
+                <button class="btn btn-sm" onclick="closeSkillModal()">Close</button>
             </div>
         </div>
     </div>

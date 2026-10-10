@@ -53,7 +53,6 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
                 }
             }
 
-            // Fallback via tasklist if PowerShell returned no processes or failed
             if (results.length === 0) {
                 try {
                     const taskRes = spawnSync('tasklist.exe', ['/FO', 'CSV', '/NH'], { encoding: 'utf-8', timeout: 3000, windowsHide: true });
@@ -95,7 +94,7 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
         }
     } catch (e: any) {
         if (_procCache) {
-            _procCache.time = Date.now(); // bump TTL so we don't spam errors
+            _procCache.time = Date.now();
             return _procCache.data;
         }
     }
@@ -106,7 +105,6 @@ function listRobloxProcesses(): RobloxProcessInfo[] {
 
 function findRobloxPath(): string | null {
     if (IS_WIN) {
-        // 1. Registry query for roblox-player protocol (covers modern installations)
         const regKeys = [
             'HKCU\\Software\\Classes\\roblox-player\\shell\\open\\command',
             'HKCR\\roblox-player\\shell\\open\\command',
@@ -125,7 +123,6 @@ function findRobloxPath(): string | null {
             } catch (e: any) { }
         }
 
-        // 2. Scan standard installation and version directories
         const candidates: string[] = [
             process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Roblox', 'Versions') : '',
             process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Bloxstrap', 'Versions') : '',
@@ -148,7 +145,6 @@ function findRobloxPath(): string | null {
             } catch (e: any) { }
         }
 
-        // 3. Bloxstrap standalone launcher
         if (process.env.LOCALAPPDATA) {
             const bloxstrap = path.join(process.env.LOCALAPPDATA, 'Bloxstrap', 'Bloxstrap.exe');
             if (fs.existsSync(bloxstrap)) return bloxstrap;
@@ -177,7 +173,6 @@ function launchRoblox(customPath?: string): LaunchResult {
     const exePath: string | null = customPath || findRobloxPath();
     if (exePath && fs.existsSync(exePath)) {
         try {
-            // For RobloxPlayerBeta, passing '--app' opens the desktop client
             const args = path.basename(exePath).toLowerCase().includes('robloxplayerbeta') ? ['--app'] : [];
             const child = spawn(exePath, args, { detached: true, stdio: 'ignore', windowsHide: false });
             child.on('error', () => { });
@@ -185,12 +180,9 @@ function launchRoblox(customPath?: string): LaunchResult {
             if (child.pid !== undefined) {
                 return { success: true, pid: child.pid, path: exePath };
             }
-        } catch (err: any) {
-            // Fall through to protocol launch if direct spawn fails
-        }
+        } catch (err: any) {}
     }
 
-    // Protocol launch fallback (covers Windows Store apps, URI handlers, and custom setups)
     try {
         if (IS_WIN) {
             const child = spawn('cmd.exe', ['/c', 'start', '', 'roblox-player:'], {
@@ -211,7 +203,7 @@ function launchRoblox(customPath?: string): LaunchResult {
 
     return {
         success: false,
-        error: 'Roblox not found. Please install Roblox from https://www.roblox.com or provide a custom executable path.',
+        error: 'Roblox executable not found.',
     };
 }
 
@@ -244,22 +236,22 @@ function openGame(placeId: string | number, opts?: OpenGameOptions): OpenGameRes
     const browserTrackerId: string = opts.browserTrackerId || opts.browser_tracker_id || `tracker_${Date.now()}`;
 
     if (browserTrackerId && !/^[a-zA-Z0-9_-]+$/.test(browserTrackerId)) {
-        return { success: false, error: 'Invalid browserTrackerId format' };
+        return { success: false, error: 'Invalid browserTrackerId format.' };
     }
     const launchTime: string = opts.launchTime || opts.launch_time || Date.now().toString();
     const authTicket: string = opts.authTicket || opts.auth_ticket || '';
 
     if (!placeId) {
-        return { success: false, error: 'placeId is required' };
+        return { success: false, error: 'placeId is required.' };
     }
     if (!/^\d+$/.test(String(placeId))) {
-        return { success: false, error: 'placeId must be numeric' };
+        return { success: false, error: 'placeId must be numeric.' };
     }
     if (jobId && !/^[a-zA-Z0-9\-]+$/.test(jobId) && !jobId.startsWith('http')) {
-        return { success: false, error: 'Invalid jobId format' };
+        return { success: false, error: 'Invalid jobId format.' };
     }
     if (privateServerLinkCode && !/^[a-zA-Z0-9\-_]+$/.test(privateServerLinkCode)) {
-        return { success: false, error: 'Invalid privateServerLinkCode format' };
+        return { success: false, error: 'Invalid privateServerLinkCode format.' };
     }
 
     let launchUrl: string;
@@ -324,10 +316,6 @@ interface ScreenshotResult {
     filePath?: string;
 }
 
-/**
- * Resolves where a captured artifact should be written.
- * An explicit `outputPath` wins; otherwise we fall back to the OS temp directory.
- */
 function resolveOutputPath(outputPath: string | undefined, defaultName: string): string {
     if (outputPath && outputPath.trim() !== '') {
         const resolved = path.resolve(outputPath.trim());
@@ -397,28 +385,6 @@ if ($found.Count -eq 0) { Write-Output '[]' } else { $found | ConvertTo-Json -Co
 
 }
 
-/**
- * Brings a window to the foreground and verifies it is genuinely unobstructed
- * before we sample screen pixels from its rectangle.
- *
- * Why this exists: `CopyFromScreen` copies whatever pixels currently occupy the
- * given screen coordinates. If another app (a browser, a chat window) sits on
- * top of the Roblox window, we would silently capture that app instead. Windows
- * also routinely refuses `SetForegroundWindow` (foreground-lock), which used to
- * fail silently here.
- *
- * The shared PowerShell prologue below:
- *   1. Defines POINT locally -- the previous `ref System.Drawing.Point` signature
- *      did not compile (Add-Type has no System.Drawing reference at compile time),
- *      so the whole WinCapture class failed to build and every screenshot errored.
- *   2. Restores + raises the target window, retrying until it owns the foreground.
- *   3. Confirms with WindowFromPoint that the topmost window at the capture rect's
- *      centre belongs to the target process. Returns CAPTURE_OK only then.
- */
-/**
- * Runs a PowerShell script reliably using a temporary script file to prevent
- * syntax issues with multiline here-strings over stdin or CLI length limits.
- */
 function runPowerShellScript(ps: string, timeoutMs: number): string {
     const tmpFile = path.join(os.tmpdir(), `rblx_ps_${Date.now()}_${Math.random().toString(36).slice(2)}.ps1`);
     try {
@@ -485,7 +451,6 @@ if ([WinCapture]::IsIconic($hwnd)) {
     Start-Sleep -Milliseconds 250
 }
 
-# Raise the window and wait until it actually owns the foreground.
 [WinCapture]::ForceForeground($hwnd)
 Start-Sleep -Milliseconds 150
 $raised = $false
@@ -506,9 +471,6 @@ if ($w -le 0 -or $h -le 0) { Write-Output 'ERR:ZERO_SIZE'; exit 1 }
 $pt = New-Object WinCapture+POINT
 [WinCapture]::ClientToScreen($hwnd, [ref]$pt) | Out-Null
 
-# Occlusion gate: sample the topmost window at the centre of the capture rect.
-# If it is not our target process, another app is covering Roblox and sampling
-# screen pixels would capture the wrong application.
 $centerPt = New-Object WinCapture+POINT
 $centerPt.X = $pt.X + [int]($w / 2)
 $centerPt.Y = $pt.Y + [int]($h / 2)
@@ -544,12 +506,9 @@ Write-Output "B64_DATA:$b64"
     const stdout = runPowerShellScript(ps, 20000).trim();
 
     if (stdout.includes('ERR:WINDOW_GONE')) throw new Error("Roblox window closed before capture");
-    if (stdout.includes('ERR:ZERO_SIZE')) throw new Error("Roblox window has zero size (minimised?)");
+    if (stdout.includes('ERR:ZERO_SIZE')) throw new Error("Roblox window has zero size (minimised)");
     if (stdout.includes('ERR:OCCLUDED')) {
-        throw new Error(
-            "Roblox window is covered by another application. " +
-            "Bring it to the front and retry."
-        );
+        throw new Error("Roblox window is covered by another application. Bring it to the front and retry.");
     }
     const marker = 'B64_DATA:';
     const idx = stdout.indexOf(marker);
@@ -568,7 +527,7 @@ async function performScreenshot(pid?: number, outputPath?: string): Promise<Scr
     if (pid !== undefined) {
         targets = windows.filter((w) => w.pid === pid);
         if (targets.length === 0) {
-            return { error: `No Roblox window for PID ${pid}. Available:\n` + windows.map((w) => `  PID ${w.pid} - "${w.title}"`).join("\n") };
+            return { error: `No Roblox window for PID ${pid}.` };
         }
     }
     if (targets.length > 1) {
@@ -580,8 +539,6 @@ async function performScreenshot(pid?: number, outputPath?: string): Promise<Scr
         const filePath = resolveOutputPath(outputPath, `roblox_shot_${target.pid}_${Date.now()}.png`);
         fs.writeFileSync(filePath, Buffer.from(imageBase64, 'base64'));
 
-        // When the caller asked for a specific destination, return the path only --
-        // there is no need to ship a multi-megabyte base64 blob back as well.
         if (outputPath && outputPath.trim() !== '') {
             return { filePath, pid: target.pid };
         }
@@ -605,7 +562,7 @@ async function recordVideo(
     if (pid !== undefined) {
         targets = windows.filter((w) => w.pid === pid);
         if (targets.length === 0) {
-            return { error: `No Roblox window for PID ${pid}. Available:` + windows.map((w) => `  PID ${w.pid} - "${w.title}"`).join("") };
+            return { error: `No Roblox window for PID ${pid}.` };
         }
     }
     if (targets.length > 1) {
@@ -619,8 +576,6 @@ async function recordVideo(
         const targetFps = Math.min(Math.max(1, Number(fps) || 30), 60);
         const outFile = resolveOutputPath(outputPath, `roblox_rec_${targetPid}_${Date.now()}.mp4`);
 
-        // Reuses the shared prologue: compiles WinCapture correctly, raises the window,
-        // and aborts if another application is covering the capture region.
         const ps = `${buildCapturePrologue(targets[0].hwnd, targetPid)}
 $duration = ${durationSecs}
 $fps = ${targetFps}
@@ -636,8 +591,6 @@ $occluded = 0
 for ($i = 0; $i -lt $frames; $i++) {
     $loopStart = $sw.ElapsedMilliseconds
 
-    # Re-check occlusion each frame: a window can steal focus mid-recording, which
-    # would otherwise splice unrelated application pixels into the video.
     $centerPt = New-Object WinCapture+POINT
     $centerPt.X = $pt.X + [int]($w / 2)
     $centerPt.Y = $pt.Y + [int]($h / 2)
@@ -688,10 +641,10 @@ Write-Output "FRAMES_OK:$outFolder"
             return { error: "Roblox window closed before recording started." };
         }
         if (lines.some((l: string) => l.includes('ERR:ZERO_SIZE'))) {
-            return { error: "Roblox window has zero size (minimised?)." };
+            return { error: "Roblox window has zero size (minimised)." };
         }
         if (lines.some((l: string) => l.includes('ERR:OCCLUDED'))) {
-            return { error: "Roblox window was covered by another application for the whole recording. Bring it to the front and retry." };
+            return { error: "Roblox window was covered by another window during recording." };
         }
 
         const framesLine = lines.find((l: string) => l.startsWith('FRAMES_OK:')) || '';
@@ -704,7 +657,6 @@ Write-Output "FRAMES_OK:$outFolder"
         try { spawnSync("ffmpeg", ["-version"], { stdio: 'ignore', windowsHide: true }); } catch { hasFfmpeg = false; }
 
         if (hasFfmpeg) {
-            // Pad width and height to be divisible by 2 for yuv420p compliance
             spawnSync("ffmpeg", [
                 "-y",
                 "-framerate", String(targetFps),
@@ -718,7 +670,7 @@ Write-Output "FRAMES_OK:$outFolder"
             try { fs.rmSync(frameFolder, { recursive: true, force: true }); } catch { }
             return { pid: targetPid, filePath: outFile };
         } else {
-            return { pid: targetPid, filePath: frameFolder, error: "ffmpeg not installed. Raw frames saved to folder instead of video." };
+            return { pid: targetPid, filePath: frameFolder, error: "ffmpeg is not installed. Saved raw frames to folder." };
         }
     } catch (err: any) {
         return { error: `Failed to record window: ${err.message}` };

@@ -1,6 +1,3 @@
-
-
-
 interface SessionInfo {
     workerId: string;
     pid?: string | number;
@@ -90,6 +87,30 @@ class SessionManager {
         return this.sessions.get(workerId);
     }
 
+    getByPid(pid: string | number): SessionInfo | undefined {
+        const targetPid = Number(pid);
+        if (!isNaN(targetPid) && targetPid > 0) {
+            for (const s of this.sessions.values()) {
+                if (s.status === 'active' && s.pid !== undefined && Number(s.pid) === targetPid) {
+                    return s;
+                }
+            }
+        }
+        const active = this.listActive();
+        if (active.length === 1) {
+            const only = active[0];
+            if (!only.pid || String(only.pid) === String(pid)) {
+                return only;
+            }
+        }
+        return undefined;
+    }
+
+    isPidConnected(pid: string | number): boolean {
+        const s = this.getByPid(pid);
+        return !!s && s.status === 'active';
+    }
+
     listActive(): SessionInfo[] {
         const results: SessionInfo[] = [];
         for (const session of this.sessions.values()) {
@@ -113,8 +134,7 @@ class SessionManager {
     private _startCleanup(): void {
         this._cleanupTimer = setInterval(() => {
             const now = Date.now();
-            const disconnectCutoff = now - 300_000;
-            const purgeCutoff = now - 3600_000; // 1 hour
+            const purgeCutoff = now - 3600_000;
 
             for (const [id, session] of Array.from(this.sessions.entries())) {
                 if (session.lastSeen < purgeCutoff) {

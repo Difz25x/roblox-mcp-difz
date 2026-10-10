@@ -1,5 +1,3 @@
-
-
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
 
@@ -97,7 +95,7 @@ export class QueueManager extends EventEmitter {
                 this.pendingResults.delete(id);
                 this.taskQueue = this.taskQueue.filter(t => t.id !== id);
                 reject(new Error(
-                    `[MCP Queue] Task '${type}' (${id.slice(0, 8)}…) timed out after ${timeoutMs}ms. Is the executor running?`
+                    `Task '${type}' (${id.slice(0, 8)}) timed out after ${timeoutMs}ms.`
                 ));
             }, timeoutMs);
 
@@ -108,9 +106,6 @@ export class QueueManager extends EventEmitter {
                 if (task.targetWorkerId) {
                     pollerIdx = this.waitingPollers.findIndex(p => p.workerId === task.targetWorkerId);
                 } else {
-                    // Untargeted task: prefer an anonymous poller (WS broadcast path),
-                    // but fall back to any poller -- stream workers always identify
-                    // themselves by worker_id, and they must still receive broadcasts.
                     pollerIdx = this.waitingPollers.findIndex(p => !p.workerId);
                     if (pollerIdx < 0) pollerIdx = 0;
                 }
@@ -177,7 +172,7 @@ export class QueueManager extends EventEmitter {
                     const pending = this.pendingResults.get(t.id);
                     if (pending) {
                         clearTimeout(pending.timer);
-                        pending.reject(new Error(`[MCP Queue] Task '${t.type}' (${t.id.slice(0, 8)}…) removed as stale`));
+                        pending.reject(new Error(`Task '${t.type}' (${t.id.slice(0, 8)}) removed as stale`));
                         this.pendingResults.delete(t.id);
                     }
                     return false;
@@ -191,13 +186,14 @@ export class QueueManager extends EventEmitter {
                 if (now - pending.submittedAt > maxPendingAge) {
                     toDelete.push(id);
                     clearTimeout(pending.timer);
-                    pending.reject(new Error(`[MCP Queue] Task (${id.slice(0, 8)}…) exceeded maximum pending age (${maxPendingAge}ms)`));
+                    pending.reject(new Error(`Task (${id.slice(0, 8)}) timed out`));
                 }
             }
             for (const id of toDelete) {
                 this.pendingResults.delete(id);
             }
         }, 60_000);
+
         if (this._cleanupInterval.unref) {
             this._cleanupInterval.unref();
         }

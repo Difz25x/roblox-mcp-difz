@@ -55,11 +55,10 @@ class ToolDefinitions {
             delete existing.workerId;
             delete existing.worker_id;
 
-            // Make workerId the FIRST universal argument across all tools
             const newProperties: Record<string, any> = {
                 workerId: {
                     type: 'string',
-                    description: 'Target Roblox session ID, player name, or PID. Optional — if omitted, executes across ALL connected game sessions.',
+                    description: 'Target Roblox session ID, player name, or PID. Optional - if omitted, executes across all connected game sessions.',
                 },
                 ...existing,
             };
@@ -128,7 +127,6 @@ class ToolDefinitions {
 
     private _defineTools(): ToolDefinition[] {
         return [
-            // ==================== 1. PLAYER & CHARACTER ====================
             {
                 name: "get-player",
                 description: "Get local player character details, health, walkspeed, leaderstats, and backpack inventory.",
@@ -220,8 +218,6 @@ class ToolDefinitions {
                     required: ["humanoid_path"]
                 }
             },
-
-            // ==================== 2. NETWORKING & REMOTES ====================
             {
                 name: "list-remotes",
                 description: "Scan game containers for all RemoteEvents, RemoteFunctions, and UnreliableRemoteEvents.",
@@ -291,8 +287,6 @@ class ToolDefinitions {
                     }
                 }
             },
-
-            // ==================== 3. DATAMODEL & INSTANCES ====================
             {
                 name: "find-instances",
                 description: "Find instances across the game tree by ClassName, with optional name filter and depth.",
@@ -427,8 +421,6 @@ class ToolDefinitions {
                     required: ["path_a", "path_b"]
                 }
             },
-
-            // ==================== 4. PROPERTIES & LIFECYCLE ====================
             {
                 name: "read-properties",
                 description: "Read multiple properties from an instance simultaneously by name.",
@@ -489,8 +481,6 @@ class ToolDefinitions {
                     required: ["target_paths"]
                 }
             },
-
-            // ==================== 5. GUI & SCREEN ====================
             {
                 name: "get-gui-tree",
                 description: "Dump the visual hierarchy of CoreGui, PlayerGui, or StarterGui.",
@@ -580,8 +570,6 @@ class ToolDefinitions {
                     required: ["action"]
                 }
             },
-
-            // ==================== 6. INPUT SIMULATION ====================
             {
                 name: "move-character",
                 description: "Navigate character to 3D world coordinates by simulating WASD directional key inputs.",
@@ -699,8 +687,6 @@ class ToolDefinitions {
                     }
                 }
             },
-
-            // ==================== 7. SCRIPTING & BYTECODE ====================
             {
                 name: "execute-script",
                 description: "Execute Luau script code string or local script file in the Roblox environment.",
@@ -780,8 +766,6 @@ class ToolDefinitions {
                     properties: {}
                 }
             },
-
-            // ==================== 8. METATABLES & LOW-LEVEL ====================
             {
                 name: "inspect-metatable",
                 description: "Inspect metatable metamethods (__index, __newindex, __namecall) of an object.",
@@ -899,8 +883,6 @@ class ToolDefinitions {
                     required: ["instance_path", "property", "value"]
                 }
             },
-
-            // ==================== 9. FILESYSTEM ====================
             {
                 name: "read-file",
                 description: "Read file content from the executor workspace filesystem.",
@@ -967,8 +949,6 @@ class ToolDefinitions {
                     required: ["file_path"]
                 }
             },
-
-            // ==================== 10. SERVER & OPS ====================
             {
                 name: "list-roblox-processes",
                 description: "List running Roblox processes with connection status table (connected vs unconnected).",
@@ -1079,11 +1059,6 @@ class ToolDefinitions {
     }
 }
 
-/**
- * Universally normalizes tool arguments across any AI model / client quirks.
- * Handles camelCase <-> snake_case, path aliases (script_path, target_path, target_part, path),
- * code/script aliases, player aliases, coordinates, remote arguments, and property maps.
- */
 function normalizeToolArguments(rawArgs: any): Record<string, any> {
     if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) {
         return rawArgs || {};
@@ -1091,7 +1066,6 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
 
     const args: Record<string, any> = { ...rawArgs };
 
-    // 1. camelCase <-> snake_case bidirectional automatic aliasing
     for (const key of Object.keys(rawArgs)) {
         const val = rawArgs[key];
         const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
@@ -1104,7 +1078,6 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
         }
     }
 
-    // 2. Universal Path & Target Aliasing (supports decompile, inspect, properties, children, buttons, etc.)
     const anyPath =
         args.target_path || args.script_path || args.instance_path ||
         args.target_part || args.part_path || args.path ||
@@ -1123,14 +1096,12 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
         if (!args.part_path) args.part_path = clean;
     }
 
-    // Single path to array of paths & vice versa
     if (args.target_path && !args.target_paths) {
         args.target_paths = [args.target_path];
     } else if (Array.isArray(args.target_paths) && args.target_paths.length > 0 && !args.target_path) {
         args.target_path = String(args.target_paths[0]);
     }
 
-    // 3. Script / Code content
     const codeCandidate = args.code || args.script_code || args.source || args.content || args.lua || args.luau ||
         (typeof args.script === 'string' && !args.script.includes('.') ? args.script : undefined);
     if (codeCandidate && typeof codeCandidate === 'string') {
@@ -1140,7 +1111,6 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
         if (!args.content) args.content = codeCandidate;
     }
 
-    // 4. Remote Event / Function paths & arguments
     const remoteCandidate = args.remote_path || args.remote;
     if (remoteCandidate && typeof remoteCandidate === 'string') {
         if (!args.remote_path) args.remote_path = remoteCandidate;
@@ -1153,7 +1123,6 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
         if (args.args === undefined) args.args = remoteArgs;
     }
 
-    // 5. Properties & Property Maps
     const propMapCandidate = args.property_map || args.properties || args.props || args.map;
     if (propMapCandidate !== undefined) {
         const serialized = typeof propMapCandidate === 'object' ? JSON.stringify(propMapCandidate) : String(propMapCandidate);
@@ -1172,7 +1141,6 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
         if (args.value === undefined) args.value = propValCandidate;
     }
 
-    // 6. Player Name / Target
     const playerCandidate = args.player_name || args.player || args.target_player || args.username || args.user;
     if (playerCandidate && typeof playerCandidate === 'string') {
         if (!args.player_name) args.player_name = playerCandidate;
@@ -1180,7 +1148,6 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
         if (!args.target_name) args.target_name = playerCandidate;
     }
 
-    // 7. Teleport Smart Targets & Coordinates
     if (!args.target_type) {
         if (args.coordinates || (args.x !== undefined && args.y !== undefined && args.z !== undefined)) {
             args.target_type = 'coordinates';
@@ -1196,7 +1163,6 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
         args.coordinates = { x: Number(args.x), y: Number(args.y), z: Number(args.z) };
     }
 
-    // 8. Key / Text inputs
     const keyCandidate = args.key_code || args.key || args.keyCode;
     if (keyCandidate && typeof keyCandidate === 'string') {
         if (!args.key_code) args.key_code = keyCandidate;
@@ -1208,7 +1174,6 @@ function normalizeToolArguments(rawArgs: any): Record<string, any> {
         if (!args.message) args.message = textCandidate;
     }
 
-    // 9. Worker & PID aliases
     const workerCandidate = args.workerId || args.worker_id || args.sessionId || args.session_id || args.worker || args.session;
     if (workerCandidate && typeof workerCandidate === 'string') {
         if (!args.workerId) args.workerId = workerCandidate;

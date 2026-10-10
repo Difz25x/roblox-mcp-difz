@@ -1,5 +1,3 @@
-
-
 const path = require('path');
 const { getMcpSdk, scanMcpSdk } = require('./sdk-scanner');
 
@@ -149,7 +147,7 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
         let connectedCount = 0;
         let unconnectedCount = 0;
         const enriched = procs.map((p: any) => {
-            const sess = pidToSession.get(p.pid);
+            const sess = pidToSession.get(p.pid) || (sessions.getByPid ? sessions.getByPid(p.pid) : null);
             const isConnected = !!sess;
             if (isConnected) connectedCount++;
             else unconnectedCount++;
@@ -206,7 +204,7 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
         );
         if (vd.error) return { success: false, error: vd.error };
         if (vd.needsDisambiguation) return { success: true, needsDisambiguation: true, windows: vd.windows };
-        return { success: true, file_path: vd.filePath, pid: vd.pid ?? args?.pid ?? null, note: "Video saved to file. You can download or view it via external media." };
+        return { success: true, file_path: vd.filePath, pid: vd.pid ?? args?.pid ?? null, note: "Video saved to file." };
     }
     case 'get-transport-status': {
         const counts = sessions.countByTransport ? sessions.countByTransport() : { ws: 0, stream: 0 };

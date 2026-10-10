@@ -43,30 +43,25 @@ function getPort(): number {
     return DEFAULT_PORT;
 }
 
-// ── Helpers ─────────────────────────────────────────
-
 function hideCursor(): void { process.stdout.write('\x1b[?25l'); }
 function showCursor(): void { process.stdout.write('\x1b[?25h'); }
 
 function printBanner(port: number, toolsCount: number, wsCount: number, pid: number, discoveryPort?: number): void {
-    console.log(`  \x1b[1;36mRoblox MCP Server\x1b[0m \x1b[2mv${PKG.version}\x1b[0m`);
+    console.log(`  \x1b[1;36mRoblox MCP\x1b[0m \x1b[2mv${PKG.version}\x1b[0m`);
     console.log(`  HTTP      http://localhost:${port}/mcp`);
     console.log(`  WS        ws://localhost:${port}/ws`);
     if (discoveryPort) {
         console.log(`  Discovery http://localhost:${discoveryPort}/port`);
     }
-    console.log(`  Tools ${toolsCount}  Conns ${wsCount}  PID ${pid}`);
+    console.log(`  Tools: ${toolsCount} | Connections: ${wsCount} | PID: ${pid}`);
     console.log(`  \x1b[2mInject: loadstring(game:HttpGet("http://127.0.0.1:${port}/mcp.lua"))()\x1b[0m`);
     if (discoveryPort && discoveryPort !== port) {
         console.log(`  \x1b[2mAuto-sync: loadstring(game:HttpGet("http://127.0.0.1:${discoveryPort}/mcp.lua"))()\x1b[0m`);
     }
 }
 
-// ── Interactive menu renderer (no scroll bug) ───────
-
 interface MenuItem {
     label: string;
-    icon: string;
     description: string;
     action: () => Promise<void>;
 }
@@ -82,22 +77,19 @@ function renderMenu(items: MenuItem[], selected: number): void {
     for (let i = 0; i < items.length; i++) {
         const item = items[i];
         if (i === selected) {
-            lines.push(`  \x1b[36m❯ ${item.icon}  ${item.label}\x1b[0m  \x1b[2m${item.description}\x1b[0m`);
+            lines.push(`  \x1b[36m> ${item.label}\x1b[0m  \x1b[2m${item.description}\x1b[0m`);
         } else {
-            lines.push(`    ${item.icon}  \x1b[2m${item.label}\x1b[0m`);
+            lines.push(`    \x1b[2m${item.label}\x1b[0m`);
         }
     }
     lines.push('');
-    lines.push(`  \x1b[2m↑↓ Navigate  ⏎ Select  Ctrl+C Exit\x1b[0m`);
-
+    lines.push(`  \x1b[2m[Up/Down] Navigate  [Enter] Select  [Ctrl+C] Exit\x1b[0m`);
 
     for (const line of lines) {
         process.stdout.write('\r\x1b[K' + line + '\n');
     }
     _menuLineCount = lines.length;
 }
-
-// ── Confirm prompt (Y/N) ────────────────────────────
 
 function confirm(message: string): Promise<boolean> {
     return new Promise((resolve) => {
@@ -117,8 +109,6 @@ function confirm(message: string): Promise<boolean> {
     });
 }
 
-// ── Fetch latest version ────────────────────────────
-
 function fetchLatestVersion(): Promise<string | null> {
     return new Promise((resolve) => {
         const req = https.get(`https://registry.npmjs.org/${PKG.name}/latest`, {
@@ -137,29 +127,27 @@ function fetchLatestVersion(): Promise<string | null> {
     });
 }
 
-// ── Commands ────────────────────────────────────────
-
 async function cmdUpdate(): Promise<void> {
-    console.log(`  \x1b[1m🔄 Checking for updates...\x1b[0m`);
+    console.log(`  Checking npm registry for updates...`);
     const latest = await fetchLatestVersion();
 
     if (!latest) {
-        console.log(`  \x1b[33m⚠ Could not reach npm registry.\x1b[0m`);
+        console.log(`  Could not reach npm registry.`);
         return;
     }
     if (latest === PKG.version) {
-        console.log(`  \x1b[32m✔ Already on latest (v${PKG.version})\x1b[0m`);
+        console.log(`  You are on the latest version (v${PKG.version}).`);
         return;
     }
 
-    console.log(`  \x1b[33mNew version: v${PKG.version} → v${latest}\x1b[0m`);
-    const yes = await confirm('Update now?');
+    console.log(`  Update available: v${PKG.version} -> v${latest}`);
+    const yes = await confirm('Install now?');
     if (!yes) {
-        console.log(`  \x1b[2mSkipped.\x1b[0m`);
+        console.log(`  Skipped.`);
         return;
     }
 
-    console.log(`  Updating...`);
+    console.log(`  Updating package...`);
     try {
         const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
         const res = spawnSync(npmCmd, ['install', '-g', `${PKG.name}@latest`], {
@@ -168,13 +156,11 @@ async function cmdUpdate(): Promise<void> {
             windowsHide: true,
         });
         if (res.status !== 0) {
-            throw new Error(`npm exited with status code ${res.status}`);
+            throw new Error(`npm exited with code ${res.status}`);
         }
-        console.log(`  \x1b[32m✔ Updated to v${latest}!\x1b[0m`);
+        console.log(`  Updated to v${latest}.`);
+        console.log(`  Restarting...`);
 
-        console.log(`  \x1b[2mRelaunching...\x1b[0m`);
-
-        // Auto relaunch in the exact same terminal
         const child = spawn(process.execPath, [__filename], {
             stdio: 'inherit',
             detached: false
@@ -183,9 +169,9 @@ async function cmdUpdate(): Promise<void> {
         child.on('exit', (code: number | null) => {
             process.exit(code || 0);
         });
-        return; // wait for the new process instead of exiting immediately
+        return;
     } catch (err: any) {
-        console.error(`  \x1b[31m✖ Update failed: ${err.message}\x1b[0m`);
+        console.error(`  Update failed: ${err.message}`);
     }
 }
 
@@ -238,7 +224,6 @@ function killProcessByPid(pid: number): boolean {
 }
 
 async function ensurePortAvailable(port: number): Promise<void> {
-    // 1. Check PID recorded in PID file
     if (fs.existsSync(PID_FILE)) {
         try {
             const recordedPid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
@@ -249,14 +234,12 @@ async function ensurePortAvailable(port: number): Promise<void> {
         } catch {}
     }
 
-    // 2. Check if any process is actively listening on this port
     let conflictingPid = getPidOnPort(port);
     if (conflictingPid) {
-        console.log(`  \x1b[33m⚠ Port ${port} is occupied by an existing host (PID ${conflictingPid}).\x1b[0m`);
-        console.log(`  \x1b[33m⚡ Terminating previous host and freeing port...\x1b[0m`);
+        console.log(`  Port ${port} is occupied by PID ${conflictingPid}.`);
+        console.log(`  Closing previous process to release port...`);
         killProcessByPid(conflictingPid);
 
-        // Wait up to 3 seconds for OS socket release
         const start = Date.now();
         while (Date.now() - start < 3000) {
             await new Promise(r => setTimeout(r, 200));
@@ -269,7 +252,7 @@ async function ensurePortAvailable(port: number): Promise<void> {
             await new Promise(r => setTimeout(r, 300));
         }
 
-        console.log(`  \x1b[32m✔ Previous host terminated. Port ${port} is now available.\x1b[0m\n`);
+        console.log(`  Port ${port} released.\n`);
     }
 }
 
@@ -279,7 +262,7 @@ function startListening(server: any, port: number, onListening: () => Promise<vo
 
         const onError = async (err: any) => {
             if (err.code === 'EADDRINUSE') {
-                console.log(`  \x1b[33m⚠ Port ${port} is currently busy (EADDRINUSE). Forcing release...\x1b[0m`);
+                console.log(`  Port ${port} busy. Releasing...`);
                 const pid = getPidOnPort(port);
                 if (pid) {
                     killProcessByPid(pid);
@@ -340,29 +323,19 @@ async function cmdStart(isDaemon: boolean = false): Promise<void> {
     await startListening(server, PORT, async () => {
         const pid = process.pid;
 
-        // Write PID file for stop command
         try { fs.writeFileSync(PID_FILE, String(pid), 'utf-8'); } catch {}
 
-        // Launch Discovery Server so mcp.lua can auto-sync to this custom port
         if (DISCOVERY_PORT !== PORT) {
             _discoveryServer = new DiscoveryServer({
                 activePort: PORT,
-                discoveryPort: DISCOVERY_PORT,
-                onStopRequest: () => {
-                    cleanupPidFile();
-                    if (_activeServer) {
-                        try { _activeServer.close(); } catch {}
-                    }
-                }
+                discoveryPort: DISCOVERY_PORT
             });
             await _discoveryServer.start();
         }
 
         if (isDaemon) {
-            // Background process mode — start the tray and keep process alive
             await startTray(PORT, pid);
         } else {
-            // Normal foreground mode
             console.clear();
             printBanner(PORT, tools.count, wss.connectedCount, pid, DISCOVERY_PORT !== PORT ? DISCOVERY_PORT : undefined);
             console.log('');
@@ -380,8 +353,8 @@ async function cmdStdio(): Promise<void> {
         ({ createApp } = require('./server-core'));
         ({ initMcpServer, StdioServerTransport } = require('./mcp-server'));
     } catch (err: any) {
-        process.stderr.write(`  \x1b[31m✖ Cannot start MCP stdio transport: ${err.message}\x1b[0m\n`);
-        process.stderr.write(`  \x1b[2mInstall dependencies first: npm install\x1b[0m\n`);
+        process.stderr.write(`  Cannot start MCP stdio transport: ${err.message}\n`);
+        process.stderr.write(`  Install dependencies first: npm install\n`);
         process.exit(1);
     }
 
@@ -401,19 +374,13 @@ async function cmdStdio(): Promise<void> {
     if (DISCOVERY_PORT !== PORT) {
         _discoveryServer = new DiscoveryServer({
             activePort: PORT,
-            discoveryPort: DISCOVERY_PORT,
-            onStopRequest: () => {
-                cleanupPidFile();
-                if (_activeServer) {
-                    try { _activeServer.close(); } catch {}
-                }
-            }
+            discoveryPort: DISCOVERY_PORT
         });
         await _discoveryServer.start();
     }
 
     await startListening(server, PORT, () => {
-        process.stderr.write(`  \x1b[2m[rblx-mcp] MCP stdio transport ready — WS/HTTP listening on port ${PORT} (discovery: ${DISCOVERY_PORT})\x1b[0m\n`);
+        process.stderr.write(`  [rblx-mcp] Ready on port ${PORT} (discovery: ${DISCOVERY_PORT})\n`);
     });
 }
 
@@ -421,26 +388,23 @@ function showPostStartMenu(port: number, pid: number): void {
     const items: MenuItem[] = [
         {
             label: 'Hide in Tray',
-            icon: '📌',
             description: 'Run in background with tray icon',
             action: async () => { await hideInTray(port, pid); },
         },
         {
             label: 'Open Dashboard',
-            icon: '🌐',
             description: `http://localhost:${port}`,
             action: async () => {
                 const url = `http://localhost:${port}`;
                 if (process.platform === 'win32') {
                     spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
                 }
-                console.log(`  \x1b[2mOpened ${url}\x1b[0m`);
+                console.log(`  Opened ${url}`);
             },
         },
         {
             label: 'Manage Processes',
-            icon: '🛠️',
-            description: 'Restart or kill Roblox',
+            description: 'Restart or close Roblox',
             action: async () => {
                 if (process.stdin.isTTY) {
                     process.stdin.setRawMode(false);
@@ -452,11 +416,10 @@ function showPostStartMenu(port: number, pid: number): void {
         },
         {
             label: 'Stop Server',
-            icon: '⏹️',
             description: 'Shutdown and exit',
             action: async () => {
                 cleanupAll();
-                console.log(`  \x1b[2mStopped.\x1b[0m`);
+                console.log(`  Server stopped.`);
                 process.exit(0);
             },
         },
@@ -483,8 +446,8 @@ function showPostStartMenu(port: number, pid: number): void {
         if (!key) return;
         if (key.ctrl && key.name === 'c') {
             cleanup();
-            cleanupPidFile();
-            console.log('\n  \x1b[2mBye!\x1b[0m');
+            cleanupAll();
+            console.log('\n  Exiting.');
             process.exit(0);
         }
         if (key.name === 'up') {
@@ -501,12 +464,11 @@ function showPostStartMenu(port: number, pid: number): void {
             cleanup();
             console.clear();
             try { await items[selected].action(); }
-            catch (err: any) { console.error(`  \x1b[31m✖ ${err.message}\x1b[0m`); }
+            catch (err: any) { console.error(`  Error: ${err.message}`); }
             if (items[selected].label === 'Open Dashboard') {
                 showPostStartMenu(port, pid);
             } else if (items[selected].label !== 'Hide in Tray' && items[selected].label !== 'Stop Server') {
-                console.log(`
-  [2mPress any key...[0m`);
+                console.log(`\n  Press any key to continue...`);
                 readline.emitKeypressEvents(process.stdin);
                 process.stdin.setRawMode(true);
                 process.stdin.resume();
@@ -521,18 +483,15 @@ function showPostStartMenu(port: number, pid: number): void {
     });
 }
 
-// ── Tray ────────────────────────────────────────────
-
 let _isHandingOverToDaemon = false;
 
-async function hideInTray(port: number, oldPid: number): Promise<void> {
+async function hideInTray(port: number, _oldPid: number): Promise<void> {
     console.clear();
-    console.log(`  \x1b[1m📌 Handing over to background daemon...\x1b[0m`);
+    console.log(`  Starting background daemon...`);
 
     try {
         _isHandingOverToDaemon = true;
 
-        // Close the current server and discovery router so the daemon can bind to both ports
         if (_discoveryServer) {
             try { _discoveryServer.stop(); } catch {}
             _discoveryServer = null;
@@ -540,12 +499,10 @@ async function hideInTray(port: number, oldPid: number): Promise<void> {
 
         if (_activeServer) {
             await new Promise<void>(resolve => {
-                // Force close all idle and active connections immediately (Node 18+)
                 if (typeof _activeServer.closeAllConnections === 'function') {
                     _activeServer.closeAllConnections();
                 }
 
-                // Fallback timeout in case close takes too long
                 const timeout = setTimeout(() => {
                     resolve();
                 }, 500);
@@ -557,7 +514,6 @@ async function hideInTray(port: number, oldPid: number): Promise<void> {
             });
         }
 
-        // Use __filename to ensure we spawn the compiled JS (dist/cli.js) and not a dynamic dev path
         const scriptPath = __filename;
         const logPath = path.join(CONFIG_DIR, 'daemon.log');
         const out = fs.openSync(logPath, 'a');
@@ -570,25 +526,23 @@ async function hideInTray(port: number, oldPid: number): Promise<void> {
 
         child.unref();
 
-        console.log(`  \x1b[32m✔\x1b[0m Server handed over to background daemon (PID ${child.pid})`);
-        console.log(`  \x1b[2mRight-click the tray icon to manage it.\x1b[0m\n`);
+        console.log(`  Server running in background (PID ${child.pid}).`);
+        console.log(`  Use system tray icon to control.\n`);
 
         process.exit(0);
     } catch (err: any) {
-        console.error(`  \x1b[31m✖ Failed to spawn daemon: ${err.message}\x1b[0m`);
+        console.error(`  Failed to start daemon: ${err.message}`);
     }
 }
 
-async function startTray(port: number, pid: number): Promise<void> {
+async function startTray(port: number, _pid: number): Promise<void> {
     let SysTray: any;
     try {
         SysTray = require('systray2').default || require('systray2');
     } catch {
-        // If not installed, just run silently in background
         return;
     }
 
-    // Find icon
     let icon = '';
     const icoPath = path.join(__dirname, '..', 'public', 'icon.ico');
     const pngPath = path.join(__dirname, '..', 'public', 'icon.png');
@@ -616,7 +570,7 @@ async function startTray(port: number, pid: number): Promise<void> {
         menu: {
             icon: icon,
             title: '',
-            tooltip: `Roblox MCP v${PKG.version} — port ${port}`,
+            tooltip: `Roblox MCP v${PKG.version} - port ${port}`,
             items: [itemDashboard, SysTray.separator || { title: '<SEPARATOR>', tooltip: '', checked: false, enabled: true }, itemStop],
         },
         debug: false,
@@ -647,8 +601,6 @@ async function startTray(port: number, pid: number): Promise<void> {
     } catch (err: any) {}
 }
 
-// ── Stop command ────────────────────────────────────
-
 async function cmdStop(): Promise<void> {
     const PORT = getPort();
     let stoppedAny = false;
@@ -657,7 +609,7 @@ async function cmdStop(): Promise<void> {
         const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
         if (!isNaN(pid)) {
             if (killProcessByPid(pid)) {
-                console.log(`  \x1b[32m✔\x1b[0m Stopped server from PID file (PID ${pid})`);
+                console.log(`  Stopped server (PID ${pid}).`);
                 stoppedAny = true;
             }
         }
@@ -667,7 +619,7 @@ async function cmdStop(): Promise<void> {
     const portPid = getPidOnPort(PORT);
     if (portPid) {
         if (killProcessByPid(portPid)) {
-            console.log(`  \x1b[32m✔\x1b[0m Stopped server listening on port ${PORT} (PID ${portPid})`);
+            console.log(`  Stopped server on port ${PORT} (PID ${portPid}).`);
             stoppedAny = true;
         }
     }
@@ -677,22 +629,20 @@ async function cmdStop(): Promise<void> {
         const discPid = getPidOnPort(DISCOVERY_PORT);
         if (discPid && discPid !== portPid) {
             if (killProcessByPid(discPid)) {
-                console.log(`  \x1b[32m✔\x1b[0m Stopped discovery server on port ${DISCOVERY_PORT} (PID ${discPid})`);
+                console.log(`  Stopped discovery router on port ${DISCOVERY_PORT} (PID ${discPid}).`);
                 stoppedAny = true;
             }
         }
     }
 
     if (!stoppedAny) {
-        console.log(`  \x1b[33m⚠ No running server found on port ${PORT}.\x1b[0m`);
+        console.log(`  No server found running on port ${PORT}.`);
     }
 }
 
 function cleanupPidFile(): void {
     try { fs.unlinkSync(PID_FILE); } catch {}
 }
-
-// ── Setup & Diagnostics ──────────────────────────────
 
 async function cmdSetup(): Promise<void> {
     const { runSetupWizard } = require('./setup');
@@ -706,13 +656,11 @@ async function cmdSkill(specificTarget?: string): Promise<void> {
 
 async function cmdSdkDoctor(): Promise<void> {
     const { scanMcpSdk, formatSdkReport } = require('./sdk-scanner');
-    console.log('\n  \x1b[1;36mScanning @modelcontextprotocol/sdk & runtime environment...\x1b[0m\n');
+    console.log('\n  Scanning @modelcontextprotocol/sdk environment...\n');
     const diag = scanMcpSdk(true);
     console.log(formatSdkReport(diag));
     console.log('');
 }
-
-// ── Main menu ───────────────────────────────────────
 
 async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
     const { listRobloxProcesses, killProcess, launchRoblox } = require('./process-manager');
@@ -720,8 +668,8 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
 
     if (procs.length === 0) {
         console.clear();
-        console.log(`  \x1b[33mNo Roblox processes found.\x1b[0m\n`);
-        console.log(`  \x1b[2mPress any key to return...\x1b[0m`);
+        console.log(`  No Roblox processes found.\n`);
+        console.log(`  Press any key to return...`);
 
         await new Promise<void>((resolve) => {
             readline.emitKeypressEvents(process.stdin);
@@ -740,49 +688,45 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
 
     const items: MenuItem[] = procs.map((p: any) => ({
         label: p.windowTitle || p.name,
-        icon: '🎮',
-        description: `PID: ${p.pid} | Mem: ${p.memoryMB}MB`,
+        description: `PID: ${p.pid} | RAM: ${p.memoryMB} MB`,
         action: async () => {
             const actionItems: MenuItem[] = [
                 {
-                    label: 'Restart', icon: '🔄', description: 'Kill and restart',
+                    label: 'Restart', description: 'Close and start fresh process',
                     action: async () => {
                         killProcess(p.pid);
                         await new Promise<void>(r => setTimeout(r, 1000));
                         launchRoblox();
-                        console.log('  \x1b[32mProcess restarted.\x1b[0m');
+                        console.log('  Process restarted.');
                     }
                 },
                 {
-                    label: 'Kill', icon: '💀', description: 'Force kill process',
+                    label: 'Close', description: 'Close this process',
                     action: async () => {
                         killProcess(p.pid);
-                        console.log('  \x1b[32mProcess killed.\x1b[0m');
+                        console.log('  Process closed.');
                     }
                 },
                 {
-                    label: 'Cancel', icon: '↩️', description: 'Go back',
+                    label: 'Cancel', description: 'Return to previous screen',
                     action: async () => {}
                 }
             ];
 
             return new Promise<void>((resolve) => {
                 let actSelected = 0;
-                let actLineCount = 0;
 
                 const renderActMenu = () => {
                     hideCursor();
                     console.clear();
-                    const lines = [`  \x1b[1;36mManage Process\x1b[0m \x1b[2m${p.pid}\x1b[0m`, ''];
+                    const lines = [`  Manage Process: PID ${p.pid}`, ''];
                     for (let i = 0; i < actionItems.length; i++) {
                         const item = actionItems[i];
-                        if (i === actSelected) lines.push(`  \x1b[36m❯ ${item.icon}  ${item.label}\x1b[0m  \x1b[2m${item.description}\x1b[0m`);
-                        else lines.push(`    ${item.icon}  \x1b[2m${item.label}\x1b[0m`);
+                        if (i === actSelected) lines.push(`  \x1b[36m> ${item.label}\x1b[0m  \x1b[2m${item.description}\x1b[0m`);
+                        else lines.push(`    \x1b[2m${item.label}\x1b[0m`);
                     }
-                    lines.push('', `  \x1b[2m↑↓ Navigate  ⏎ Select\x1b[0m`);
-                    // if (actLineCount > 0) readline.moveCursor(process.stdout, 0, -actLineCount);
+                    lines.push('', `  [Up/Down] Navigate  [Enter] Select`);
                     for (const line of lines) process.stdout.write('\r\x1b[K' + line + '\n');
-                    actLineCount = lines.length;
                 };
 
                 console.clear();
@@ -809,27 +753,24 @@ async function manageProcessesMenu(parentMenuFn: () => void): Promise<void> {
     }));
 
     items.push({
-        label: 'Back', icon: '↩️', description: 'Return to menu',
+        label: 'Back', description: 'Return to menu',
         action: async () => { parentMenuFn(); }
     });
 
     return new Promise<void>((resolve) => {
         let selected = 0;
-        let lineCount = 0;
 
         const render = () => {
             hideCursor();
             console.clear();
-            const lines = [`  \x1b[1;36mSelect Process\x1b[0m`, ''];
+            const lines = [`  Select Process`, ''];
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
-                if (i === selected) lines.push(`  \x1b[36m❯ ${item.icon}  ${item.label}\x1b[0m  \x1b[2m${item.description}\x1b[0m`);
-                else lines.push(`    ${item.icon}  \x1b[2m${item.label}\x1b[0m`);
+                if (i === selected) lines.push(`  \x1b[36m> ${item.label}\x1b[0m  \x1b[2m${item.description}\x1b[0m`);
+                else lines.push(`    \x1b[2m${item.label}\x1b[0m`);
             }
-            lines.push('', `  \x1b[2m↑↓ Navigate  ⏎ Select\x1b[0m`);
-            // if (lineCount > 0) readline.moveCursor(process.stdout, 0, -lineCount);
+            lines.push('', `  [Up/Down] Navigate  [Enter] Select`);
             for (const line of lines) process.stdout.write('\r\x1b[K' + line + '\n');
-            lineCount = lines.length;
         };
 
         console.clear();
@@ -855,32 +796,27 @@ function showInteractiveMenu(): Promise<void> {
         const items: MenuItem[] = [
             {
                 label: 'Start Server',
-                icon: '🚀',
                 description: `port ${getPort()}`,
                 action: async () => { await cmdStart(false); },
             },
             {
                 label: 'Setup Wizard',
-                icon: '⚙️',
-                description: 'Configure AI platform',
+                description: 'Connect AI editor to this server',
                 action: cmdSetup,
             },
             {
-                label: 'Deploy AI Skill',
-                icon: '🧠',
-                description: 'Install roblox-mcp skill to Claude / Cursor / Windsurf',
+                label: 'Install AI Skill',
+                description: 'Teach AI assistant roblox-mcp tools',
                 action: async () => { await cmdSkill(); },
             },
             {
-                label: 'Diagnose MCP SDK',
-                icon: '🩺',
-                description: 'Scan @modelcontextprotocol/sdk health',
+                label: 'Check MCP SDK',
+                description: 'Verify SDK installation health',
                 action: cmdSdkDoctor,
             },
             {
                 label: 'Manage Processes',
-                icon: '🛠️',
-                description: 'Restart or kill Roblox',
+                description: 'View, restart, or close Roblox windows',
                 action: async () => {
                     if (process.stdin.isTTY) {
                         process.stdin.setRawMode(false);
@@ -891,9 +827,8 @@ function showInteractiveMenu(): Promise<void> {
                 },
             },
             {
-                label: 'Update',
-                icon: '🔄',
-                description: 'Check for new version',
+                label: 'Check Updates',
+                description: 'Check npm registry for updates',
                 action: cmdUpdate,
             },
         ];
@@ -941,16 +876,16 @@ function showInteractiveMenu(): Promise<void> {
             if (key.name === 'return') {
                 cleanup();
                 console.clear();
-                console.log(`  \x1b[1m${items[selected].icon}  ${items[selected].label}\x1b[0m\n`);
+                console.log(`  \x1b[1m${items[selected].label}\x1b[0m\n`);
 
                 try {
                     await items[selected].action();
                 } catch (err: any) {
-                    console.error(`  \x1b[31m✖ ${err.message}\x1b[0m`);
+                    console.error(`  Error: ${err.message}`);
                 }
 
                 if (items[selected].label !== 'Start Server') {
-                    console.log(`\n  \x1b[2mPress any key...\x1b[0m`);
+                    console.log(`\n  Press any key to continue...`);
                     readline.emitKeypressEvents(process.stdin);
                     process.stdin.setRawMode(true);
                     process.stdin.resume();
@@ -967,8 +902,6 @@ function showInteractiveMenu(): Promise<void> {
         });
     });
 }
-
-// ── Entry ───────────────────────────────────────────
 
 async function main(): Promise<void> {
     console.clear();
@@ -991,8 +924,8 @@ async function main(): Promise<void> {
     if (cmd === 'stop') { await cmdStop(); return; }
     if (cmd === 'sdk' || cmd === 'doctor') { await cmdSdkDoctor(); return; }
 
-    console.log(`  \x1b[33m⚠ Unknown: "${cmd}"\x1b[0m`);
-    console.log(`  \x1b[2mAvailable: start, stdio, setup, skill, sdk, doctor, update, stop\x1b[0m\n`);
+    console.log(`  Unknown command: "${cmd}"`);
+    console.log(`  Available: start, stdio, setup, skill, sdk, doctor, update, stop\n`);
     await showInteractiveMenu();
 }
 
@@ -1009,7 +942,6 @@ function cleanupAll(): void {
     }
 }
 
-// Cleanup PID file and background discovery servers on exit
 process.on('exit', () => { cleanupAll(); });
 process.on('SIGTERM', () => { cleanupAll(); process.exit(0); });
 process.on('SIGINT', () => { cleanupAll(); process.exit(0); });

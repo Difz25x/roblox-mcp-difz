@@ -1,5 +1,3 @@
-
-
 import type { Request, Response, Application, RequestHandler, NextFunction } from 'express';
 import type { Server } from 'http';
 
@@ -119,7 +117,6 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     app.get('/mcp.lua', serveMcpLua);
     app.get('/mcp.luau', serveMcpLua);
 
-    // Live CSS / JS Assets endpoints (uncached, live reload from disk)
     const serveDashboardCss: RequestHandler = (_req: Request, res: Response): void => {
         try {
             const cssPath = path.join(PKG_DIR, 'public', 'dashboard.css');
@@ -156,11 +153,10 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     app.get('/js', serveDashboardJs);
     app.get('/dashboard.js', serveDashboardJs);
 
-    // Stop server endpoint
     const handleStop: RequestHandler = (_req: Request, res: Response): void => {
         res.json({ success: true, message: 'Server stopping...', pid: process.pid });
         setTimeout(() => {
-            console.log(`\n  \x1b[33m⚡ Stop signal received via HTTP. Shutting down (PID ${process.pid})...\x1b[0m`);
+            console.log(`\n  Stop signal received via HTTP. Shutting down (PID ${process.pid})...\n`);
             try {
                 stopAllDiscoveryServers();
             } catch {}
@@ -172,7 +168,6 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     app.get('/api/stop', handleStop);
     app.post('/api/stop', handleStop);
 
-    // AI Skill Integration Endpoints
     app.get('/api/skill', (_req: Request, res: Response): void => {
         res.json({
             success: true,
@@ -188,7 +183,6 @@ function createApp(opts?: CreateAppOptions): AppComponents {
             targets: Object.keys(SKILL_TARGETS).map(k => ({
                 id: SKILL_TARGETS[k].id,
                 name: SKILL_TARGETS[k].name,
-                icon: SKILL_TARGETS[k].icon,
                 type: SKILL_TARGETS[k].type,
                 description: SKILL_TARGETS[k].description,
             })),
@@ -359,7 +353,6 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         res.json({ success: true, enabled: autoexecuteEnabled });
     });
 
-    // Port Configuration and Inspection APIs
     app.get('/api/config/port', (_req: Request, res: Response): void => {
         const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
         const discPort = 58295;
@@ -618,7 +611,6 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         log('Server initialized with', tools.count, 'tools');
     }
 
-    // SPA catch-all: serve dashboard for any unmatched GET route (e.g. /service_discoverer)
     app.get('*', (_req: Request, res: Response): void => {
         const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
         const dashboardPath: string = path.join(PKG_DIR, 'public', 'dashboard.html');
@@ -636,3 +628,4 @@ function createApp(opts?: CreateAppOptions): AppComponents {
 }
 
 module.exports = { createApp };
+export { createApp };

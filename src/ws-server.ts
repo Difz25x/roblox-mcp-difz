@@ -1,5 +1,3 @@
-
-
 import type { Server as HttpServer } from 'http';
 const WebSocket = require('ws');
 
@@ -13,18 +11,43 @@ function enumWindows() {
 }
 
 function matchRobloxPid(placeName: string, placeId?: string|number): number|undefined {
-    const wins = enumWindows();
-    if (!wins?.length) return;
+    let procMgr: any;
+    try { procMgr = require('./process-manager'); } catch { return undefined; }
+
     const name = (placeName || '').toLowerCase();
     const idStr = placeId ? String(placeId) : '';
-    for (const w of wins) {
-        const t = (w.title || '').toLowerCase();
 
-        if (!t.includes('roblox')) continue;
-        if (idStr && t.includes(idStr)) return w.pid;
-        if (name && t.includes(name)) return w.pid;
-        return w.pid;
-    }
+    // 1. Try window title match first
+    try {
+        const wins = procMgr.enumRobloxWindows ? procMgr.enumRobloxWindows() : [];
+        if (wins?.length) {
+            for (const w of wins) {
+                const t = (w.title || '').toLowerCase();
+                if (!t.includes('roblox')) continue;
+                if (idStr && t.includes(idStr)) return w.pid;
+                if (name && t.includes(name)) return w.pid;
+            }
+            if (wins[0]?.pid) return wins[0].pid;
+        }
+    } catch {}
+
+    // 2. Fallback to process list
+    try {
+        const procs = procMgr.listRobloxProcesses ? procMgr.listRobloxProcesses() : [];
+        if (procs?.length === 1) {
+            return procs[0].pid;
+        }
+        if (procs?.length > 1) {
+            for (const p of procs) {
+                const t = (p.windowTitle || '').toLowerCase();
+                if (idStr && t.includes(idStr)) return p.pid;
+                if (name && t.includes(name)) return p.pid;
+            }
+            return procs[0].pid;
+        }
+    } catch {}
+
+    return undefined;
 }
 
 class WsServer {
@@ -48,14 +71,12 @@ class WsServer {
         this.wss.on('connection', (ws: WS) => {
             this.allConnections.add(ws);
             let workerId: string|null = null;
-            let regTimer: any = null;
             let regCaps: any;
             let registered = false;
 
             const cleanup = (isError?: string) => {
                 if (isError) console.error('[WS]', isError);
                 this.allConnections.delete(ws);
-                if (regTimer) { clearTimeout(regTimer); regTimer = null; }
                 if (workerId) {
                     const cur = this.workers.get(workerId);
                     if (cur?.ws === ws) {
@@ -70,17 +91,22 @@ class WsServer {
                 }
             };
 
-            const finalizeReg = (pid?: number, name?: string, jobId?: string, placeId?: number) => {
-                if (registered) return;
+            const finalizeReg = (pid?: number, name?: string, jobId?: string, placeId?: number, playerName?: string) => {
                 const info = this.workers.get(workerId!);
-                if (!info || info.ws !== ws || info.pid !== undefined) return;
-                registered = true;
-                info.pid = pid;
-                info.placeName = name || '';
-                info.jobId = jobId || '';
-                info.placeId = placeId || 0;
-                if (pid) {
-                    const stale = this.pidMap.get(pid);
+                if (!info || info.ws !== ws) return;
+
+                if (!pid) {
+                    pid = matchRobloxPid(name || info.placeName || '', placeId ?? info.placeId);
+                }
+
+                info.pid = pid ?? info.pid;
+                info.placeName = name || info.placeName || '';
+                info.jobId = jobId || info.jobId || '';
+                info.placeId = placeId ?? info.placeId ?? 0;
+                info.username = playerName || info.username || 'RobloxPlayerBeta';
+
+                if (info.pid) {
+                    const stale = this.pidMap.get(info.pid);
                     if (stale && stale !== workerId) {
                         const s = this.workers.get(stale);
                         if (s) {
@@ -91,15 +117,26 @@ class WsServer {
                             }
                         }
                     }
-                    this.pidMap.set(pid, workerId!);
+                    this.pidMap.set(info.pid, workerId!);
                 }
-                this.sessions.register(workerId!, { pid, name: 'RobloxPlayerBeta', capabilities: regCaps });
-                this._safeSend(ws, { type: 'registered', worker_id: workerId, pid, placeName: name, jobId, placeId });
-                console.log(`[WS] Registered: ${workerId}${pid ? ' pid='+pid : ''} "${name}"`);
+
+                const displayName = playerName || (info.placeName ? `${info.placeName} (${workerId})` : 'RobloxPlayerBeta');
+                this.sessions.register(workerId!, {
+                    pid: info.pid,
+                    name: displayName,
+                    capabilities: regCaps,
+                    transport: 'ws'
+                });
+
+                if (!registered) {
+                    registered = true;
+                    this._safeSend(ws, { type: 'registered', worker_id: workerId, pid: info.pid, placeName: info.placeName, jobId: info.jobId, placeId: info.placeId });
+                    console.log(`[WS] Registered: ${workerId}${info.pid ? ' pid='+info.pid : ''} "${info.placeName}"`);
+                }
             };
 
             ws.on('message', (raw: any) => {
-                if (raw.length > 50 * 1024 * 1024) { // 50MB limit
+                if (raw.length > 50 * 1024 * 1024) {
                     console.error('[WS] Payload too large');
                     return;
                 }
@@ -114,33 +151,40 @@ class WsServer {
                         registered = false;
 
                         const old = this.workers.get(workerId);
-                if (old && old.ws !== ws) {
-                    // Do not eagerly delete pidMap yet, wait for finalizeReg
+                        if (old && old.ws !== ws) {
                             try { old.ws.close(); } catch {}
                         }
 
-                        this.workers.set(workerId, { workerId, pid: undefined, placeName: '', jobId: '', placeId: 0, ws });
+                        let targetPid = typeof msg.pid === 'number' && msg.pid > 0 ? msg.pid : undefined;
+                        if (!targetPid) {
+                            targetPid = matchRobloxPid(msg.placeName || '', msg.placeId);
+                        }
 
+                        this.workers.set(workerId, {
+                            workerId,
+                            pid: targetPid,
+                            placeName: msg.placeName || '',
+                            jobId: msg.jobId || '',
+                            placeId: msg.placeId || 0,
+                            username: msg.username || '',
+                            ws
+                        });
+
+                        // Register immediately in sessions and notify client
+                        finalizeReg(targetPid, msg.placeName, msg.jobId, msg.placeId, msg.username);
+
+                        // Also send probe to enrich metadata in the background
                         const identId = `ident_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-                        this._safeSend(ws, { type: 'task', id: identId, tool: 'get_game_metadata', args: {}, timestamp: Date.now() });
-
-                        if (regTimer) clearTimeout(regTimer);
-                        regTimer = setTimeout(() => {
-                            regTimer = null;
-                            finalizeReg(matchRobloxPid(msg.placeName||'', msg.placeId), msg.placeName, msg.jobId, msg.placeId);
-                        }, REGISTER_TIMEOUT_MS);
+                        this._safeSend(ws, { type: 'task', id: identId, tool: 'get-metadata', args: {}, timestamp: Date.now() });
                         break;
                     }
 
                     case 'result': {
-                        if (regTimer && msg.data?.metadata && workerId) {
+                        if (msg.data?.metadata && workerId) {
                             const info = this.workers.get(workerId);
-                            if (info && info.ws === ws && info.pid === undefined) {
-                                clearTimeout(regTimer);
-                                regTimer = null;
+                            if (info && info.ws === ws) {
                                 const m = msg.data.metadata;
-                                finalizeReg(matchRobloxPid(m.Name, m.PlaceId), m.Name, m.JobId, m.PlaceId);
-                                return;
+                                finalizeReg(matchRobloxPid(m.Name, m.PlaceId), m.Name, m.JobId, m.PlaceId, info.username);
                             }
                         }
                         if (msg.id) this.queue.resolveTask(msg.id, msg.data, msg.error);
@@ -156,7 +200,6 @@ class WsServer {
             ws.on('close', () => cleanup());
             ws.on('error', (err: any) => cleanup(err?.message || 'Connection error'));
         });
-
 
         try {
             this._taskHandler = (task: any) => {
