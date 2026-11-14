@@ -1,6 +1,24 @@
 const path = require('path');
 const { getMcpSdk, scanMcpSdk } = require('./sdk-scanner');
-const { debugManager } = require('./debug-manager');
+function getDebugManager(): any {
+    try {
+        const mod = require('./debug-manager');
+        return mod.debugManager || mod;
+    } catch {
+        return {
+            startToolCall: () => '',
+            endToolResult: () => {},
+            endToolError: () => {},
+            isEnabled: () => false,
+            setEnabled: () => false,
+            getStatus: () => ({ enabled: false, totalSessions: 0, totalEvents: 0, storagePath: '' }),
+            listSessions: () => [],
+            getSessionEvents: () => ({ total: 0, sessionId: '', events: [] }),
+            getAllRecentEvents: () => [],
+            clearHistory: () => ({ success: true, clearedCount: 0 }),
+        };
+    }
+}
 
 const {
     Server,
@@ -142,6 +160,7 @@ function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
 }
 
 async function runServerTool(name: string, args: any, proc: any, sessions: any): Promise<any> {
+  const debugManager = getDebugManager();
   switch (name) {
     case 'list-roblox-processes': {
         const procs = proc.listRobloxProcesses();
@@ -253,6 +272,7 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
     }
     case 'set-transport-mode': return { success: true, mode: args?.mode || 'auto' };
     case 'get-debug-history': {
+        const debugManager = getDebugManager();
         const sessionId = args?.sessionId || args?.session_id || args?.workerId || args?.worker_id;
         const toolFilter = args?.tool;
         const statusFilter = args?.status;

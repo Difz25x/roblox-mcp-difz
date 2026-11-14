@@ -10,15 +10,43 @@ const os = require('os');
 import * as readline from 'readline';
 
 const { DiscoveryServer, getDiscoveryPort } = require('./discovery-server');
-const {
-    startProxyTunnel,
-    stopProxyTunnel,
-    getActiveProxyUrl,
-    isProxyRunning,
-} = require('./proxy-manager');
-const { debugManager } = require('./debug-manager');
 
 let _proxyUrl: string | null = null;
+
+function getProxyManager(): any {
+    try {
+        return require('./proxy-manager');
+    } catch {
+        return {
+            startProxyTunnel: async () => { throw new Error('proxy-manager module unavailable. Try running npm run build.'); },
+            stopProxyTunnel: () => {},
+            getActiveProxyUrl: () => null,
+            isProxyRunning: () => false,
+        };
+    }
+}
+
+function getDebugManager(): any {
+    try {
+        const mod = require('./debug-manager');
+        return mod.debugManager || mod;
+    } catch {
+        return {
+            isEnabled: () => false,
+            setEnabled: () => false,
+            getStatus: () => ({ enabled: false, totalSessions: 0, totalEvents: 0, storagePath: '' }),
+            recordSessionConnect: () => {},
+            recordSessionDisconnect: () => {},
+            startToolCall: () => '',
+            endToolResult: () => {},
+            endToolError: () => {},
+            listSessions: () => [],
+            getSessionEvents: () => ({ total: 0, sessionId: '', events: [] }),
+            getAllRecentEvents: () => [],
+            clearHistory: () => ({ success: true, clearedCount: 0 }),
+        };
+    }
+}
 
 const CONFIG_DIR = path.join(os.homedir(), '.roblox-mcp');
 try { if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true }); } catch {}
@@ -124,6 +152,7 @@ async function generateProxyWithProgress(port: number): Promise<string | null> {
     }, 80);
 
     try {
+        const { startProxyTunnel } = getProxyManager();
         const { url } = await startProxyTunnel(port, (status: string) => {
             process.stdout.write(`\r\x1b[K  \x1b[2m${status}\x1b[0m\n`);
         });
@@ -141,6 +170,7 @@ async function generateProxyWithProgress(port: number): Promise<string | null> {
 }
 
 async function handleProxyMenuAction(port: number, returnToMenu: () => void): Promise<void> {
+    const { stopProxyTunnel } = getProxyManager();
     if (_proxyUrl) {
         console.clear();
         showCursor();
@@ -160,11 +190,11 @@ async function handleProxyMenuAction(port: number, returnToMenu: () => void): Pr
 
                 const choice = (_str || key?.name || '').toLowerCase();
                 if (choice === 'r') {
-                    stopProxyTunnel();
+                    try { stopProxyTunnel(); } catch {}
                     _proxyUrl = null;
                     await generateProxyWithProgress(port);
                 } else if (choice === 's') {
-                    stopProxyTunnel();
+                    try { stopProxyTunnel(); } catch {}
                     _proxyUrl = null;
                     console.log('\n  Proxy tunnel stopped.');
                     await new Promise(r => setTimeout(r, 600));
@@ -183,6 +213,17 @@ function confirm(message: string): Promise<boolean> {
     return new Promise((resolve) => {
         showCursor();
         process.stdout.write(`  ${message} \x1b[2m(y/n)\x1b[0m `);
+
+        if (!process.stdin.isTTY) {
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            rl.question('', (ans) => {
+                rl.close();
+                const yes = ans.trim().toLowerCase().startsWith('y');
+                resolve(yes);
+            });
+            return;
+        }
+
         readline.emitKeypressEvents(process.stdin);
         process.stdin.setRawMode(true);
         process.stdin.resume();
@@ -201,7 +242,7 @@ function fetchLatestVersion(): Promise<string | null> {
     return new Promise((resolve) => {
         const req = https.get(`https://registry.npmjs.org/${PKG.name}/latest`, {
             headers: { 'Accept': 'application/json' },
-            timeout: 5000,
+            timeout: 8000,
         }, (res: any) => {
             let data = '';
             res.on('data', (chunk: string) => { data += chunk; });
@@ -213,6 +254,15 @@ function fetchLatestVersion(): Promise<string | null> {
         req.on('error', () => resolve(null));
         req.on('timeout', () => { req.destroy(); resolve(null); });
     });
+}
+
+function isGitWorkingTree(): boolean {
+    try {
+        const repoRoot = path.resolve(__dirname, '..');
+        return fs.existsSync(path.join(repoRoot, '.git')) && fs.existsSync(path.join(repoRoot, 'package.json'));
+    } catch {
+        return false;
+    }
 }
 
 async function cmdUpdate(): Promise<void> {
@@ -235,25 +285,91 @@ async function cmdUpdate(): Promise<void> {
         return;
     }
 
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const inGitRepo = isGitWorkingTree();
+
     console.log(`  Updating package...`);
     try {
-        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-        const res = spawnSync(npmCmd, ['install', '-g', `${PKG.name}@latest`], {
+        if (inGitRepo) {
+            const repoRoot = path.resolve(__dirname, '..');
+            console.log(`  [Git Repo] Pulling latest repository updates...`);
+            const gitRes = spawnSync('git', ['pull', 'origin', 'main'], {
+                cwd: repoRoot,
+                stdio: 'inherit',
+                shell: true,
+                windowsHide: true,
+            });
+            if (gitRes.status !== 0) {
+                console.log(`  Warning: git pull exited with status ${gitRes.status}. Continuing with build...`);
+            }
+
+            console.log(`  [Git Repo] Installing dependencies & building TypeScript artifacts...`);
+            spawnSync(npmCmd, ['install'], {
+                cwd: repoRoot,
+                stdio: 'inherit',
+                shell: true,
+                windowsHide: true,
+            });
+            const buildRes = spawnSync(npmCmd, ['run', 'build'], {
+                cwd: repoRoot,
+                stdio: 'inherit',
+                shell: true,
+                windowsHide: true,
+            });
+            if (buildRes.status !== 0) {
+                throw new Error(`npm run build failed with code ${buildRes.status}`);
+            }
+        }
+
+        console.log(`  [Global NPM] Updating global binary (${PKG.name}@latest)...`);
+        let res = spawnSync(npmCmd, ['install', '-g', `${PKG.name}@latest`], {
             stdio: 'inherit',
-            timeout: 120000,
+            timeout: 180000,
             shell: true,
             windowsHide: true,
         });
+
+        if (res.status !== 0 || res.error) {
+            console.log(`  Initial install encountered issue, retrying with --force flag...`);
+            res = spawnSync(npmCmd, ['install', '-g', `${PKG.name}@latest`, '--force'], {
+                stdio: 'inherit',
+                timeout: 180000,
+                shell: true,
+                windowsHide: true,
+            });
+        }
+
         if (res.error) {
             throw res.error;
         }
         if (res.status !== 0) {
             throw new Error(`npm exited with code ${res.status}`);
         }
-        console.log(`  Updated to v${latest}.`);
-        console.log(`  Restarting...`);
 
-        const child = spawn(process.execPath, [__filename], {
+        console.log(`\n  \x1b[1;32mSuccessfully updated to v${latest}!\x1b[0m`);
+
+        const isCliDirect = process.argv.slice(2).includes('update');
+        if (isCliDirect) {
+            console.log(`  Run \x1b[36mrblx-mcp\x1b[0m to launch the updated version.\n`);
+            process.exit(0);
+        }
+
+        console.log(`  Restarting roblox-mcp...\n`);
+
+        if (process.stdin.isTTY) {
+            try {
+                process.stdin.setRawMode(false);
+                process.stdin.pause();
+                process.stdin.removeAllListeners('keypress');
+                process.stdin.removeAllListeners('data');
+            } catch {}
+        }
+
+        const binPath = path.resolve(__dirname, '..', 'bin', 'roblox-mcp');
+        const entryScript = fs.existsSync(binPath) ? binPath : __filename;
+        const cleanArgs = process.argv.slice(2).filter(a => a !== 'update');
+
+        const child = spawn(process.execPath, [entryScript, ...cleanArgs], {
             stdio: 'inherit',
             detached: false
         });
@@ -263,7 +379,9 @@ async function cmdUpdate(): Promise<void> {
         });
         return;
     } catch (err: any) {
-        console.error(`  Update failed: ${err.message}`);
+        console.error(`  \x1b[31mUpdate failed:\x1b[0m ${err.message}`);
+        console.log(`  You can update manually by running:`);
+        console.log(`    \x1b[36mnpm install -g ${PKG.name}@latest\x1b[0m\n`);
     }
 }
 
@@ -506,10 +624,11 @@ function showPostStartMenu(port: number, pid: number): void {
             },
         },
         {
-            label: `Debug Logging: ${debugManager.isEnabled() ? 'ON' : 'OFF'}`,
-            description: debugManager.isEnabled() ? 'Recording all MCP actions & sessions' : 'Action recording paused',
+            label: `Debug Logging: ${getDebugManager().isEnabled() ? 'ON' : 'OFF'}`,
+            description: getDebugManager().isEnabled() ? 'Recording all MCP actions & sessions' : 'Action recording paused',
             action: async () => {
-                debugManager.setEnabled(!debugManager.isEnabled());
+                const dm = getDebugManager();
+                dm.setEnabled(!dm.isEnabled());
                 showPostStartMenu(port, pid);
             },
         },
@@ -716,7 +835,7 @@ async function startTray(port: number, _pid: number): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
-    try { stopProxyTunnel(); } catch {}
+    try { getProxyManager().stopProxyTunnel(); } catch {}
     _proxyUrl = null;
     const PORT = getPort();
     let stoppedAny = false;
@@ -1058,7 +1177,7 @@ async function main(): Promise<void> {
 function cleanupAll(): void {
     if (_isHandingOverToDaemon) return;
     cleanupPidFile();
-    try { stopProxyTunnel(); } catch {}
+    try { getProxyManager().stopProxyTunnel(); } catch {}
     _proxyUrl = null;
     if (_discoveryServer) {
         try { _discoveryServer.stop(); } catch {}

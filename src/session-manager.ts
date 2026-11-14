@@ -1,4 +1,11 @@
-const { debugManager } = require('./debug-manager');
+function getDebugManager(): any {
+    try {
+        const mod = require('./debug-manager');
+        return mod.debugManager || mod;
+    } catch {
+        return null;
+    }
+}
 
 interface SessionInfo {
     workerId: string;
@@ -55,12 +62,15 @@ class SessionManager {
         });
         if (isNew) {
             try {
-                debugManager.recordSessionConnect(workerId, {
-                    pid: info?.pid,
-                    name: info?.name,
-                    transport: info?.transport,
-                    capabilities: info?.capabilities,
-                });
+                const dm = getDebugManager();
+                if (dm) {
+                    dm.recordSessionConnect(workerId, {
+                        pid: info?.pid,
+                        name: info?.name,
+                        transport: info?.transport,
+                        capabilities: info?.capabilities,
+                    });
+                }
             } catch {}
         }
         return { workerId, isNew };
@@ -93,7 +103,8 @@ class SessionManager {
             session.status = 'disconnected';
             session.lastSeen = Date.now();
             try {
-                debugManager.recordSessionDisconnect(workerId);
+                const dm = getDebugManager();
+                if (dm) dm.recordSessionDisconnect(workerId);
             } catch {}
         }
     }

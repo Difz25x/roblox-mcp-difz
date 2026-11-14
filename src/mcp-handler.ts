@@ -106,7 +106,25 @@ const LUA_TASK_NAME_MAP: Record<string, string> = {
     'find-instances': 'get-instances-by-class',
 };
 
-const { debugManager } = require('./debug-manager');
+function getDebugManager(): any {
+    try {
+        const mod = require('./debug-manager');
+        return mod.debugManager || mod;
+    } catch {
+        return {
+            startToolCall: () => '',
+            endToolResult: () => {},
+            endToolError: () => {},
+            isEnabled: () => false,
+            setEnabled: () => false,
+            getStatus: () => ({ enabled: false, totalSessions: 0, totalEvents: 0, storagePath: '' }),
+            listSessions: () => [],
+            getSessionEvents: () => ({ total: 0, sessionId: '', events: [] }),
+            getAllRecentEvents: () => [],
+            clearHistory: () => ({ success: true, clearedCount: 0 }),
+        };
+    }
+}
 
 const SERVER_SIDE_TOOLS = new Set<string>([
     'list-roblox-processes',
@@ -236,6 +254,7 @@ class McpHandler {
         const startTime = Date.now();
         const rawTarget = (args?.workerId || args?.worker_id || args?.sessionId || args?.session_id) as string | undefined;
         const targetPid = args?.pid !== undefined ? Number(args.pid) : undefined;
+        const debugManager = getDebugManager();
         let debugEventId = '';
 
         try {
@@ -415,6 +434,7 @@ class McpHandler {
     }
 
     private async _runServerTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+        const debugManager = getDebugManager();
         const rawTarget = (args.workerId || args.worker_id || args.sessionId || args.session_id) as string | undefined;
         if (!args.pid && rawTarget) {
             const active = this.sessions.listActive ? this.sessions.listActive() : [];
@@ -573,6 +593,7 @@ class McpHandler {
             }
 
             case 'get-debug-history': {
+                const debugManager = getDebugManager();
                 const sessionId = (args.sessionId || args.session_id || args.workerId || args.worker_id) as string | undefined;
                 const toolFilter = (args.tool as string) || undefined;
                 const statusFilter = (args.status as string) || undefined;

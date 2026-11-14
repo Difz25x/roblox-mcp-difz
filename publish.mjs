@@ -104,11 +104,7 @@ async function main() {
     run("npm", ["pack", "--dry-run", "--ignore-scripts"]);
     if (dryRun) { console.log(`[dry-run] would commit, tag ${tag}, push, and publish.`); process.exit(0); }
 
-    const filesToAdd = ["-f", "src/", "package.json", "package-lock.json", "README.md", "public/"];
-    if (existsSync("LICENSE")) filesToAdd.push("LICENSE");
-    if (existsSync("SECURITY.md")) filesToAdd.push("SECURITY.md");
-    if (existsSync(".github/")) filesToAdd.push(".github/");
-    run("git", ["add", ...filesToAdd]);
+    run("git", ["add", "-A"]);
     if (hasStagedChanges()) run("git", ["commit", "-m", `Release ${tag}`]);
 
     await ensureTag();

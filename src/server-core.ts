@@ -16,8 +16,41 @@ const processManager = require('./process-manager');
 const { scanMcpSdk } = require('./sdk-scanner');
 const { stopAllDiscoveryServers } = require('./discovery-server');
 const { getSkillContent, SKILL_TARGETS, installSkillToTargets } = require('./skill-installer');
-const { getActiveProxyUrl, isProxyRunning, startProxyTunnel, stopProxyTunnel } = require('./proxy-manager');
-const { debugManager } = require('./debug-manager');
+
+function getProxyManager(): any {
+    try {
+        return require('./proxy-manager');
+    } catch {
+        return {
+            getActiveProxyUrl: () => null,
+            isProxyRunning: () => false,
+            startProxyTunnel: async () => { throw new Error('proxy-manager module unavailable'); },
+            stopProxyTunnel: () => {},
+        };
+    }
+}
+
+function getDebugManager(): any {
+    try {
+        const mod = require('./debug-manager');
+        return mod.debugManager || mod;
+    } catch {
+        return {
+            isEnabled: () => false,
+            setEnabled: () => false,
+            getStatus: () => ({ enabled: false, totalSessions: 0, totalEvents: 0, storagePath: '' }),
+            recordSessionConnect: () => {},
+            recordSessionDisconnect: () => {},
+            startToolCall: () => '',
+            endToolResult: () => {},
+            endToolError: () => {},
+            listSessions: () => [],
+            getSessionEvents: () => ({ total: 0, sessionId: '', events: [] }),
+            getAllRecentEvents: () => [],
+            clearHistory: () => ({ success: true, clearedCount: 0 }),
+        };
+    }
+}
 
 type QueueManager = InstanceType<typeof QueueManagerCls>;
 type ToolDefinitions = InstanceType<typeof ToolDefinitionsCls>;
@@ -112,7 +145,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
                 const reqHostHeader = ((req.headers['x-forwarded-host'] as string) || req.headers.host || '').trim();
                 const reqHost = reqHostHeader.split(':')[0];
                 const isHttps = req.headers['x-forwarded-proto'] === 'https' || req.secure;
-                const activeProxy = getActiveProxyUrl();
+                const activeProxy = getProxyManager().getActiveProxyUrl();
                 let proxyDomain = '';
                 if (activeProxy) {
                     try { proxyDomain = new URL(activeProxy).hostname; } catch {}
@@ -302,9 +335,10 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.get('/api/proxy', (_req: Request, res: Response): void => {
-        const url = getActiveProxyUrl();
+        const pm = getProxyManager();
+        const url = pm.getActiveProxyUrl();
         res.json({
-            active: isProxyRunning(),
+            active: pm.isProxyRunning(),
             url: url || null,
             inject_url: url ? `loadstring(game:HttpGet("${url}/mcp.lua"))()` : null,
         });
@@ -313,7 +347,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     app.post('/api/proxy/start', async (_req: Request, res: Response): Promise<void> => {
         try {
             const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
-            const { url } = await startProxyTunnel(port);
+            const { url } = await getProxyManager().startProxyTunnel(port);
             res.json({
                 success: true,
                 url,
@@ -325,21 +359,22 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.post('/api/proxy/stop', (_req: Request, res: Response): void => {
-        stopProxyTunnel();
+        try { getProxyManager().stopProxyTunnel(); } catch {}
         res.json({ success: true, message: 'Proxy tunnel stopped' });
     });
 
     app.get('/api/debug', (_req: Request, res: Response): void => {
         res.json({
             success: true,
-            ...debugManager.getStatus(),
+            ...getDebugManager().getStatus(),
         });
     });
 
     app.post('/api/debug/toggle', (req: Request, res: Response): void => {
+        const dm = getDebugManager();
         const { enabled } = req.body || {};
-        const targetState = enabled !== undefined ? !!enabled : !debugManager.isEnabled();
-        const newState = debugManager.setEnabled(targetState);
+        const targetState = enabled !== undefined ? !!enabled : !dm.isEnabled();
+        const newState = dm.setEnabled(targetState);
         res.json({
             success: true,
             enabled: newState,
@@ -348,9 +383,10 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.get('/api/debug/sessions', (req: Request, res: Response): void => {
+        const dm = getDebugManager();
         const status = (req.query.status as string) || undefined;
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-        const list = debugManager.listSessions({ status, limit });
+        const list = dm.listSessions({ status, limit });
         res.json({
             success: true,
             total: list.length,
@@ -359,6 +395,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.get('/api/debug/sessions/:id', (req: Request, res: Response): void => {
+        const dm = getDebugManager();
         const sessionId = req.params.id;
         const tool = (req.query.tool as string) || undefined;
         const status = (req.query.status as string) || undefined;
@@ -367,7 +404,7 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
         const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
-        const data = debugManager.getSessionEvents(sessionId, { tool, status, execution, search, limit, offset });
+        const data = dm.getSessionEvents(sessionId, { tool, status, execution, search, limit, offset });
         res.json({
             success: true,
             ...data,
@@ -375,11 +412,12 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.get('/api/debug/recent', (req: Request, res: Response): void => {
+        const dm = getDebugManager();
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
         const search = (req.query.search as string) || undefined;
         const status = (req.query.status as string) || undefined;
         const execution = (req.query.execution as string) || undefined;
-        const events = debugManager.getAllRecentEvents(limit, { search, status, execution });
+        const events = dm.getAllRecentEvents(limit, { search, status, execution });
         res.json({
             success: true,
             total: events.length,
@@ -388,8 +426,9 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.delete('/api/debug/sessions/:id', (req: Request, res: Response): void => {
+        const dm = getDebugManager();
         const sessionId = req.params.id;
-        const result = debugManager.clearHistory(sessionId);
+        const result = dm.clearHistory(sessionId);
         res.json({
             success: true,
             message: `Session ${sessionId} debug logs cleared`,
@@ -398,7 +437,8 @@ function createApp(opts?: CreateAppOptions): AppComponents {
     });
 
     app.delete('/api/debug', (_req: Request, res: Response): void => {
-        const result = debugManager.clearHistory();
+        const dm = getDebugManager();
+        const result = dm.clearHistory();
         res.json({
             success: true,
             message: 'All debug logs cleared',
