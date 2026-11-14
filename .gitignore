@@ -46,3 +46,14 @@ yarn-debug.log*
 yarn-error.log*
 publish.js
 CLAUDE.md
+# Auto-generated protection rules
+
+.claude
+.impeccable
+.rbxsync-trash
+AGENTS.md
+DESIGN.md
+GEMINI.md
+PRODUCE.md
+SYNTAX.md
+docs

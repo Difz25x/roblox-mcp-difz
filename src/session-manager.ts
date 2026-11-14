@@ -1,3 +1,5 @@
+const { debugManager } = require('./debug-manager');
+
 interface SessionInfo {
     workerId: string;
     pid?: string | number;
@@ -51,6 +53,16 @@ class SessionManager {
             transport: info?.transport ?? existing?.transport ?? 'ws',
             capabilities: info?.capabilities ?? existing?.capabilities,
         });
+        if (isNew) {
+            try {
+                debugManager.recordSessionConnect(workerId, {
+                    pid: info?.pid,
+                    name: info?.name,
+                    transport: info?.transport,
+                    capabilities: info?.capabilities,
+                });
+            } catch {}
+        }
         return { workerId, isNew };
     }
 
@@ -80,6 +92,9 @@ class SessionManager {
         if (session) {
             session.status = 'disconnected';
             session.lastSeen = Date.now();
+            try {
+                debugManager.recordSessionDisconnect(workerId);
+            } catch {}
         }
     }
 

@@ -43,9 +43,16 @@
                     <span class="nav-tab-key">5</span>
                     <span>Settings</span>
                 </button>
+                <button class="nav-tab-btn" id="nav-btn-debug" onclick="switchView('debug')">
+                    <span class="nav-tab-key">6</span>
+                    <span>Debug Memory</span>
+                </button>
             </nav>
 
             <div class="top-actions">
+                <button class="btn btn-sm" id="btn-quick-debug" onclick="toggleDebugMode()" title="Toggle persistent MCP debug & session memory">
+                    <span>Debug: <strong id="quick-debug-chip">On</strong></span>
+                </button>
                 <button class="btn btn-sm" id="btn-quick-autoexec" onclick="toggleAutoexecute()">
                     <span>Autoexec: <strong id="quick-autoexec-chip">On</strong></span>
                 </button>
@@ -380,6 +387,30 @@
 
                 <div class="ops-panel">
                     <div class="ops-head">
+                        <span class="ops-title">Debug Recording &amp; Memory</span>
+                        <p class="ops-desc">
+                            Records all MCP tool calls, parameters, results, and executor errors partitioned per Roblox session. Persisted even after games disconnect.
+                        </p>
+                    </div>
+                    <div>
+                        <div class="port-stat-row">
+                            <span class="port-stat-key">Status:</span>
+                            <span class="port-stat-val" id="ops-debug-status">Active</span>
+                        </div>
+                        <div class="port-stat-row" style="margin-bottom: 0.75rem;">
+                            <span class="port-stat-key">Recorded Sessions:</span>
+                            <span class="port-stat-val" id="ops-debug-sessions-count">0</span>
+                        </div>
+                        <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                            <button class="btn btn-sm btn-primary" onclick="toggleDebugMode()">Toggle Debug</button>
+                            <button class="btn btn-sm" onclick="switchView('debug')">View Memory Timeline</button>
+                            <button class="btn btn-sm btn-danger" onclick="clearAllDebugLogs()">Clear History</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ops-panel">
+                    <div class="ops-head">
                         <span class="ops-title">Shutdown Server</span>
                         <p class="ops-desc">
                             Disconnect all connected workers, stop the discovery router, and terminate this server.
@@ -389,6 +420,73 @@
                         <button class="btn btn-sm btn-danger" onclick="shutdownServer()">Shut Down Server</button>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <section class="tab-view" id="view-debug">
+            <div class="view-header">
+                <div class="view-title-group">
+                    <h2 class="view-title">Debug Memory &amp; Session History</h2>
+                    <span class="status-badge" id="debug-sessions-kpi">0 Sessions</span>
+                    <span class="status-badge online" id="debug-state-chip">Recording Active</span>
+                </div>
+                <div style="display:flex; gap:0.4rem; align-items:center;">
+                    <button class="btn btn-sm" id="btn-toggle-debug-view" onclick="toggleDebugMode()">Pause Logging</button>
+                    <button class="btn btn-sm" onclick="loadDebugSessions(true)">Refresh</button>
+                    <button class="btn btn-sm btn-danger" onclick="clearAllDebugLogs()">Clear All</button>
+                </div>
+            </div>
+
+            <div class="debug-workspace">
+                <aside class="debug-sidebar">
+                    <div class="debug-sidebar-head">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:12px; font-weight:600; color:#fff;">Sessions Memory</span>
+                            <span style="font-size:11px; color:var(--text-muted);" id="debug-session-count-tag">0 total</span>
+                        </div>
+                        <div class="debug-search-box">
+                            <input type="text" id="debug-session-search" placeholder="Filter session / player / PID..." oninput="filterDebugSessionsList()">
+                        </div>
+                    </div>
+                    <div class="debug-sessions-list" id="debug-sessions-list-container">
+                        <div style="padding:1.5rem; text-align:center; color:var(--text-muted); font-size:12px;">
+                            Loading session memory...
+                        </div>
+                    </div>
+                </aside>
+
+                <section class="debug-timeline-panel">
+                    <div class="debug-timeline-head">
+                        <div>
+                            <span style="font-weight:600; font-size:13px; color:#fff;" id="debug-timeline-title">Recent MCP Actions (All Sessions)</span>
+                            <span style="font-size:11px; color:var(--text-muted); margin-left:0.5rem;" id="debug-timeline-subtitle"></span>
+                        </div>
+                        <div class="debug-timeline-filters">
+                            <select id="debug-filter-exec" onchange="reloadSelectedSessionEvents()">
+                                <option value="all">All Targets</option>
+                                <option value="client">Client (Roblox)</option>
+                                <option value="server">Server (MCP)</option>
+                            </select>
+                            <select id="debug-filter-tool" onchange="reloadSelectedSessionEvents()">
+                                <option value="">All Tools</option>
+                            </select>
+                            <select id="debug-filter-status" onchange="reloadSelectedSessionEvents()">
+                                <option value="">All Status</option>
+                                <option value="success">Success</option>
+                                <option value="error">Errors</option>
+                            </select>
+                            <input type="text" id="debug-filter-search" placeholder="Search args / results..." oninput="debounceReloadEvents()">
+                            <button class="btn btn-sm" onclick="expandAllDebugCards()" title="Extend all event cards">Extend All</button>
+                            <button class="btn btn-sm" onclick="collapseAllDebugCards()" title="Minimize all event cards">Minimize All</button>
+                        </div>
+                    </div>
+
+                    <div class="debug-events-stream" id="debug-events-stream-container">
+                        <div style="padding:2.5rem; text-align:center; color:var(--text-muted); font-size:12px;">
+                            Select a session or wait for incoming MCP actions...
+                        </div>
+                    </div>
+                </section>
             </div>
         </section>
     </main>
@@ -499,6 +597,36 @@
             <div class="modal-footer">
                 <span id="skill-deploy-feedback">Select an environment to install the skill.</span>
                 <button class="btn btn-sm" onclick="closeSkillModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="debug-inspector-modal" class="modal-overlay" onclick="closeDebugInspector(event)">
+        <div class="modal-chassis debug-modal-chassis" onclick="event.stopPropagation()">
+            <div class="modal-head">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                    <span class="modal-title" id="debug-modal-tool-name">Tool Inspector</span>
+                    <span class="status-badge" id="debug-modal-exec-tag">CLIENT</span>
+                    <span class="status-badge online" id="debug-modal-status-tag">SUCCESS</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <button class="btn btn-sm" onclick="copyInspectorData()">Copy JSON</button>
+                    <button class="modal-close-btn" onclick="closeDebugInspector()" aria-label="Close dialog">&times;</button>
+                </div>
+            </div>
+
+            <div class="modal-body debug-modal-body">
+                <div class="debug-modal-meta-bar" id="debug-modal-meta-bar"></div>
+                <div class="debug-modal-tab-bar">
+                    <button class="debug-tab-btn active" id="debug-tab-ui" onclick="switchInspectorTab('ui')">Visual UI</button>
+                    <button class="debug-tab-btn" id="debug-tab-json" onclick="switchInspectorTab('json')">Raw JSON</button>
+                </div>
+                <div class="debug-modal-content-area" id="debug-modal-content-area"></div>
+            </div>
+
+            <div class="modal-footer">
+                <span id="debug-modal-footer-info" style="font-family:var(--font-mono); font-size:11px;">Action ID</span>
+                <button class="btn btn-sm" onclick="closeDebugInspector()">Close</button>
             </div>
         </div>
     </div>

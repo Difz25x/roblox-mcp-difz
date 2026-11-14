@@ -47,6 +47,11 @@ class ToolDefinitions {
             'record-roblox-video',
             'get-transport-status',
             'set-transport-mode',
+            'get-debug-history',
+            'list-debug-sessions',
+            'set-debug-mode',
+            'clear-debug-history',
+            'get-debug-status',
         ]);
 
         this.tools = this._defineTools().map(tool => {
@@ -1053,6 +1058,61 @@ class ToolDefinitions {
                         log_type: { type: "string", enum: ["all", "message", "warning", "error", "info"], description: "Filter by log type." },
                         max_lines: { type: "number", description: "Maximum recent lines to retrieve." }
                     }
+                }
+            },
+            {
+                name: "get-debug-history",
+                description: "Retrieve persistent debug memory and action history recorded by MCP. Partitioned per session and preserved even after game disconnects.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        session_id: { type: "string", description: "Target session ID to retrieve history for. If omitted, returns recent events across all sessions." },
+                        tool: { type: "string", description: "Optional filter by tool name." },
+                        status: { type: "string", enum: ["all", "success", "error"], description: "Optional filter by result status." },
+                        search: { type: "string", description: "Optional keyword search in arguments, results, or error messages." },
+                        limit: { type: "number", description: "Maximum events to return (default: 50)." },
+                        offset: { type: "number", description: "Pagination offset (default: 0)." }
+                    }
+                }
+            },
+            {
+                name: "list-debug-sessions",
+                description: "List all persistent debug sessions recorded by MCP (both active and historically preserved sessions).",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        status: { type: "string", enum: ["all", "active", "disconnected"], description: "Filter by session status." },
+                        limit: { type: "number", description: "Maximum sessions to return (default: 50)." }
+                    }
+                }
+            },
+            {
+                name: "set-debug-mode",
+                description: "Toggle or set MCP internal debug recording and session memory on or off.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        enabled: { type: "boolean", description: "True to enable debug recording, false to pause." }
+                    },
+                    required: ["enabled"]
+                }
+            },
+            {
+                name: "clear-debug-history",
+                description: "Delete stored debug logs and session memory from disk.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        session_id: { type: "string", description: "Specific session ID to clear. If omitted, deletes all stored debug sessions." }
+                    }
+                }
+            },
+            {
+                name: "get-debug-status",
+                description: "Get current status of MCP debug recording: enabled state, total sessions, total events, and storage path.",
+                inputSchema: {
+                    type: "object",
+                    properties: {}
                 }
             }
         ];

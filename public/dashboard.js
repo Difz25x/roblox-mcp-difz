@@ -32,6 +32,9 @@ function switchView(tabId) {
         loadPortConfig();
     } else if (tabId === 'unc') {
         loadUncMatrix();
+    } else if (tabId === 'debug') {
+        loadDebugSessions(true);
+        fetchDebugStatus();
     }
 }
 
@@ -240,6 +243,17 @@ async function loadTools() {
 
         if (allTools.length > 0 && !selectedToolName) {
             selectedToolName = allTools[0].name;
+        }
+
+        const debugToolSelect = document.getElementById('debug-filter-tool');
+        if (debugToolSelect && allTools.length > 0) {
+            const currentVal = debugToolSelect.value;
+            let options = '<option value="">All Tools</option>';
+            allTools.forEach(t => {
+                options += `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`;
+            });
+            debugToolSelect.innerHTML = options;
+            debugToolSelect.value = currentVal;
         }
 
         renderToolsList();
@@ -823,23 +837,602 @@ window.addEventListener('keydown', (e) => {
         switchView('unc');
     } else if (e.key === '5') {
         switchView('settings');
+    } else if (e.key === '6') {
+        switchView('debug');
     } else if (e.key.toLowerCase() === 'l') {
         openLoaderModal();
     } else if (e.key.toLowerCase() === 'r') {
         loadProcesses();
         fetchTelemetry();
+        fetchDebugStatus();
         notify('Data refreshed');
     }
 });
+
+let debugSessions = [];
+let selectedDebugSessionId = null;
+let debugSearchDebounce = null;
+
+async function fetchDebugStatus() {
+    try {
+        const res = await fetch('/api/debug');
+        const data = await res.json();
+        const enabled = !!data.enabled;
+
+        const quickChip = document.getElementById('quick-debug-chip');
+        if (quickChip) {
+            quickChip.innerText = enabled ? 'On' : 'Off';
+            quickChip.style.color = enabled ? 'var(--emerald)' : 'var(--text-muted)';
+        }
+
+        const stateChip = document.getElementById('debug-state-chip');
+        if (stateChip) {
+            stateChip.className = enabled ? 'status-badge online' : 'status-badge offline';
+            stateChip.innerText = enabled ? 'Recording Active' : 'Recording Paused';
+        }
+
+        const btnToggle = document.getElementById('btn-toggle-debug-view');
+        if (btnToggle) {
+            btnToggle.innerText = enabled ? 'Pause Logging' : 'Resume Logging';
+            btnToggle.className = enabled ? 'btn btn-sm btn-danger' : 'btn btn-sm btn-primary';
+        }
+
+        const opsStatus = document.getElementById('ops-debug-status');
+        if (opsStatus) opsStatus.innerText = enabled ? 'Active' : 'Paused';
+
+        const opsCount = document.getElementById('ops-debug-sessions-count');
+        if (opsCount) opsCount.innerText = `${data.totalSessions || 0} sessions (${data.totalEvents || 0} events)`;
+
+        const kpi = document.getElementById('debug-sessions-kpi');
+        if (kpi) kpi.innerText = `${data.totalSessions || 0} Sessions`;
+    } catch {}
+}
+
+async function toggleDebugMode() {
+    try {
+        const res = await fetch('/api/debug/toggle', { method: 'POST' });
+        const data = await res.json();
+        notify(data.message || 'Debug mode toggled');
+        fetchDebugStatus();
+    } catch (err) {
+        notify('Failed to toggle debug: ' + err.message);
+    }
+}
+
+async function loadDebugSessions(force = false) {
+    const container = document.getElementById('debug-sessions-list-container');
+    const countTag = document.getElementById('debug-session-count-tag');
+    if (!container) return;
+
+    try {
+        const res = await fetch('/api/debug/sessions?limit=100');
+        const data = await res.json();
+        debugSessions = data.sessions || [];
+
+        if (countTag) countTag.innerText = `${debugSessions.length} total`;
+
+        filterDebugSessionsList();
+
+        if (!selectedDebugSessionId || force) {
+            loadRecentDebugEvents();
+        }
+    } catch (err) {
+        console.error('Failed to load debug sessions:', err);
+    }
+}
+
+function filterDebugSessionsList() {
+    const container = document.getElementById('debug-sessions-list-container');
+    if (!container) return;
+
+    const query = (document.getElementById('debug-session-search')?.value || '').toLowerCase().trim();
+    let filtered = debugSessions;
+
+    if (query) {
+        filtered = filtered.filter(s =>
+            (s.sessionId && s.sessionId.toLowerCase().includes(query)) ||
+            (s.playerName && s.playerName.toLowerCase().includes(query)) ||
+            (s.pid && String(s.pid).includes(query))
+        );
+    }
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div style="padding:1.5rem; text-align:center; color:var(--text-muted); font-size:12px;">
+                ${debugSessions.length === 0 ? 'No debug sessions recorded yet.' : 'No matching sessions.'}
+            </div>
+        `;
+        return;
+    }
+
+    let html = `
+        <div class="debug-session-card ${selectedDebugSessionId === null ? 'selected' : ''}" onclick="selectDebugSession(null)">
+            <div class="debug-session-top">
+                <span class="debug-session-id" style="color:var(--text-primary); font-weight:700;">★ All Recent Events</span>
+                <span class="status-badge online" style="font-size:10px;">Global</span>
+            </div>
+            <div class="debug-session-meta">
+                <span>Aggregated live feed</span>
+            </div>
+        </div>
+    `;
+
+    html += filtered.map(s => {
+        const isSelected = selectedDebugSessionId === s.sessionId;
+        const isActive = s.status === 'active';
+        const dateStr = new Date(s.lastActivityTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const nameDisplay = s.playerName ? `${s.playerName}` : (s.pid ? `PID ${s.pid}` : s.sessionId);
+        return `
+            <div class="debug-session-card ${isSelected ? 'selected' : ''}" onclick="selectDebugSession('${s.sessionId}')">
+                <div class="debug-session-top">
+                    <span class="debug-session-id" title="${s.sessionId}">${escapeHtml(nameDisplay)}</span>
+                    <span class="status-badge ${isActive ? 'online' : ''}" style="font-size:10px;">${isActive ? 'Active' : 'Saved'}</span>
+                </div>
+                <div class="debug-session-meta">
+                    <span>${s.eventCount || 0} events</span>
+                    ${s.errorCount ? `<span style="color:var(--rose); font-weight:600;">• ${s.errorCount} err</span>` : ''}
+                    <span>• ${dateStr}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+async function selectDebugSession(sessionId) {
+    selectedDebugSessionId = sessionId;
+    filterDebugSessionsList();
+
+    const titleEl = document.getElementById('debug-timeline-title');
+    const subEl = document.getElementById('debug-timeline-subtitle');
+
+    if (!sessionId) {
+        if (titleEl) titleEl.innerText = 'Recent MCP Actions (All Sessions)';
+        if (subEl) subEl.innerText = 'Aggregated history';
+        loadRecentDebugEvents();
+        return;
+    }
+
+    const session = debugSessions.find(s => s.sessionId === sessionId);
+    if (titleEl) {
+        titleEl.innerText = session?.playerName ? `${session.playerName} (PID ${session.pid || '?'})` : sessionId;
+    }
+    if (subEl) {
+        subEl.innerText = session?.status === 'active' ? '● Connected' : '○ Preserved from disk';
+    }
+
+    reloadSelectedSessionEvents();
+}
+
+async function loadRecentDebugEvents() {
+    const container = document.getElementById('debug-events-stream-container');
+    if (!container) return;
+
+    const tool = document.getElementById('debug-filter-tool')?.value || '';
+    const status = document.getElementById('debug-filter-status')?.value || '';
+    const exec = document.getElementById('debug-filter-exec')?.value || 'all';
+    const search = document.getElementById('debug-filter-search')?.value || '';
+
+    let url = `/api/debug/recent?limit=80`;
+    if (status) url += `&status=${encodeURIComponent(status)}`;
+    if (exec && exec !== 'all') url += `&execution=${encodeURIComponent(exec)}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        renderDebugEvents(data.events || []);
+    } catch (err) {
+        container.innerHTML = `<div style="padding:1.5rem; color:var(--rose);">Failed to load recent events: ${err.message}</div>`;
+    }
+}
+
+async function reloadSelectedSessionEvents() {
+    if (!selectedDebugSessionId) {
+        loadRecentDebugEvents();
+        return;
+    }
+
+    const container = document.getElementById('debug-events-stream-container');
+    if (!container) return;
+
+    const tool = document.getElementById('debug-filter-tool')?.value || '';
+    const status = document.getElementById('debug-filter-status')?.value || '';
+    const exec = document.getElementById('debug-filter-exec')?.value || 'all';
+    const search = document.getElementById('debug-filter-search')?.value || '';
+
+    let url = `/api/debug/sessions/${encodeURIComponent(selectedDebugSessionId)}?limit=150`;
+    if (tool) url += `&tool=${encodeURIComponent(tool)}`;
+    if (status) url += `&status=${encodeURIComponent(status)}`;
+    if (exec && exec !== 'all') url += `&execution=${encodeURIComponent(exec)}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        renderDebugEvents(data.events || []);
+    } catch (err) {
+        container.innerHTML = `<div style="padding:1.5rem; color:var(--rose);">Failed to load session events: ${err.message}</div>`;
+    }
+}
+
+function debounceReloadEvents() {
+    clearTimeout(debugSearchDebounce);
+    debugSearchDebounce = setTimeout(() => {
+        reloadSelectedSessionEvents();
+    }, 200);
+}
+
+const currentDebugEventsMap = new Map();
+let currentInspectedEventId = null;
+let currentInspectorTab = 'ui';
+
+function getTypeLabel(val) {
+    if (val === null) return 'null';
+    if (val === undefined) return 'undefined';
+    if (Array.isArray(val)) return `arr[${val.length}]`;
+    return typeof val;
+}
+
+function renderVisualData(data) {
+    if (data === null) {
+        return '<span style="color:var(--text-muted); font-style:italic;">null</span>';
+    }
+    if (data === undefined) {
+        return '<span style="color:var(--text-muted); font-style:italic;">undefined</span>';
+    }
+    if (typeof data === 'boolean') {
+        return `<span style="color:${data ? 'var(--emerald)' : 'var(--rose)'}; font-weight:700;">${data}</span>`;
+    }
+    if (typeof data === 'number') {
+        return `<span style="color:#60a5fa; font-weight:600;">${data}</span>`;
+    }
+    if (typeof data === 'string') {
+        if (data.startsWith('data:image/')) {
+            return `
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                    <img src="${data}" style="max-height:75px; max-width:140px; border-radius:4px; border:1px solid var(--border-mid); object-fit:contain;">
+                    <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">(Image capture)</span>
+                </div>
+            `;
+        }
+        if (data.length > 70 || data.includes('\n')) {
+            return `<pre class="debug-event-code">${escapeHtml(data)}</pre>`;
+        }
+        return `<span style="color:#a7f3d0;">"${escapeHtml(data)}"</span>`;
+    }
+    if (Array.isArray(data)) {
+        if (data.length === 0) {
+            return '<span style="color:var(--text-muted); font-family:var(--font-mono);">[ empty array ]</span>';
+        }
+        return `
+            <div style="display:flex; flex-direction:column; gap:4px; margin-top:3px;">
+                <span class="debug-kv-type-badge">${data.length} items</span>
+                <div class="debug-kv-list" style="margin-left:8px; border-left:2px solid var(--border-subtle); padding-left:6px;">
+                    ${data.slice(0, 20).map((item, idx) => `
+                        <div class="debug-kv-item">
+                            <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);">[${idx}]</span>
+                            <div class="debug-kv-value">${renderVisualData(item)}</div>
+                        </div>
+                    `).join('')}
+                    ${data.length > 20 ? `<span style="font-size:10px; color:var(--text-muted);">... and ${data.length - 20} more items</span>` : ''}
+                </div>
+            </div>
+        `;
+    }
+    if (typeof data === 'object') {
+        const keys = Object.keys(data);
+        if (keys.length === 0) {
+            return '<span style="color:var(--text-muted); font-family:var(--font-mono);">{ empty object }</span>';
+        }
+        return `
+            <div class="debug-kv-list">
+                ${keys.map(k => `
+                    <div class="debug-kv-item">
+                        <div class="debug-kv-label-row">
+                            <span class="debug-kv-key">${escapeHtml(k)}</span>
+                            <span class="debug-kv-type-badge">${getTypeLabel(data[k])}</span>
+                        </div>
+                        <div class="debug-kv-value">${renderVisualData(data[k])}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    return escapeHtml(String(data));
+}
+
+function renderDebugEvents(events) {
+    const container = document.getElementById('debug-events-stream-container');
+    if (!container) return;
+
+    if (!events || events.length === 0) {
+        container.innerHTML = `
+            <div style="padding:2.5rem; text-align:center; color:var(--text-muted); font-size:12px;">
+                No events recorded matching this filter.
+            </div>
+        `;
+        return;
+    }
+
+    currentDebugEventsMap.clear();
+
+    container.innerHTML = events.map(e => {
+        currentDebugEventsMap.set(e.id, e);
+
+        const isClient = e.execution === 'client';
+        const execLabel = isClient ? 'CLIENT (Roblox)' : 'SERVER (MCP)';
+        const execClass = isClient ? 'client' : 'server';
+
+        const status = e.status || (e.error ? 'error' : 'success');
+        const statusLabel = status.toUpperCase();
+
+        const timeStr = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+        const toolName = e.tool || e.type || 'action';
+
+        const isErr = status === 'error';
+        const borderStyle = isErr ? 'event-error' : (status === 'success' ? 'event-success' : '');
+
+        let targetDisplay = e.sessionId ? escapeHtml(e.sessionId) : 'Global';
+        if (e.playerName) targetDisplay = `${escapeHtml(e.playerName)} (PID ${e.pid || '?'})`;
+
+        return `
+            <div class="debug-event-card ${borderStyle}" id="card-${e.id}">
+                <div class="debug-event-head">
+                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <span class="debug-status-pill ${status}">${statusLabel}</span>
+                        <span class="debug-exec-pill ${execClass}">${execLabel}</span>
+                        <span class="debug-event-tool">${escapeHtml(toolName)}</span>
+                        <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">[${targetDisplay}]</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        ${e.durationMs !== undefined ? `<span class="debug-event-duration">${e.durationMs}ms</span>` : ''}
+                        <span class="debug-event-time">${timeStr}</span>
+                        <div class="debug-btn-group">
+                            <button class="debug-icon-btn" id="btn-toggle-${e.id}" onclick="toggleCardMinimize('${e.id}')" title="Extend or minimize card">[-]</button>
+                            <button class="debug-icon-btn" onclick="openDebugInspector('${e.id}')" title="Maximize inspector">⛶</button>
+                            <button class="debug-icon-btn" onclick="copyEventJson('${e.id}')" title="Copy action JSON">📋</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="debug-card-body" id="body-${e.id}">
+                    <div class="debug-panels-row">
+                        <div class="debug-panel-box">
+                            <div class="debug-panel-head">
+                                <span>INPUT (arguments)</span>
+                                <button class="debug-icon-btn" onclick="copySnippet('${e.id}', 'arguments')">Copy</button>
+                            </div>
+                            <div class="debug-panel-content">
+                                ${e.arguments && Object.keys(e.arguments).length > 0
+                                    ? renderVisualData(e.arguments)
+                                    : '<span style="color:var(--text-muted); font-size:11px; font-style:italic;">No arguments supplied</span>'}
+                            </div>
+                        </div>
+
+                        <div class="debug-panel-box">
+                            <div class="debug-panel-head">
+                                <span style="color:${isErr ? 'var(--rose)' : 'var(--emerald)'};">OUTPUT (${isErr ? 'error' : 'result'})</span>
+                                <button class="debug-icon-btn" onclick="copySnippet('${e.id}', '${isErr ? 'error' : 'result'}')">Copy</button>
+                            </div>
+                            <div class="debug-panel-content">
+                                ${isErr
+                                    ? `<div style="color:#fca5a5; font-family:var(--font-mono); font-size:11px; line-height:1.45; word-break:break-all;"><strong style="color:var(--rose);">Error:</strong> ${escapeHtml(e.error || 'Execution failed')}</div>`
+                                    : (e.result !== undefined
+                                        ? renderVisualData(e.result)
+                                        : '<span style="color:var(--amber); font-size:11px; font-style:italic;">Pending response...</span>')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function toggleCardMinimize(eventId) {
+    const card = document.getElementById(`card-${eventId}`);
+    const btn = document.getElementById(`btn-toggle-${eventId}`);
+    if (!card) return;
+    const isMinimized = card.classList.toggle('minimized');
+    if (btn) btn.innerText = isMinimized ? '[+]' : '[-]';
+}
+
+function expandAllDebugCards() {
+    document.querySelectorAll('.debug-event-card').forEach(c => {
+        c.classList.remove('minimized');
+        const btn = c.querySelector('.debug-icon-btn');
+        if (btn && (btn.innerText === '[+]' || btn.innerText === '[-]')) btn.innerText = '[-]';
+    });
+}
+
+function collapseAllDebugCards() {
+    document.querySelectorAll('.debug-event-card').forEach(c => {
+        c.classList.add('minimized');
+        const btn = c.querySelector('.debug-icon-btn');
+        if (btn && (btn.innerText === '[+]' || btn.innerText === '[-]')) btn.innerText = '[+]';
+    });
+}
+
+function openDebugInspector(eventId) {
+    const e = currentDebugEventsMap.get(eventId);
+    if (!e) return;
+    currentInspectedEventId = eventId;
+
+    const modal = document.getElementById('debug-inspector-modal');
+    const toolTitle = document.getElementById('debug-modal-tool-name');
+    const execTag = document.getElementById('debug-modal-exec-tag');
+    const statusTag = document.getElementById('debug-modal-status-tag');
+    const metaBar = document.getElementById('debug-modal-meta-bar');
+    const footerInfo = document.getElementById('debug-modal-footer-info');
+
+    if (toolTitle) toolTitle.innerText = e.tool || e.type || 'Action Inspector';
+
+    const isClient = e.execution === 'client';
+    if (execTag) {
+        execTag.className = `status-badge ${isClient ? '' : 'online'}`;
+        execTag.innerText = isClient ? 'CLIENT (Roblox Executor)' : 'SERVER (Node MCP)';
+    }
+
+    const isErr = e.status === 'error' || !!e.error;
+    if (statusTag) {
+        statusTag.className = `status-badge ${isErr ? 'offline' : 'online'}`;
+        statusTag.innerText = isErr ? 'ERROR' : (e.status === 'pending' ? 'PENDING' : 'SUCCESS');
+    }
+
+    if (metaBar) {
+        metaBar.innerHTML = `
+            <div class="debug-modal-meta-item">
+                <span class="debug-modal-meta-key">Session:</span>
+                <span class="debug-modal-meta-val">${escapeHtml(e.sessionId || 'Global')}</span>
+            </div>
+            ${e.pid ? `
+            <div class="debug-modal-meta-item">
+                <span class="debug-modal-meta-key">Roblox PID:</span>
+                <span class="debug-modal-meta-val">${e.pid}</span>
+            </div>` : ''}
+            ${e.playerName ? `
+            <div class="debug-modal-meta-item">
+                <span class="debug-modal-meta-key">Player:</span>
+                <span class="debug-modal-meta-val">${escapeHtml(e.playerName)}</span>
+            </div>` : ''}
+            <div class="debug-modal-meta-item">
+                <span class="debug-modal-meta-key">Duration:</span>
+                <span class="debug-modal-meta-val">${e.durationMs !== undefined ? `${e.durationMs}ms` : 'In-flight'}</span>
+            </div>
+            <div class="debug-modal-meta-item">
+                <span class="debug-modal-meta-key">Timestamp:</span>
+                <span class="debug-modal-meta-val">${e.isoTime || new Date(e.timestamp).toISOString()}</span>
+            </div>
+        `;
+    }
+
+    if (footerInfo) footerInfo.innerText = `ID: ${e.id}`;
+
+    renderInspectorContent();
+    if (modal) modal.classList.add('open');
+}
+
+function closeDebugInspector(e) {
+    if (e && e.target && e.target !== e.currentTarget && !e.target.closest('.modal-close-btn')) {
+        return;
+    }
+    const modal = document.getElementById('debug-inspector-modal');
+    if (modal) modal.classList.remove('open');
+    currentInspectedEventId = null;
+}
+
+function switchInspectorTab(tab) {
+    currentInspectorTab = tab;
+    document.querySelectorAll('.debug-tab-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById(`debug-tab-${tab}`);
+    if (btn) btn.classList.add('active');
+    renderInspectorContent();
+}
+
+function renderInspectorContent() {
+    const container = document.getElementById('debug-modal-content-area');
+    if (!container || !currentInspectedEventId) return;
+    const e = currentDebugEventsMap.get(currentInspectedEventId);
+    if (!e) return;
+
+    if (currentInspectorTab === 'json') {
+        const fullJson = JSON.stringify(e, null, 2);
+        container.innerHTML = `
+            <pre class="debug-event-code" style="max-height:550px; font-size:12px; line-height:1.5;">${escapeHtml(fullJson)}</pre>
+        `;
+        return;
+    }
+
+    const isErr = e.status === 'error' || !!e.error;
+    container.innerHTML = `
+        <div class="debug-panels-row" style="margin-top:0.5rem; height:100%; min-height:400px;">
+            <div class="debug-panel-box" style="flex:1;">
+                <div class="debug-panel-head">
+                    <span style="font-weight:700;">INPUT (arguments)</span>
+                    <button class="debug-icon-btn" onclick="copySnippet('${e.id}', 'arguments')">Copy Arguments</button>
+                </div>
+                <div class="debug-panel-content" style="max-height:480px; overflow-y:auto;">
+                    ${e.arguments && Object.keys(e.arguments).length > 0
+                        ? renderVisualData(e.arguments)
+                        : '<span style="color:var(--text-muted); font-size:12px; font-style:italic;">No arguments supplied</span>'}
+                </div>
+            </div>
+
+            <div class="debug-panel-box" style="flex:1;">
+                <div class="debug-panel-head">
+                    <span style="font-weight:700; color:${isErr ? 'var(--rose)' : 'var(--emerald)'};">OUTPUT (${isErr ? 'error' : 'result'})</span>
+                    <button class="debug-icon-btn" onclick="copySnippet('${e.id}', '${isErr ? 'error' : 'result'}')">Copy Output</button>
+                </div>
+                <div class="debug-panel-content" style="max-height:480px; overflow-y:auto;">
+                    ${isErr
+                        ? `<div style="color:#fca5a5; font-family:var(--font-mono); font-size:12px; line-height:1.5;"><strong style="color:var(--rose);">Error Message:</strong><br>${escapeHtml(e.error || 'Execution failed')}</div>`
+                        : (e.result !== undefined
+                            ? renderVisualData(e.result)
+                            : '<span style="color:var(--amber); font-size:12px; font-style:italic;">Pending execution...</span>')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function copyEventJson(eventId) {
+    const e = currentDebugEventsMap.get(eventId);
+    if (!e) return;
+    navigator.clipboard.writeText(JSON.stringify(e, null, 2)).then(() => {
+        notify('Action JSON copied');
+    });
+}
+
+function copySnippet(eventId, field) {
+    const e = currentDebugEventsMap.get(eventId);
+    if (!e) return;
+    const target = field === 'arguments' ? e.arguments : (e.error ? e.error : e.result);
+    const text = typeof target === 'string' ? target : JSON.stringify(target, null, 2);
+    navigator.clipboard.writeText(text).then(() => {
+        notify(`${field} copied`);
+    });
+}
+
+function copyInspectorData() {
+    if (!currentInspectedEventId) return;
+    copyEventJson(currentInspectedEventId);
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+async function clearAllDebugLogs() {
+    if (!confirm('Are you sure you want to clear all persistent debug memory across all sessions?')) return;
+    try {
+        const res = await fetch('/api/debug', { method: 'DELETE' });
+        const data = await res.json();
+        notify(`Cleared ${data.clearedCount || 0} debug sessions`);
+        fetchDebugStatus();
+        loadDebugSessions(true);
+    } catch (err) {
+        notify('Failed to clear: ' + err.message);
+    }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     fetchTelemetry();
     loadProcesses();
     loadTools();
     loadPortConfig();
+    fetchDebugStatus();
 
     pollTimer = setInterval(() => {
         fetchTelemetry();
         loadProcesses();
+        fetchDebugStatus();
     }, 2500);
 });

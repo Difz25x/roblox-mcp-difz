@@ -10,6 +10,15 @@ const os = require('os');
 import * as readline from 'readline';
 
 const { DiscoveryServer, getDiscoveryPort } = require('./discovery-server');
+const {
+    startProxyTunnel,
+    stopProxyTunnel,
+    getActiveProxyUrl,
+    isProxyRunning,
+} = require('./proxy-manager');
+const { debugManager } = require('./debug-manager');
+
+let _proxyUrl: string | null = null;
 
 const CONFIG_DIR = path.join(os.homedir(), '.roblox-mcp');
 try { if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true }); } catch {}
@@ -50,11 +59,17 @@ function printBanner(port: number, toolsCount: number, wsCount: number, pid: num
     console.log(`  \x1b[1;36mRoblox MCP\x1b[0m \x1b[2mv${PKG.version}\x1b[0m`);
     console.log(`  HTTP      http://localhost:${port}/mcp`);
     console.log(`  WS        ws://localhost:${port}/ws`);
+    if (_proxyUrl) {
+        console.log(`  Proxy     \x1b[1;32m${_proxyUrl}\x1b[0m`);
+    }
     if (discoveryPort) {
         console.log(`  Discovery http://localhost:${discoveryPort}/port`);
     }
     console.log(`  Tools: ${toolsCount} | Connections: ${wsCount} | PID: ${pid}`);
     console.log(`  \x1b[2mInject: loadstring(game:HttpGet("http://127.0.0.1:${port}/mcp.lua"))()\x1b[0m`);
+    if (_proxyUrl) {
+        console.log(`  \x1b[2mRemote: loadstring(game:HttpGet("${_proxyUrl}/mcp.lua"))()\x1b[0m`);
+    }
     if (discoveryPort && discoveryPort !== port) {
         console.log(`  \x1b[2mAuto-sync: loadstring(game:HttpGet("http://127.0.0.1:${discoveryPort}/mcp.lua"))()\x1b[0m`);
     }
@@ -85,10 +100,83 @@ function renderMenu(items: MenuItem[], selected: number): void {
     lines.push('');
     lines.push(`  \x1b[2m[Up/Down] Navigate  [Enter] Select  [Ctrl+C] Exit\x1b[0m`);
 
+    if (_proxyUrl) {
+        lines.push('');
+        lines.push(`  \x1b[1;32mProxy Url:\x1b[0m \x1b[1;36m${_proxyUrl}\x1b[0m`);
+    }
+
     for (const line of lines) {
         process.stdout.write('\r\x1b[K' + line + '\n');
     }
     _menuLineCount = lines.length;
+}
+
+async function generateProxyWithProgress(port: number): Promise<string | null> {
+    console.clear();
+    hideCursor();
+    process.stdout.write(`  \x1b[1;36mGenerating Cloudflare Tunnel Proxy...\x1b[0m\n`);
+    process.stdout.write(`  \x1b[2mConnecting to Cloudflare edge for http://127.0.0.1:${port}...\x1b[0m\n\n`);
+
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let frameIdx = 0;
+    const interval = setInterval(() => {
+        process.stdout.write(`\r  \x1b[36m${frames[frameIdx++ % frames.length]}\x1b[0m \x1b[2mEstablishing tunnel...\x1b[0m`);
+    }, 80);
+
+    try {
+        const { url } = await startProxyTunnel(port, (status: string) => {
+            process.stdout.write(`\r\x1b[K  \x1b[2m${status}\x1b[0m\n`);
+        });
+        clearInterval(interval);
+        process.stdout.write('\r\x1b[K');
+        _proxyUrl = url;
+        return url;
+    } catch (err: any) {
+        clearInterval(interval);
+        process.stdout.write('\r\x1b[K');
+        console.error(`  \x1b[31mFailed to generate proxy:\x1b[0m ${err.message}`);
+        await new Promise(r => setTimeout(r, 2000));
+        return null;
+    }
+}
+
+async function handleProxyMenuAction(port: number, returnToMenu: () => void): Promise<void> {
+    if (_proxyUrl) {
+        console.clear();
+        showCursor();
+        console.log(`  \x1b[1;36mProxy URL is Active\x1b[0m\n`);
+        console.log(`  Proxy Url: \x1b[1;36m${_proxyUrl}\x1b[0m\n`);
+        process.stdout.write(`  \x1b[2m[R] Regenerate URL  [S] Stop Proxy  [B/Enter] Back\x1b[0m: `);
+
+        return new Promise<void>((resolve) => {
+            readline.emitKeypressEvents(process.stdin);
+            if (process.stdin.isTTY) process.stdin.setRawMode(true);
+            process.stdin.resume();
+
+            process.stdin.once('keypress', async (_str: string, key: any) => {
+                if (process.stdin.isTTY) process.stdin.setRawMode(false);
+                process.stdin.pause();
+                process.stdin.removeAllListeners('keypress');
+
+                const choice = (_str || key?.name || '').toLowerCase();
+                if (choice === 'r') {
+                    stopProxyTunnel();
+                    _proxyUrl = null;
+                    await generateProxyWithProgress(port);
+                } else if (choice === 's') {
+                    stopProxyTunnel();
+                    _proxyUrl = null;
+                    console.log('\n  Proxy tunnel stopped.');
+                    await new Promise(r => setTimeout(r, 600));
+                }
+                returnToMenu();
+                resolve();
+            });
+        });
+    }
+
+    await generateProxyWithProgress(port);
+    returnToMenu();
 }
 
 function confirm(message: string): Promise<boolean> {
@@ -310,7 +398,7 @@ function startListening(server: any, port: number, onListening: () => Promise<vo
     });
 }
 
-async function cmdStart(isDaemon: boolean = false): Promise<void> {
+async function cmdStart(isDaemon: boolean = false, withProxy: boolean = false): Promise<void> {
     const PORT = getPort();
     const DISCOVERY_PORT = getDiscoveryPort();
 
@@ -335,6 +423,10 @@ async function cmdStart(isDaemon: boolean = false): Promise<void> {
                 discoveryPort: DISCOVERY_PORT
             });
             await _discoveryServer.start();
+        }
+
+        if (withProxy) {
+            await generateProxyWithProgress(PORT);
         }
 
         if (isDaemon) {
@@ -407,6 +499,21 @@ function showPostStartMenu(port: number, pid: number): void {
             },
         },
         {
+            label: _proxyUrl ? 'Proxy URL (Active)' : 'Generate Proxy URL',
+            description: _proxyUrl ? _proxyUrl : 'Cloudflare tunnel for external access',
+            action: async () => {
+                await handleProxyMenuAction(port, () => showPostStartMenu(port, pid));
+            },
+        },
+        {
+            label: `Debug Logging: ${debugManager.isEnabled() ? 'ON' : 'OFF'}`,
+            description: debugManager.isEnabled() ? 'Recording all MCP actions & sessions' : 'Action recording paused',
+            action: async () => {
+                debugManager.setEnabled(!debugManager.isEnabled());
+                showPostStartMenu(port, pid);
+            },
+        },
+        {
             label: 'Manage Processes',
             description: 'Restart or close Roblox',
             action: async () => {
@@ -467,11 +574,14 @@ function showPostStartMenu(port: number, pid: number): void {
         if (key.name === 'return') {
             cleanup();
             console.clear();
-            try { await items[selected].action(); }
+            const chosen = items[selected];
+            try { await chosen.action(); }
             catch (err: any) { console.error(`  Error: ${err.message}`); }
-            if (items[selected].label === 'Open Dashboard') {
+            if (chosen.label === 'Open Dashboard') {
                 showPostStartMenu(port, pid);
-            } else if (items[selected].label !== 'Hide in Tray' && items[selected].label !== 'Stop Server') {
+            } else if (chosen.label.includes('Proxy') || chosen.label.includes('Debug Logging')) {
+                // Handled directly inside action
+            } else if (chosen.label !== 'Hide in Tray' && chosen.label !== 'Stop Server') {
                 console.log(`\n  Press any key to continue...`);
                 readline.emitKeypressEvents(process.stdin);
                 process.stdin.setRawMode(true);
@@ -606,6 +716,8 @@ async function startTray(port: number, _pid: number): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
+    try { stopProxyTunnel(); } catch {}
+    _proxyUrl = null;
     const PORT = getPort();
     let stoppedAny = false;
 
@@ -804,6 +916,11 @@ function showInteractiveMenu(): Promise<void> {
                 action: async () => { await cmdStart(false); },
             },
             {
+                label: _proxyUrl ? 'Proxy URL (Active)' : 'Generate Proxy URL',
+                description: _proxyUrl ? _proxyUrl : 'Start server & generate Cloudflare tunnel',
+                action: async () => { await cmdStart(false, true); },
+            },
+            {
                 label: 'Setup Wizard',
                 description: 'Connect AI editor to this server',
                 action: cmdSetup,
@@ -888,7 +1005,7 @@ function showInteractiveMenu(): Promise<void> {
                     console.error(`  Error: ${err.message}`);
                 }
 
-                if (items[selected].label !== 'Start Server') {
+                if (items[selected].label !== 'Start Server' && !items[selected].label.includes('Proxy')) {
                     console.log(`\n  Press any key to continue...`);
                     readline.emitKeypressEvents(process.stdin);
                     process.stdin.setRawMode(true);
@@ -918,9 +1035,14 @@ async function main(): Promise<void> {
     }
 
     const cmd = args[0];
+    const hasProxyFlag = args.includes('--proxy');
 
+    if (cmd === 'proxy' || cmd === 'tunnel' || (cmd === 'start' && hasProxyFlag)) {
+        await cmdStart(false, true);
+        return;
+    }
     if (cmd === 'start') { await cmdStart(false); return; }
-    if (cmd === 'daemon') { await cmdStart(true); return; }
+    if (cmd === 'daemon') { await cmdStart(true, hasProxyFlag); return; }
     if (cmd === 'stdio') { await cmdStdio(); return; }
     if (cmd === 'setup') { await cmdSetup(); return; }
     if (cmd === 'skill' || cmd === 'add-skill' || cmd === 'install-skill') { await cmdSkill(args[1]); return; }
@@ -929,13 +1051,15 @@ async function main(): Promise<void> {
     if (cmd === 'sdk' || cmd === 'doctor') { await cmdSdkDoctor(); return; }
 
     console.log(`  Unknown command: "${cmd}"`);
-    console.log(`  Available: start, stdio, setup, skill, sdk, doctor, update, stop\n`);
+    console.log(`  Available: start, proxy, stdio, setup, skill, sdk, doctor, update, stop\n`);
     await showInteractiveMenu();
 }
 
 function cleanupAll(): void {
     if (_isHandingOverToDaemon) return;
     cleanupPidFile();
+    try { stopProxyTunnel(); } catch {}
+    _proxyUrl = null;
     if (_discoveryServer) {
         try { _discoveryServer.stop(); } catch {}
         _discoveryServer = null;

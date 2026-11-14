@@ -106,6 +106,8 @@ const LUA_TASK_NAME_MAP: Record<string, string> = {
     'find-instances': 'get-instances-by-class',
 };
 
+const { debugManager } = require('./debug-manager');
+
 const SERVER_SIDE_TOOLS = new Set<string>([
     'list-roblox-processes',
     'launch-roblox',
@@ -114,6 +116,11 @@ const SERVER_SIDE_TOOLS = new Set<string>([
     'record-roblox-video',
     'get-transport-status',
     'set-transport-mode',
+    'get-debug-history',
+    'list-debug-sessions',
+    'set-debug-mode',
+    'clear-debug-history',
+    'get-debug-status',
 ]);
 
 class McpHandler {
@@ -226,10 +233,17 @@ class McpHandler {
         }
 
         const args = normalizeToolArguments(rawArgs);
+        const startTime = Date.now();
+        const rawTarget = (args?.workerId || args?.worker_id || args?.sessionId || args?.session_id) as string | undefined;
+        const targetPid = args?.pid !== undefined ? Number(args.pid) : undefined;
+        let debugEventId = '';
 
         try {
             if (SERVER_SIDE_TOOLS.has(name)) {
+                debugEventId = debugManager.startToolCall(name, args || {}, { sessionId: 'server', caller: 'mcp', execution: 'server' });
                 const result = await this._runServerTool(name, args || {});
+                const elapsed = Date.now() - startTime;
+                debugManager.endToolResult(debugEventId, result, elapsed);
                 return {
                     result: {
                         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -254,30 +268,6 @@ class McpHandler {
                 args.code = fs.readFileSync(targetPath, 'utf-8');
             }
 
-            if (this.sessions.activeCount === 0) {
-                return {
-                    result: {
-                        content: [{
-                            type: 'text',
-                            text: JSON.stringify({
-                                success: false,
-                                error: 'No Roblox client connected.',
-                            }, null, 2),
-                        }],
-                        isError: true,
-                        meta: { tool: name },
-                    },
-                };
-            }
-
-            const startTime = Date.now();
-            const rawTarget = (args?.workerId || args?.worker_id || args?.sessionId || args?.session_id) as string | undefined;
-            const targetPid = args?.pid !== undefined ? Number(args.pid) : undefined;
-            const timeoutMs = args && (args.timeout_ms !== undefined || args.timeout !== undefined)
-                ? Number(args.timeout_ms ?? args.timeout)
-                : undefined;
-
-            const taskName = LUA_TASK_NAME_MAP[name] || name;
             const activeSessions = this.sessions.listActive ? this.sessions.listActive() : [];
 
             let resolvedWorkerId: string | undefined = undefined;
@@ -294,9 +284,41 @@ class McpHandler {
                 resolvedWorkerId = matched ? matched.workerId : targetStr;
             }
 
+            debugEventId = debugManager.startToolCall(name, args || {}, {
+                sessionId: resolvedWorkerId || (targetPid ? `roblox_pid_${targetPid}` : (activeSessions[0]?.workerId || 'server')),
+                pid: targetPid,
+                caller: 'mcp',
+                execution: 'client',
+            });
+
+            if (this.sessions.activeCount === 0) {
+                const errResult = {
+                    success: false,
+                    error: 'No Roblox client connected.',
+                };
+                debugManager.endToolError(debugEventId, 'No Roblox client connected.', Date.now() - startTime);
+                return {
+                    result: {
+                        content: [{
+                            type: 'text',
+                            text: JSON.stringify(errResult, null, 2),
+                        }],
+                        isError: true,
+                        meta: { tool: name },
+                    },
+                };
+            }
+
+            const timeoutMs = args && (args.timeout_ms !== undefined || args.timeout !== undefined)
+                ? Number(args.timeout_ms ?? args.timeout)
+                : undefined;
+
+            const taskName = LUA_TASK_NAME_MAP[name] || name;
+
             if (resolvedWorkerId) {
                 const result = await this.queue.submitTask(taskName, args || {}, { workerId: resolvedWorkerId, timeoutMs });
                 const elapsed = Date.now() - startTime;
+                debugManager.endToolResult(debugEventId, result, elapsed);
                 return {
                     result: {
                         content: [{
@@ -311,6 +333,7 @@ class McpHandler {
             if (targetPid !== undefined) {
                 const result = await this.queue.submitTask(taskName, args || {}, { targetPid, timeoutMs });
                 const elapsed = Date.now() - startTime;
+                debugManager.endToolResult(debugEventId, result, elapsed);
                 return {
                     result: {
                         content: [{
@@ -326,6 +349,7 @@ class McpHandler {
                 const singleWorker = activeSessions[0]?.workerId;
                 const result = await this.queue.submitTask(taskName, args || {}, { workerId: singleWorker, timeoutMs });
                 const elapsed = Date.now() - startTime;
+                debugManager.endToolResult(debugEventId, result, elapsed);
                 return {
                     result: {
                         content: [{
@@ -359,21 +383,27 @@ class McpHandler {
             }));
 
             const elapsed = Date.now() - startTime;
+            const multiResult = {
+                multi_session: true,
+                total_sessions: activeSessions.length,
+                results: sessionResults,
+            };
+            debugManager.endToolResult(debugEventId, multiResult, elapsed);
             return {
                 result: {
                     content: [{
                         type: 'text',
-                        text: JSON.stringify({
-                            multi_session: true,
-                            total_sessions: activeSessions.length,
-                            results: sessionResults,
-                        }, null, 2),
+                        text: JSON.stringify(multiResult, null, 2),
                     }],
                     meta: { executionTimeMs: elapsed, tool: name, sessionsExecuted: activeSessions.length },
                 },
             };
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : String(err);
+            const elapsed = Date.now() - startTime;
+            if (debugEventId) {
+                debugManager.endToolError(debugEventId, errorMessage, elapsed);
+            }
             return {
                 result: {
                     content: [{ type: 'text', text: JSON.stringify({ success: false, error: errorMessage }) }],
@@ -540,6 +570,75 @@ class McpHandler {
                     this.transportControl.setMode(mode);
                 }
                 return { success: true, mode };
+            }
+
+            case 'get-debug-history': {
+                const sessionId = (args.sessionId || args.session_id || args.workerId || args.worker_id) as string | undefined;
+                const toolFilter = (args.tool as string) || undefined;
+                const statusFilter = (args.status as string) || undefined;
+                const search = (args.search as string) || undefined;
+                const limit = args.limit ? Number(args.limit) : 50;
+                const offset = args.offset ? Number(args.offset) : 0;
+
+                if (sessionId) {
+                    return {
+                        success: true,
+                        ...debugManager.getSessionEvents(sessionId, {
+                            tool: toolFilter,
+                            status: statusFilter,
+                            search,
+                            limit,
+                            offset,
+                        }),
+                    };
+                } else {
+                    const events = debugManager.getAllRecentEvents(limit, { search, status: statusFilter });
+                    return {
+                        success: true,
+                        total: events.length,
+                        events,
+                    };
+                }
+            }
+
+            case 'list-debug-sessions': {
+                const status = (args.status as string) || undefined;
+                const limit = args.limit ? Number(args.limit) : 50;
+                const sessions = debugManager.listSessions({ status, limit });
+                return {
+                    success: true,
+                    total: sessions.length,
+                    sessions,
+                };
+            }
+
+            case 'set-debug-mode': {
+                const enabled = args.enabled !== undefined ? !!args.enabled : !debugManager.isEnabled();
+                const newStatus = debugManager.setEnabled(enabled);
+                return {
+                    success: true,
+                    enabled: newStatus,
+                    message: `MCP debug recording is now ${newStatus ? 'enabled' : 'disabled'}.`,
+                };
+            }
+
+            case 'clear-debug-history': {
+                const sessionId = (args.sessionId || args.session_id || args.workerId || args.worker_id) as string | undefined;
+                const res = debugManager.clearHistory(sessionId);
+                return {
+                    success: true,
+                    clearedCount: res.clearedCount,
+                    message: sessionId
+                        ? `Cleared debug history for session "${sessionId}".`
+                        : 'Cleared all debug session memory.',
+                };
+            }
+
+            case 'get-debug-status': {
+                return {
+                    success: true,
+                    ...debugManager.getStatus(),
+                };
             }
 
             default:

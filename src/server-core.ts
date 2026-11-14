@@ -16,6 +16,8 @@ const processManager = require('./process-manager');
 const { scanMcpSdk } = require('./sdk-scanner');
 const { stopAllDiscoveryServers } = require('./discovery-server');
 const { getSkillContent, SKILL_TARGETS, installSkillToTargets } = require('./skill-installer');
+const { getActiveProxyUrl, isProxyRunning, startProxyTunnel, stopProxyTunnel } = require('./proxy-manager');
+const { debugManager } = require('./debug-manager');
 
 type QueueManager = InstanceType<typeof QueueManagerCls>;
 type ToolDefinitions = InstanceType<typeof ToolDefinitionsCls>;
@@ -102,10 +104,34 @@ function createApp(opts?: CreateAppOptions): AppComponents {
 
     const mcpLuaPath: string = path.join(PKG_DIR, 'public', 'mcp.lua');
 
-    const serveMcpLua: RequestHandler = (_req: Request, res: Response): void => {
+    const serveMcpLua: RequestHandler = (req: Request, res: Response): void => {
         try {
             if (fs.existsSync(mcpLuaPath)) {
-                const content = fs.readFileSync(mcpLuaPath, 'utf-8');
+                let content = fs.readFileSync(mcpLuaPath, 'utf-8');
+
+                const reqHostHeader = ((req.headers['x-forwarded-host'] as string) || req.headers.host || '').trim();
+                const reqHost = reqHostHeader.split(':')[0];
+                const isHttps = req.headers['x-forwarded-proto'] === 'https' || req.secure;
+                const activeProxy = getActiveProxyUrl();
+                let proxyDomain = '';
+                if (activeProxy) {
+                    try { proxyDomain = new URL(activeProxy).hostname; } catch {}
+                }
+
+                const isProxyRequest = (reqHost && !reqHost.startsWith('127.0.0.1') && !reqHost.startsWith('localhost') && reqHost !== '0.0.0.0') || (proxyDomain && reqHost === proxyDomain);
+
+                if (isProxyRequest && reqHost) {
+                    const proto = isHttps ? 'https' : 'http';
+                    const wsProto = isHttps ? 'wss' : 'ws';
+                    content = content
+                        .replace(/local HOST = G_GET\("MCP_HOST"\) or "127\.0\.0\.1"/, `local HOST = G_GET("MCP_HOST") or "${reqHost}"`)
+                        .replace(/local PORT = G_GET\("MCP_PORT"\) or \d+/, `local PORT = G_GET("MCP_PORT") or ${isHttps ? 443 : 80}`)
+                        .replace(/-- Dynamic port discovery from fixed localhost discovery endpoint/, `-- Discovery skipped for proxy connection\nif true then return end`)
+                        .replace(/local WS_URL = "ws:\/\/" \.\. HOST \.\. ":" \.\. PORT \.\. "\/ws"/, `local WS_URL = G_GET("MCP_WS_URL") or "${wsProto}://${reqHost}/ws"`)
+                        .replace(/local STREAM_BASE = "http:\/\/" \.\. HOST \.\. ":" \.\. PORT/, `local STREAM_BASE = G_GET("MCP_STREAM_BASE") or "${proto}://${reqHost}"`)
+                        .replace(/string\.format\('loadstring\(game:HttpGet\("http:\/\/%s:%d\/mcp\.lua"\)\)\(\)', HOST, PORT\)/, `string.format('loadstring(game:HttpGet("${proto}://${reqHost}/mcp.lua"))()')`);
+                }
+
                 res.setHeader('Content-Type', 'text/plain; charset=utf-8');
                 res.send(content);
                 return;
@@ -273,6 +299,111 @@ function createApp(opts?: CreateAppOptions): AppComponents {
         } else {
             res.status(400).json({ success: false, error: "mode must be 'auto', 'ws', or 'stream'" });
         }
+    });
+
+    app.get('/api/proxy', (_req: Request, res: Response): void => {
+        const url = getActiveProxyUrl();
+        res.json({
+            active: isProxyRunning(),
+            url: url || null,
+            inject_url: url ? `loadstring(game:HttpGet("${url}/mcp.lua"))()` : null,
+        });
+    });
+
+    app.post('/api/proxy/start', async (_req: Request, res: Response): Promise<void> => {
+        try {
+            const port = parseInt(process.env.MCP_PORT!, 10) || 28429;
+            const { url } = await startProxyTunnel(port);
+            res.json({
+                success: true,
+                url,
+                inject_url: `loadstring(game:HttpGet("${url}/mcp.lua"))()`,
+            });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message || 'Failed to start proxy tunnel' });
+        }
+    });
+
+    app.post('/api/proxy/stop', (_req: Request, res: Response): void => {
+        stopProxyTunnel();
+        res.json({ success: true, message: 'Proxy tunnel stopped' });
+    });
+
+    app.get('/api/debug', (_req: Request, res: Response): void => {
+        res.json({
+            success: true,
+            ...debugManager.getStatus(),
+        });
+    });
+
+    app.post('/api/debug/toggle', (req: Request, res: Response): void => {
+        const { enabled } = req.body || {};
+        const targetState = enabled !== undefined ? !!enabled : !debugManager.isEnabled();
+        const newState = debugManager.setEnabled(targetState);
+        res.json({
+            success: true,
+            enabled: newState,
+            message: `Debug logging is now ${newState ? 'enabled' : 'disabled'}`,
+        });
+    });
+
+    app.get('/api/debug/sessions', (req: Request, res: Response): void => {
+        const status = (req.query.status as string) || undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+        const list = debugManager.listSessions({ status, limit });
+        res.json({
+            success: true,
+            total: list.length,
+            sessions: list,
+        });
+    });
+
+    app.get('/api/debug/sessions/:id', (req: Request, res: Response): void => {
+        const sessionId = req.params.id;
+        const tool = (req.query.tool as string) || undefined;
+        const status = (req.query.status as string) || undefined;
+        const execution = (req.query.execution as string) || undefined;
+        const search = (req.query.search as string) || undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+        const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+
+        const data = debugManager.getSessionEvents(sessionId, { tool, status, execution, search, limit, offset });
+        res.json({
+            success: true,
+            ...data,
+        });
+    });
+
+    app.get('/api/debug/recent', (req: Request, res: Response): void => {
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+        const search = (req.query.search as string) || undefined;
+        const status = (req.query.status as string) || undefined;
+        const execution = (req.query.execution as string) || undefined;
+        const events = debugManager.getAllRecentEvents(limit, { search, status, execution });
+        res.json({
+            success: true,
+            total: events.length,
+            events,
+        });
+    });
+
+    app.delete('/api/debug/sessions/:id', (req: Request, res: Response): void => {
+        const sessionId = req.params.id;
+        const result = debugManager.clearHistory(sessionId);
+        res.json({
+            success: true,
+            message: `Session ${sessionId} debug logs cleared`,
+            ...result,
+        });
+    });
+
+    app.delete('/api/debug', (_req: Request, res: Response): void => {
+        const result = debugManager.clearHistory();
+        res.json({
+            success: true,
+            message: 'All debug logs cleared',
+            ...result,
+        });
     });
 
     app.post('/stream/register', (req: Request, res: Response): void => {

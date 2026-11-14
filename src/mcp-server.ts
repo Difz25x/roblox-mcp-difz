@@ -1,5 +1,6 @@
 const path = require('path');
 const { getMcpSdk, scanMcpSdk } = require('./sdk-scanner');
+const { debugManager } = require('./debug-manager');
 
 const {
     Server,
@@ -20,6 +21,11 @@ const SERVER_SIDE_TOOLS = new Set([
   'record-roblox-video',
   'get-transport-status',
   'set-transport-mode',
+  'get-debug-history',
+  'list-debug-sessions',
+  'set-debug-mode',
+  'clear-debug-history',
+  'get-debug-status',
 ]);
 
 function initMcpServer(queue: any, tools: any, sessions: any, proc: any) {
@@ -246,6 +252,52 @@ async function runServerTool(name: string, args: any, proc: any, sessions: any):
         };
     }
     case 'set-transport-mode': return { success: true, mode: args?.mode || 'auto' };
+    case 'get-debug-history': {
+        const sessionId = args?.sessionId || args?.session_id || args?.workerId || args?.worker_id;
+        const toolFilter = args?.tool;
+        const statusFilter = args?.status;
+        const search = args?.search;
+        const limit = args?.limit ? Number(args.limit) : 50;
+        const offset = args?.offset ? Number(args.offset) : 0;
+        if (sessionId) {
+            return {
+                success: true,
+                ...debugManager.getSessionEvents(sessionId, {
+                    tool: toolFilter,
+                    status: statusFilter,
+                    search,
+                    limit,
+                    offset,
+                }),
+            };
+        } else {
+            const events = debugManager.getAllRecentEvents(limit, { search, status: statusFilter });
+            return { success: true, total: events.length, events };
+        }
+    }
+    case 'list-debug-sessions': {
+        const status = args?.status;
+        const limit = args?.limit ? Number(args.limit) : 50;
+        const sessions = debugManager.listSessions({ status, limit });
+        return { success: true, total: sessions.length, sessions };
+    }
+    case 'set-debug-mode': {
+        const enabled = args?.enabled !== undefined ? !!args.enabled : !debugManager.isEnabled();
+        const newStatus = debugManager.setEnabled(enabled);
+        return { success: true, enabled: newStatus, message: `MCP debug recording is now ${newStatus ? 'enabled' : 'disabled'}.` };
+    }
+    case 'clear-debug-history': {
+        const sessionId = args?.sessionId || args?.session_id || args?.workerId || args?.worker_id;
+        const res = debugManager.clearHistory(sessionId);
+        return {
+            success: true,
+            clearedCount: res.clearedCount,
+            message: sessionId ? `Cleared debug history for session "${sessionId}".` : 'Cleared all debug session memory.',
+        };
+    }
+    case 'get-debug-status': {
+        return { success: true, ...debugManager.getStatus() };
+    }
     default: return { success: false, error: `Unknown: ${name}` };
   }
 }
